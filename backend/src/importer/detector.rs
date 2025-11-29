@@ -65,7 +65,7 @@ impl NodeConnectionCounter {
         for &node_id in node_ids {
             self.node_to_ways
                 .entry(node_id)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(way_id);
         }
     }
