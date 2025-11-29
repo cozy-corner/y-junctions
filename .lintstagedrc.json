@@ -1,5 +1,6 @@
 {
   "frontend/**/*.{ts,tsx}": [
+    "cd frontend && npm run typecheck",
     "cd frontend && npm run lint:fix",
     "cd frontend && npm run format"
   ],
@@ -7,6 +8,7 @@
     "cd frontend && npm run format"
   ],
   "backend/**/*.rs": [
-    "cd backend && cargo fmt --all"
+    "cd backend && cargo fmt --all",
+    "cd backend && cargo clippy --all-targets --all-features -- -D warnings"
   ]
 }
