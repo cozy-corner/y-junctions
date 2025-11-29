@@ -1,3 +1,4 @@
+pub mod detector;
 pub mod parser;
 
 use anyhow::Result;
