@@ -1,14 +1,10 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - main
-      - workflow
+  pull_request:  # Run on all PRs
   push:
     branches:
       - main
-      - workflow
 
 jobs:
   frontend:
