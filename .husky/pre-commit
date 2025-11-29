@@ -10,14 +10,7 @@ BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
 # Run frontend tests if frontend files changed
 if [ -n "$FRONTEND_CHANGED" ]; then
   echo "Running frontend tests..."
-  (cd frontend && npm run test) || {
-    # Allow test to pass if no test files found
-    if [ $? -eq 1 ]; then
-      echo "No test files found, skipping frontend tests"
-    else
-      exit $?
-    fi
-  }
+  (cd frontend && npm run test) || exit $?
 fi
 
 # Run backend tests if backend files changed
