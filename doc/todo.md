@@ -108,18 +108,23 @@
 - `.env.example` - 環境変数テンプレート
 
 **タスク**:
-- [ ] docker-compose.yml作成（postgis/postgis:16-3.4）
-- [ ] マイグレーションSQL作成
+- [x] docker-compose.yml作成（postgis/postgis:16-3.4）
+- [x] マイグレーションSQL作成
   - PostGIS拡張有効化
-  - y_junctionsテーブル（仕様書通り）
+  - y_junctionsテーブル（シンプル設計: GENERATED列削除）
   - GIST/BTREEインデックス
-- [ ] sqlx-cli導入とマイグレーション実行手順
-- [ ] .envファイル設定
+- [x] sqlx-cli導入とマイグレーション実行手順
+- [x] .envファイル設定
 
 **完了条件**:
-- `docker-compose up -d` でPostgreSQL起動
-- `sqlx migrate run` でテーブル作成成功
-- `psql` で `\d y_junctions` が表示される
+- [x] `docker-compose up -d` でPostgreSQL起動
+- [x] `sqlx migrate run` でテーブル作成成功
+- [x] `psql` で `\d y_junctions` が表示される
+
+**実装メモ**:
+- angle_type, min_angleのGENERATED列を削除（一般的な設計を採用）
+- angle_1に直接インデックス作成
+- 分類ロジックは必要に応じてアプリケーション層で実装
 
 ---
 
