@@ -17,7 +17,7 @@ pub struct YJunctionWithCoords {
 }
 
 /// Node connection counter for Y-junction detection
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NodeConnectionCounter {
     /// Maps node_id to set of way_ids that contain this node
     node_to_ways: HashMap<i64, HashSet<i64>>,
@@ -98,6 +98,12 @@ impl NodeConnectionCounter {
             .get(&node_id)
             .map(|ways| ways.len())
             .unwrap_or(0)
+    }
+}
+
+impl Default for NodeConnectionCounter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
