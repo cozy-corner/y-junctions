@@ -51,7 +51,10 @@ pub fn parse_pbf(
     tracing::info!("1st pass complete:");
     tracing::info!("  Total ways processed: {}", way_count);
     tracing::info!("  Highway ways found: {}", highway_way_count);
-    tracing::info!("  Unique nodes in highway network: {}", counter.node_count());
+    tracing::info!(
+        "  Unique nodes in highway network: {}",
+        counter.node_count()
+    );
 
     // Find Y-junction candidates (nodes with exactly 3 way connections)
     let candidates = counter.find_y_junction_candidates();
@@ -115,18 +118,21 @@ pub fn parse_pbf(
     let y_junctions: Vec<YJunctionWithCoords> = candidates
         .iter()
         .filter_map(|candidate| {
-            node_coords.get(&candidate.node_id).map(|&(lat, lon)| {
-                YJunctionWithCoords {
+            node_coords
+                .get(&candidate.node_id)
+                .map(|&(lat, lon)| YJunctionWithCoords {
                     node_id: candidate.node_id,
                     lat,
                     lon,
                     connected_ways: candidate.connected_ways.clone(),
-                }
-            })
+                })
         })
         .collect();
 
-    tracing::info!("Found {} Y-junction candidates (within bbox)", y_junctions.len());
+    tracing::info!(
+        "Found {} Y-junction candidates (within bbox)",
+        y_junctions.len()
+    );
 
     // Log sample Y-junctions for verification
     for (i, junction) in y_junctions.iter().take(5).enumerate() {

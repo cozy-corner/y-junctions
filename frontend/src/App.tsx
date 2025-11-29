@@ -2,7 +2,14 @@ import { MapView } from './components/MapView';
 
 function App() {
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
+    <div
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'sans-serif',
+      }}
+    >
       {/* ヘッダー */}
       <header
         style={{

@@ -41,10 +41,7 @@ impl From<JunctionRow> for Junction {
 }
 
 // ヘルパー関数: bboxフィルタを追加
-fn add_bbox_filter(
-    builder: &mut QueryBuilder<sqlx::Postgres>,
-    bbox: (f64, f64, f64, f64),
-) {
+fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, f64, f64)) {
     builder.push("WHERE location && ST_MakeEnvelope(");
     builder.push_bind(bbox.0);
     builder.push(", ");
@@ -57,10 +54,7 @@ fn add_bbox_filter(
 }
 
 // ヘルパー関数: angle_typeフィルタを追加
-fn add_angle_type_filter(
-    builder: &mut QueryBuilder<sqlx::Postgres>,
-    angle_types: &[AngleType],
-) {
+fn add_angle_type_filter(builder: &mut QueryBuilder<sqlx::Postgres>, angle_types: &[AngleType]) {
     if angle_types.is_empty() {
         return;
     }
@@ -128,7 +122,11 @@ pub async fn find_by_bbox(
     }
 
     // min_angle フィルタ
-    add_min_angle_filters(&mut query_builder, filters.min_angle_lt, filters.min_angle_gt);
+    add_min_angle_filters(
+        &mut query_builder,
+        filters.min_angle_lt,
+        filters.min_angle_gt,
+    );
 
     // LIMIT
     query_builder.push(" LIMIT ");

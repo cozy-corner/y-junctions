@@ -1,0 +1,9 @@
+# mise configuration for Y-Junction project
+# Install mise: https://mise.jdx.dev/
+
+[tools]
+node = "23.11.0"
+rust = "1.90.0"
+
+[env]
+# Environment variables can be set here if needed

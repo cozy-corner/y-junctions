@@ -25,7 +25,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
       type: 'Feature',
       geometry: {
         type: 'Point',
-        coordinates: [139.770, 35.682],
+        coordinates: [139.77, 35.682],
       },
       properties: {
         id: 2,
@@ -40,7 +40,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
       type: 'Feature',
       geometry: {
         type: 'Point',
-        coordinates: [139.765, 35.680],
+        coordinates: [139.765, 35.68],
       },
       properties: {
         id: 3,
@@ -92,7 +92,7 @@ export function useJunctions({
       try {
         if (useMockData) {
           // モックデータを使用
-          await new Promise((resolve) => setTimeout(resolve, 300)); // ローディング表現のため遅延
+          await new Promise(resolve => setTimeout(resolve, 300)); // ローディング表現のため遅延
           setData(MOCK_DATA);
         } else {
           // 実際のAPIを呼び出し

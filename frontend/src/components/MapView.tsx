@@ -85,12 +85,15 @@ export function MapView({ useMockData = true }: MapViewProps) {
   }, []);
 
   // マーカーアイコンをメモ化
-  const markerIcons = useMemo(() => ({
-    sharp: createMarkerIcon('sharp'),
-    even: createMarkerIcon('even'),
-    skewed: createMarkerIcon('skewed'),
-    normal: createMarkerIcon('normal'),
-  }), []);
+  const markerIcons = useMemo(
+    () => ({
+      sharp: createMarkerIcon('sharp'),
+      even: createMarkerIcon('even'),
+      skewed: createMarkerIcon('skewed'),
+      normal: createMarkerIcon('normal'),
+    }),
+    []
+  );
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
@@ -109,17 +112,11 @@ export function MapView({ useMockData = true }: MapViewProps) {
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
 
         {/* マーカー表示 */}
-        {data?.features.map((feature) => {
+        {data?.features.map(feature => {
           const [lon, lat] = feature.geometry.coordinates;
           const { id, angle_type } = feature.properties;
 
-          return (
-            <Marker
-              key={id}
-              position={[lat, lon]}
-              icon={markerIcons[angle_type]}
-            />
-          );
+          return <Marker key={id} position={[lat, lon]} icon={markerIcons[angle_type]} />;
         })}
       </MapContainer>
     </div>
