@@ -33,7 +33,7 @@
 
 ---
 
-### Phase 2: Y字路検出ロジック
+### Phase 2: Y字路検出ロジック ✅
 
 **ゴール**: OSMデータからY字路候補（3本道路が接続するNode）を抽出
 
@@ -42,15 +42,19 @@
 - `backend/src/importer/detector.rs` - Y字路判定ロジック
 
 **タスク**:
-- [ ] 1st pass: highway付きWayのNode IDをHashSetに収集
-- [ ] 各NodeのWay接続数をHashMapでカウント
-- [ ] 接続数==3のNodeをフィルタリング
-- [ ] highwayタイプチェック（residential, tertiary等）
-- [ ] 2nd pass: 該当NodeとWayの座標を取得
+- [x] 1st pass: highway付きWayのNode IDをHashSetに収集
+- [x] 各NodeのWay接続数をHashMapでカウント
+- [x] 接続数==3のNodeをフィルタリング
+- [x] highwayタイプチェック（residential, tertiary等）
+- [x] 2nd pass: 該当NodeとWayの座標を取得（DenseNode対応含む）
 
 **完了条件**:
-- テスト用PBFでY字路候補が抽出される
-- ログに「Found X Y-junction candidates」と出力
+- ✅ テスト用PBFでY字路候補が抽出される（四国PBFで61,679個、香川県エリアで19,785個）
+- ✅ ログに「Found X Y-junction candidates」と出力
+
+**実装メモ**:
+- DenseNodes形式のNode読み取りに対応（`Element::DenseNode`の処理を追加）
+- GeofabrikのPBFファイルはデフォルトでDenseNodes形式を使用
 
 ---
 
