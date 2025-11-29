@@ -76,10 +76,7 @@ impl Junction {
     }
 
     pub fn to_feature_collection(junctions: Vec<Junction>, total_count: i64) -> serde_json::Value {
-        let features: Vec<serde_json::Value> = junctions
-            .iter()
-            .map(|j| j.to_feature())
-            .collect();
+        let features: Vec<serde_json::Value> = junctions.iter().map(|j| j.to_feature()).collect();
 
         serde_json::json!({
             "type": "FeatureCollection",
@@ -198,7 +195,10 @@ mod tests {
         assert_eq!(feature["properties"]["id"], 1);
         assert_eq!(feature["properties"]["osm_node_id"], 123456);
         assert_eq!(feature["properties"]["angle_type"], "sharp");
-        assert_eq!(feature["properties"]["angles"], serde_json::json!([30, 150, 180]));
+        assert_eq!(
+            feature["properties"]["angles"],
+            serde_json::json!([30, 150, 180])
+        );
     }
 
     #[test]
