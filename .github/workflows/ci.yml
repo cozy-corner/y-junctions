@@ -38,7 +38,7 @@ jobs:
         run: npm run format:check
 
       - name: Run tests
-        run: npm run test || echo "No tests found, skipping"
+        run: npm run test
 
   backend:
     name: Backend Checks
