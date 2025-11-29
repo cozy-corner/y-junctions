@@ -129,7 +129,7 @@
 
 ---
 
-### Phase 2: ドメインモデルとリポジトリ層
+### Phase 2: ドメインモデルとリポジトリ層 ✅
 
 **ゴール**: Junction型とデータアクセスロジックを実装
 
@@ -140,16 +140,22 @@
 - `backend/src/db/repository.rs` - リポジトリ実装
 
 **タスク**:
-- [ ] Junction構造体とAngleType enum
-- [ ] GeoJSON変換実装（`to_feature()`, `to_feature_collection()`）
-- [ ] sqlxでDB接続プール作成
-- [ ] `find_by_bbox()` 実装（bbox + フィルタ対応）
-- [ ] `find_by_id()` 実装
-- [ ] `count_by_type()` 実装
+- [x] Junction構造体とAngleType enum
+- [x] GeoJSON変換実装（`to_feature()`, `to_feature_collection()`）
+- [x] sqlxでDB接続プール作成
+- [x] `find_by_bbox()` 実装（bbox + フィルタ対応）
+- [x] `find_by_id()` 実装
+- [x] `count_by_type()` 実装
+- [x] ユニットテスト追加（9テスト、全て合格）
 
 **完了条件**:
-- ユニットテストでリポジトリメソッド動作確認
-- モックデータで各メソッドが正しいSQLを実行
+- [x] ユニットテストでリポジトリメソッド動作確認
+- [x] モックデータで各メソッドが正しいSQLを実行
+
+**実装メモ**:
+- QueryBuilderをヘルパー関数に分離して可読性を向上
+- angle_typeの分類ロジックはアプリケーション層で実装（DB側のGENERATED列なし）
+- chrono crateを追加してDateTime型をサポート
 
 ---
 

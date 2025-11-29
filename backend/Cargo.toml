@@ -14,8 +14,9 @@ path = "src/bin/import.rs"
 [dependencies]
 anyhow = "1"
 axum = "0.7"
+chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "json"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "json", "chrono"] }
 osmpbf = "0.3"
 geo = "0.28"
 serde = { version = "1", features = ["derive"] }
