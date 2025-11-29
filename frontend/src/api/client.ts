@@ -1,9 +1,4 @@
-import type {
-  Junction,
-  JunctionFeatureCollection,
-  Stats,
-  FilterParams,
-} from '../types';
+import type { Junction, JunctionFeatureCollection, Stats, FilterParams } from '../types';
 
 const BASE_URL = 'http://localhost:8080/api';
 
@@ -44,10 +39,7 @@ export async function fetchJunctions(
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new ApiError(
-        `Failed to fetch junctions: ${response.statusText}`,
-        response.status
-      );
+      throw new ApiError(`Failed to fetch junctions: ${response.statusText}`, response.status);
     }
 
     const data: JunctionFeatureCollection = await response.json();
@@ -69,10 +61,7 @@ export async function fetchJunctionById(id: number): Promise<Junction> {
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new ApiError(
-        `Failed to fetch junction: ${response.statusText}`,
-        response.status
-      );
+      throw new ApiError(`Failed to fetch junction: ${response.statusText}`, response.status);
     }
 
     const data: Junction = await response.json();
@@ -94,10 +83,7 @@ export async function fetchStats(): Promise<Stats> {
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new ApiError(
-        `Failed to fetch stats: ${response.statusText}`,
-        response.status
-      );
+      throw new ApiError(`Failed to fetch stats: ${response.statusText}`, response.status);
     }
 
     const data: Stats = await response.json();
