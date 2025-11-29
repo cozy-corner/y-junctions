@@ -63,10 +63,7 @@ impl NodeConnectionCounter {
     /// Add a way and its nodes to the connection counter
     pub fn add_way(&mut self, way_id: i64, node_ids: &[i64]) {
         for &node_id in node_ids {
-            self.node_to_ways
-                .entry(node_id)
-                .or_default()
-                .insert(way_id);
+            self.node_to_ways.entry(node_id).or_default().insert(way_id);
         }
     }
 
