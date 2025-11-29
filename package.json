@@ -1,0 +1,23 @@
+{
+  "name": "y-junction-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Y-Junction search service monorepo",
+  "scripts": {
+    "prepare": "husky",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:lint": "cd frontend && npm run lint",
+    "frontend:format": "cd frontend && npm run format",
+    "frontend:test": "cd frontend && npm run test",
+    "backend:dev": "cd backend && cargo run --bin server",
+    "backend:build": "cd backend && cargo build --release",
+    "backend:lint": "cd backend && cargo clippy -- -D warnings",
+    "backend:format": "cd backend && cargo fmt --check",
+    "backend:test": "cd backend && cargo test"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^16.0.0"
+  }
+}

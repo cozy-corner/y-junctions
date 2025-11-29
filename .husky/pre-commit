@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Run lint-staged (lint and format changed files)
+npx lint-staged
+
+# Check which directories have changes
+FRONTEND_CHANGED=$(git diff --cached --name-only | grep "^frontend/" || true)
+BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
+
+# Run frontend tests if frontend files changed
+if [ -n "$FRONTEND_CHANGED" ]; then
+  echo "Running frontend tests..."
+  cd frontend && npm run test && cd ..
+fi
+
+# Run backend tests if backend files changed
+if [ -n "$BACKEND_CHANGED" ]; then
+  echo "Running backend tests..."
+  cd backend && cargo test && cd ..
+fi

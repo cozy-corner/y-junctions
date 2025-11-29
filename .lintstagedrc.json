@@ -1,0 +1,12 @@
+{
+  "frontend/**/*.{ts,tsx}": [
+    "cd frontend && npm run lint:fix",
+    "cd frontend && npm run format"
+  ],
+  "frontend/**/*.css": [
+    "cd frontend && npm run format"
+  ],
+  "backend/**/*.rs": [
+    "cd backend && cargo fmt --all"
+  ]
+}
