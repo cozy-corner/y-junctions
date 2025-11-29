@@ -194,12 +194,12 @@
 - `frontend/src/api/client.ts` - APIクライアント
 
 **タスク**:
-- [ ] Junction型、AngleType型、GeoJSON型定義
-- [ ] FilterParams型、AppState型定義
-- [ ] `fetchJunctions(bbox, filters)` 実装
-- [ ] `fetchJunctionById(id)` 実装
-- [ ] `fetchStats()` 実装
-- [ ] エラーハンドリング（try-catch + Error型）
+- [x] Junction型、AngleType型、GeoJSON型定義
+- [x] FilterParams型、AppState型定義
+- [x] `fetchJunctions(bbox, filters)` 実装
+- [x] `fetchJunctionById(id)` 実装
+- [x] `fetchStats()` 実装
+- [x] エラーハンドリング（try-catch + Error型）
 
 **完了条件**:
 - TypeScriptコンパイルエラーなし
