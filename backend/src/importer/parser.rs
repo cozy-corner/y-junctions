@@ -2,7 +2,9 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 
+use super::calculator::calculate_junction_angles;
 use super::detector::{NodeConnectionCounter, YJunctionWithCoords};
+use crate::domain::junction::AngleType;
 
 pub fn parse_pbf(
     input_path: &str,
@@ -134,17 +136,101 @@ pub fn parse_pbf(
         y_junctions.len()
     );
 
-    // Log sample Y-junctions for verification
-    for (i, junction) in y_junctions.iter().take(5).enumerate() {
-        tracing::info!(
-            "  Sample {}: Node {} at ({:.6}, {:.6}) with {} connected ways",
-            i + 1,
-            junction.node_id,
-            junction.lat,
-            junction.lon,
-            junction.connected_ways.len()
-        );
+    // 3rd pass: Get coordinates of neighboring nodes and calculate angles
+    tracing::info!("Starting 3rd pass: calculating angles for Y-junctions");
+
+    // Collect all neighboring node IDs
+    let mut all_neighbor_ids = HashSet::new();
+    for junction in &y_junctions {
+        let neighbor_ids = counter.get_neighboring_nodes(junction.node_id);
+        for id in neighbor_ids {
+            all_neighbor_ids.insert(id);
+        }
     }
+
+    tracing::info!(
+        "Need coordinates for {} neighboring nodes",
+        all_neighbor_ids.len()
+    );
+
+    // Get coordinates for neighboring nodes
+    let mut neighbor_coords: HashMap<i64, (f64, f64)> = HashMap::new();
+
+    let file = File::open(input_path)?;
+    let reader = osmpbf::ElementReader::new(file);
+
+    reader.for_each(|element| match element {
+        osmpbf::Element::Node(node) => {
+            let node_id = node.id();
+            if all_neighbor_ids.contains(&node_id) {
+                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
+            }
+        }
+        osmpbf::Element::DenseNode(node) => {
+            let node_id = node.id();
+            if all_neighbor_ids.contains(&node_id) {
+                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
+            }
+        }
+        _ => {}
+    })?;
+
+    tracing::info!(
+        "3rd pass complete: retrieved {} neighbor coordinates",
+        neighbor_coords.len()
+    );
+
+    // Calculate angles for each Y-junction
+    let mut successful_calculations = 0;
+    let mut failed_calculations = 0;
+
+    for junction in &y_junctions {
+        let neighbor_ids = counter.get_neighboring_nodes(junction.node_id);
+
+        if neighbor_ids.len() != 3 {
+            failed_calculations += 1;
+            continue;
+        }
+
+        // Get coordinates for all 3 neighboring nodes
+        let neighbor_points: Vec<(f64, f64)> = neighbor_ids
+            .iter()
+            .filter_map(|&id| neighbor_coords.get(&id).copied())
+            .collect();
+
+        if neighbor_points.len() != 3 {
+            failed_calculations += 1;
+            continue;
+        }
+
+        // Calculate angles
+        if let Some(angles) =
+            calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
+        {
+            let angle_type = AngleType::from_angles(angles[0], angles[1], angles[2]);
+            successful_calculations += 1;
+
+            // Log first 10 junctions for verification
+            if successful_calculations <= 10 {
+                tracing::info!(
+                    "Node {}: [{}\u{00b0}, {}\u{00b0}, {}\u{00b0}] type={:?}",
+                    junction.node_id,
+                    angles[0],
+                    angles[1],
+                    angles[2],
+                    angle_type
+                );
+            }
+        } else {
+            failed_calculations += 1;
+        }
+    }
+
+    tracing::info!(
+        "Angle calculation complete: {} successful, {} failed",
+        successful_calculations,
+        failed_calculations
+    );
 
     Ok(())
 }
