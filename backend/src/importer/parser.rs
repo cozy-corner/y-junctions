@@ -159,22 +159,20 @@ pub fn parse_pbf(
     let file = File::open(input_path)?;
     let reader = osmpbf::ElementReader::new(file);
 
-    reader.for_each(|element| {
-        match element {
-            osmpbf::Element::Node(node) => {
-                let node_id = node.id();
-                if all_neighbor_ids.contains(&node_id) {
-                    neighbor_coords.insert(node_id, (node.lat(), node.lon()));
-                }
+    reader.for_each(|element| match element {
+        osmpbf::Element::Node(node) => {
+            let node_id = node.id();
+            if all_neighbor_ids.contains(&node_id) {
+                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
             }
-            osmpbf::Element::DenseNode(node) => {
-                let node_id = node.id();
-                if all_neighbor_ids.contains(&node_id) {
-                    neighbor_coords.insert(node_id, (node.lat(), node.lon()));
-                }
-            }
-            _ => {}
         }
+        osmpbf::Element::DenseNode(node) => {
+            let node_id = node.id();
+            if all_neighbor_ids.contains(&node_id) {
+                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
+            }
+        }
+        _ => {}
     })?;
 
     tracing::info!(
@@ -206,7 +204,8 @@ pub fn parse_pbf(
         }
 
         // Calculate angles
-        if let Some(angles) = calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
+        if let Some(angles) =
+            calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
         {
             let angle_type = AngleType::from_angles(angles[0], angles[1], angles[2]);
             successful_calculations += 1;
