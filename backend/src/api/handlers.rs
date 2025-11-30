@@ -125,8 +125,7 @@ pub async fn get_junctions(
     let bbox = query.parse_bbox()?;
     let filters = query.to_filter_params()?;
 
-    let junctions = repository::find_by_bbox(&pool, bbox, filters).await?;
-    let total_count = junctions.len() as i64;
+    let (junctions, total_count) = repository::find_by_bbox(&pool, bbox, filters).await?;
 
     let feature_collection = Junction::to_feature_collection(junctions, total_count);
 
