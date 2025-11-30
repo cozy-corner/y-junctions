@@ -1,0 +1,298 @@
+/* リセットとベーススタイル */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* アプリケーション全体のレイアウト */
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ヘッダー */
+.app-header {
+  padding: 15px 20px;
+  background: #2c3e50;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 1000;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+/* モバイルメニューボタン（デフォルトで非表示） */
+.mobile-menu-button {
+  display: none;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 5px 10px;
+}
+
+/* メインコンテンツ */
+.app-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* サイドバー */
+.app-sidebar {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e0e0e0;
+  background: white;
+  z-index: 100;
+  transition: transform 0.3s ease-in-out;
+}
+
+/* マップコンテナ */
+.app-map-container {
+  flex: 1;
+  position: relative;
+}
+
+/* 統計表示 */
+.stats-display {
+  padding: 12px 20px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 14px;
+}
+
+.stats-loading {
+  color: #666;
+}
+
+.stats-count strong {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+/* フィルターパネル */
+.filter-panel {
+  padding: 20px;
+  background: #f8f9fa;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.filter-panel h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.filter-section {
+  margin-bottom: 24px;
+}
+
+.filter-section h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* 角度タイプフィルター */
+.angle-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.angle-type-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.angle-type-label:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.angle-type-checkbox {
+  cursor: pointer;
+}
+
+.angle-type-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+}
+
+/* 角度範囲フィルター */
+.angle-range-control {
+  margin-bottom: 16px;
+}
+
+.angle-range-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.angle-range-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #666;
+}
+
+.angle-range-slider {
+  width: 100%;
+  cursor: pointer;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #e0e0e0, #2c3e50);
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.angle-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2c3e50;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.angle-range-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2c3e50;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.angle-range-clear-button {
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.angle-range-clear-button:hover {
+  background-color: #f0f0f0;
+  border-color: #999;
+}
+
+/* リセットボタン */
+.filter-reset-button {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #2c3e50;
+  background: #2c3e50;
+  color: white;
+  border-radius: 4px;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.filter-reset-button:hover {
+  background: #1a252f;
+}
+
+.filter-reset-button:active {
+  transform: scale(0.98);
+}
+
+/* 大量マーカー警告 */
+.marker-warning {
+  padding: 12px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #856404;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.marker-warning-icon {
+  font-size: 18px;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .mobile-menu-button {
+    display: block;
+  }
+
+  .app-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .app-sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .app-map-container {
+    width: 100%;
+  }
+
+  .app-header h1 {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-sidebar {
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .filter-panel {
+    padding: 15px;
+  }
+
+  .filter-panel h2 {
+    font-size: 16px;
+  }
+}

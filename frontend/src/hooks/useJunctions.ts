@@ -18,7 +18,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angles: [45, 135, 180],
         angle_type: 'sharp',
         road_types: ['residential', 'residential', 'tertiary'],
-        streetview_url: 'https://www.google.com/maps/@35.6812,139.7671,3a,75y,210h,90t',
+        streetview_url: 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.6812,139.7671',
       },
     },
     {
@@ -33,7 +33,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angles: [110, 120, 130],
         angle_type: 'even',
         road_types: ['primary', 'secondary', 'tertiary'],
-        streetview_url: 'https://www.google.com/maps/@35.682,139.770,3a,75y,210h,90t',
+        streetview_url: 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.682,139.770',
       },
     },
     {
@@ -48,7 +48,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angles: [30, 100, 230],
         angle_type: 'skewed',
         road_types: ['residential', 'unclassified', 'living_street'],
-        streetview_url: 'https://www.google.com/maps/@35.680,139.765,3a,75y,210h,90t',
+        streetview_url: 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.680,139.765',
       },
     },
   ],

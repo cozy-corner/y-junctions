@@ -234,6 +234,29 @@
 
 ---
 
+### Phase 5: Street View URL修正
+
+**ゴール**: Google Maps Street View URLを正しい形式に修正
+
+**成果物**:
+- `backend/src/domain/junction.rs` - streetview_url()メソッド修正
+
+**タスク**:
+- [ ] streetview_url()を新しいAPI形式に変更
+  - 現在: `https://www.google.com/maps/@{lat},{lon},3a,75y,{heading}h,90t`
+  - 修正後: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}`
+- [ ] テストの更新（streetview_urlのURL形式チェック）
+
+**完了条件**:
+- Street Viewリンクをクリックすると、正しくStreet Viewが開く
+- 地球全体が表示される問題が解消される
+
+**理由**:
+- 現在の実装では古いURL形式を使用しており、Street Viewが正しく表示されない
+- Frontend Phase 4で発見された問題
+
+---
+
 ## 🎨 Frontend (UI)
 
 ### Phase 1: 型定義とAPIクライアント
