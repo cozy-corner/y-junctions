@@ -74,7 +74,12 @@ interface MapViewProps {
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
 }
 
-export function MapView({ useMockData = true, filters, onLoadingChange, onDataChange }: MapViewProps) {
+export function MapView({
+  useMockData = true,
+  filters,
+  onLoadingChange,
+  onDataChange,
+}: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
   // Y字路データを取得

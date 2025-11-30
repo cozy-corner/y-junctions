@@ -8,12 +8,7 @@ export interface FilterState {
 }
 
 export function useFilters() {
-  const [angleTypes, setAngleTypes] = useState<AngleType[]>([
-    'sharp',
-    'even',
-    'skewed',
-    'normal',
-  ]);
+  const [angleTypes, setAngleTypes] = useState<AngleType[]>(['sharp', 'even', 'skewed', 'normal']);
   const [minAngleLt, setMinAngleLt] = useState<number | null>(null);
   const [minAngleGt, setMinAngleGt] = useState<number | null>(null);
 
