@@ -163,7 +163,7 @@
 
 ---
 
-### Phase 3: API エンドポイント実装
+### Phase 3: API エンドポイント実装 ✅
 
 **ゴール**: REST APIの3つのエンドポイントを完成
 
@@ -174,22 +174,63 @@
 - `backend/src/main.rs` - 更新（APIマウント）
 
 **タスク**:
-- [ ] `GET /api/junctions` ハンドラー
+- [x] `GET /api/junctions` ハンドラー
   - クエリパラメータ解析（bbox, angle_type, min_angle_lt/gt, limit）
   - バリデーション
   - GeoJSON FeatureCollection レスポンス
   - Street View URL生成
-- [ ] `GET /api/junctions/:id` ハンドラー
-- [ ] `GET /api/stats` ハンドラー
-- [ ] CORS設定（tower-http）
-- [ ] エラーレスポンス（JSON形式）
+- [x] `GET /api/junctions/:id` ハンドラー
+- [x] `GET /api/stats` ハンドラー
+- [x] CORS設定（tower-http）
+- [x] エラーレスポンス（JSON形式）
 
 **完了条件**:
-- `curl http://localhost:8080/api/junctions?bbox=139,35,140,36` でGeoJSON取得
-- `curl http://localhost:8080/api/junctions/1` で単一データ取得
-- `curl http://localhost:8080/api/stats` で統計情報取得
+- ✅ `curl http://localhost:8080/api/junctions?bbox=139,35,140,36` でGeoJSON取得
+- ✅ `curl http://localhost:8080/api/junctions/1` で単一データ取得
+- ✅ `curl http://localhost:8080/api/stats` で統計情報取得
 
 **依存**: Phase 2完了
+
+**実装メモ**:
+- 一般的なRust/Axumの作法に従った構成（handlers, routes, main分離）
+- ハンドラー層にパラメータ型とエラー型を配置（小規模プロジェクト向け）
+- Service層なし（Handler → Repository直接呼び出し）
+- PgPoolをStateとして直接使用（AppState構造体不要）
+- CORS設定でフロントエンド連携準備完了
+
+---
+
+### Phase 4: API テスト実装
+
+**ゴール**: APIエンドポイントの自動テストを実装し、品質を保証
+
+**成果物**:
+- `backend/tests/api_tests.rs` - 統合テスト
+- または `backend/src/api/handlers.rs` - ユニットテスト追加
+
+**タスク**:
+- [ ] テストヘルパー実装（テスト用DBセットアップ等）
+- [ ] `GET /api/junctions` のテスト
+  - 正常系: bbox指定でデータ取得
+  - 正常系: フィルタ（angle_type, min_angle）動作確認
+  - 異常系: 不正なbbox（バリデーションエラー）
+  - 異常系: 範囲外のbbox
+- [ ] `GET /api/junctions/:id` のテスト
+  - 正常系: 存在するIDでデータ取得
+  - 異常系: 存在しないIDで404
+- [ ] `GET /api/stats` のテスト
+  - 正常系: 統計情報取得
+  - データあり/なしで正しいレスポンス
+- [ ] エラーレスポンスのテスト
+  - ステータスコード確認
+  - JSONフォーマット確認
+
+**完了条件**:
+- `cargo test` で全テストが合格
+- 各エンドポイントの正常系・異常系をカバー
+- テストカバレッジが十分（主要パスをカバー）
+
+**依存**: Phase 3完了
 
 ---
 

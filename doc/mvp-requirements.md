@@ -146,18 +146,23 @@ Y字路一覧を取得する。
 
 **Response**
 
+GeoJSON Feature形式で返す（GET /junctions と一貫性を保つため）
+
 ```json
 {
-  "id": 12345,
-  "osm_node_id": 987654321,
-  "location": {
-    "lat": 35.6812,
-    "lon": 139.7671
+  "type": "Feature",
+  "geometry": {
+    "type": "Point",
+    "coordinates": [139.7671, 35.6812]
   },
-  "angles": [42, 138, 180],
-  "angle_type": "sharp",
-  "road_types": ["residential", "residential", "tertiary"],
-  "streetview_url": "https://www.google.com/maps/@35.6812,139.7671,3a,75y,210h,90t"
+  "properties": {
+    "id": 12345,
+    "osm_node_id": 987654321,
+    "angles": [42, 138, 180],
+    "angle_type": "sharp",
+    "road_types": ["residential", "residential", "tertiary"],
+    "streetview_url": "https://www.google.com/maps/@35.6812,139.7671,3a,75y,210h,90t"
+  }
 }
 ```
 
