@@ -56,6 +56,24 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: y_junction
+          POSTGRES_PASSWORD: y_junction
+          POSTGRES_DB: y_junction
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://y_junction:y_junction@localhost:5432/y_junction
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,6 +96,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Run database migrations
+        run: sqlx migrate run
 
       - name: Run tests
         run: cargo test --all-features
