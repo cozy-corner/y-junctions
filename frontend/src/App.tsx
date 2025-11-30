@@ -3,6 +3,7 @@ import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
 import { useFilters } from './hooks/useFilters';
+import type { JunctionFeatureCollection } from './types';
 import './App.css';
 
 function App() {
@@ -21,7 +22,7 @@ function App() {
   } = useFilters();
 
   // フィルタパラメータ（useMemoで最適化）
-  const filterParams = useMemo(() => toFilterParams(), [angleTypes, minAngleRange]);
+  const filterParams = useMemo(() => toFilterParams(), [toFilterParams]);
 
   // サイドバートグル
   const toggleSidebar = useCallback(() => {
@@ -29,7 +30,7 @@ function App() {
   }, []);
 
   // データ変更ハンドラ（useCallback最適化）
-  const handleDataChange = useCallback((data: any) => {
+  const handleDataChange = useCallback((data: JunctionFeatureCollection | null) => {
     setTotalCount(data?.total_count ?? 0);
   }, []);
 
