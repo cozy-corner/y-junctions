@@ -18,9 +18,7 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
     <div style={{ minWidth: 200 }}>
       {/* 角度情報 */}
       <div style={{ marginBottom: 12 }}>
-        <h4 style={{ margin: 0, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-          角度情報
-        </h4>
+        <h4 style={{ margin: 0, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>角度情報</h4>
         <div style={{ fontSize: 13 }}>
           <div style={{ marginBottom: 4 }}>
             <strong>タイプ:</strong> {ANGLE_TYPE_LABELS[angle_type]}
@@ -33,9 +31,7 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
 
       {/* 道路タイプ */}
       <div style={{ marginBottom: 12 }}>
-        <h4 style={{ margin: 0, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-          道路タイプ
-        </h4>
+        <h4 style={{ margin: 0, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>道路タイプ</h4>
         <div style={{ fontSize: 13 }}>
           {road_types.map((type, i) => (
             <div key={i}>
