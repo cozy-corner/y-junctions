@@ -1,60 +1,59 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
 import { useFilters } from './hooks/useFilters';
+import type { JunctionFeatureCollection } from './types';
+import './App.css';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // フィルタ状態管理
   const {
     angleTypes,
-    minAngleLt,
-    minAngleGt,
+    minAngleRange,
     toggleAngleType,
-    setMinAngleLt,
-    setMinAngleGt,
+    setMinAngleRange,
     resetFilters,
     toFilterParams,
   } = useFilters();
 
-  // フィルタパラメータ
-  const filterParams = toFilterParams();
+  // フィルタパラメータ（useMemoで最適化）
+  const filterParams = useMemo(() => toFilterParams(), [toFilterParams]);
+
+  // サイドバートグル
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
+  }, []);
+
+  // データ変更ハンドラ（useCallback最適化）
+  const handleDataChange = useCallback((data: JunctionFeatureCollection | null) => {
+    setTotalCount(data?.total_count ?? 0);
+  }, []);
 
   return (
-    <div
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: 'sans-serif',
-      }}
-    >
+    <div className="app">
       {/* ヘッダー */}
-      <header
-        style={{
-          padding: '15px 20px',
-          background: '#2c3e50',
-          color: 'white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 24 }}>Y字路マップ</h1>
+      <header className="app-header">
+        <h1>Y字路マップ</h1>
+        <button
+          className="mobile-menu-button"
+          onClick={toggleSidebar}
+          aria-label="メニューを開閉"
+          aria-expanded={isSidebarOpen}
+          aria-controls="app-sidebar"
+        >
+          ☰
+        </button>
       </header>
 
       {/* メインコンテンツ */}
-      <main style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <main className="app-main">
         {/* 左サイドバー */}
-        <aside
-          style={{
-            width: 300,
-            display: 'flex',
-            flexDirection: 'column',
-            borderRight: '1px solid #e0e0e0',
-          }}
-        >
+        <aside id="app-sidebar" className={`app-sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
           {/* 統計表示 */}
           <StatsDisplay count={totalCount} isLoading={isLoading} />
 
@@ -62,23 +61,21 @@ function App() {
           <div style={{ flex: 1, overflow: 'auto' }}>
             <FilterPanel
               angleTypes={angleTypes}
-              minAngleLt={minAngleLt}
-              minAngleGt={minAngleGt}
+              minAngleRange={minAngleRange}
               onToggleAngleType={toggleAngleType}
-              onMinAngleLtChange={setMinAngleLt}
-              onMinAngleGtChange={setMinAngleGt}
+              onMinAngleRangeChange={setMinAngleRange}
               onReset={resetFilters}
             />
           </div>
         </aside>
 
         {/* 右側の地図 */}
-        <div style={{ flex: 1 }}>
+        <div className="app-map-container">
           <MapView
             useMockData={true}
             filters={filterParams}
             onLoadingChange={setIsLoading}
-            onDataChange={data => setTotalCount(data?.total_count ?? 0)}
+            onDataChange={handleDataChange}
           />
         </div>
       </main>
