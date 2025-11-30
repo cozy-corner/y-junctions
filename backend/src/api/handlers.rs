@@ -101,6 +101,13 @@ impl JunctionsQuery {
     }
 
     fn to_filter_params(&self) -> Result<FilterParams, AppError> {
+        // limit のバリデーション
+        if let Some(v) = self.limit {
+            if v <= 0 {
+                return Err(AppError::BadRequest("limit must be a positive integer"));
+            }
+        }
+
         Ok(FilterParams {
             angle_type: self.parse_angle_types()?,
             min_angle_lt: self.min_angle_lt,
