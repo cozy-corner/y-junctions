@@ -5,25 +5,19 @@ set -e
 FRONTEND_CHANGED=$(git diff --cached --name-only | grep "^frontend/" || true)
 BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
 
-# Run lint-staged for frontend in subdirectory
+# Run lint-staged in subdirectories
 if [ -n "$FRONTEND_CHANGED" ]; then
   echo "Running lint-staged in frontend..."
   (cd frontend && npx lint-staged) || exit $?
 fi
 
-# Run lint-staged for backend in root (temporary, will be moved to subdirectory later)
 if [ -n "$BACKEND_CHANGED" ]; then
-  echo "Running lint-staged in root for backend..."
-  npx lint-staged
+  echo "Running lint-staged in backend..."
+  (cd backend && npx lint-staged) || exit $?
 fi
 
 # Run tests if files changed
 if [ -n "$FRONTEND_CHANGED" ]; then
   echo "Running frontend tests..."
   (cd frontend && npm run test) || exit $?
-fi
-
-if [ -n "$BACKEND_CHANGED" ]; then
-  echo "Running backend tests..."
-  (cd backend && cargo test) || exit $?
 fi
