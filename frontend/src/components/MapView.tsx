@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import { Icon } from 'leaflet';
-import type { LatLngBounds, AngleType } from '../types';
+import type { LatLngBounds, AngleType, FilterParams, JunctionFeatureCollection } from '../types';
 import { useJunctions } from '../hooks/useJunctions';
+import { JunctionPopup } from './JunctionPopup';
 
 // 初期位置: 東京駅
 const INITIAL_CENTER: [number, number] = [35.6812, 139.7671];
@@ -68,16 +69,34 @@ function MapEventsHandler({ onBoundsChange }: MapEventsHandlerProps) {
 
 interface MapViewProps {
   useMockData?: boolean;
+  filters?: Omit<FilterParams, 'bbox'>;
+  onLoadingChange?: (isLoading: boolean) => void;
+  onDataChange?: (data: JunctionFeatureCollection | null) => void;
 }
 
-export function MapView({ useMockData = true }: MapViewProps) {
+export function MapView({ useMockData = true, filters, onLoadingChange, onDataChange }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
   // Y字路データを取得
-  const { data } = useJunctions({
+  const { data, isLoading } = useJunctions({
     bounds,
+    filters,
     useMockData,
   });
+
+  // ローディング状態の変化を通知
+  useEffect(() => {
+    if (onLoadingChange) {
+      onLoadingChange(isLoading);
+    }
+  }, [isLoading, onLoadingChange]);
+
+  // データの変化を通知
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange(data);
+    }
+  }, [data, onDataChange]);
 
   // boundsの変更ハンドラ
   const handleBoundsChange = useCallback((newBounds: LatLngBounds) => {
@@ -116,7 +135,13 @@ export function MapView({ useMockData = true }: MapViewProps) {
           const [lon, lat] = feature.geometry.coordinates;
           const { id, angle_type } = feature.properties;
 
-          return <Marker key={id} position={[lat, lon]} icon={markerIcons[angle_type]} />;
+          return (
+            <Marker key={id} position={[lat, lon]} icon={markerIcons[angle_type]}>
+              <Popup>
+                <JunctionPopup properties={feature.properties} />
+              </Popup>
+            </Marker>
+          );
         })}
       </MapContainer>
     </div>

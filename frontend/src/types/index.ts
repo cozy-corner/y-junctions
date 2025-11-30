@@ -56,7 +56,7 @@ export interface Stats {
 // フィルタパラメータ
 export interface FilterParams {
   bbox?: string; // "min_lon,min_lat,max_lon,max_lat"
-  angle_type?: AngleType;
+  angle_type?: AngleType[];
   min_angle_lt?: number;
   min_angle_gt?: number;
   limit?: number;
