@@ -11,10 +11,10 @@ const INITIAL_ZOOM = 14;
 
 // angle_typeごとのマーカー色（最小角度が小さい順にグラデーション）
 const MARKER_COLORS: Record<AngleType, string> = {
-  sharp: '#4444ff',   // 青 - 最小角度が最も小さい
-  skewed: '#44aaff',  // 水色
-  normal: '#88dd44',  // 黄緑
-  even: '#ff4444',    // 赤 - 最小角度が最も大きい
+  sharp: '#4444ff', // 青 - 最小角度が最も小さい
+  skewed: '#44aaff', // 水色
+  normal: '#88dd44', // 黄緑
+  even: '#ff4444', // 赤 - 最小角度が最も大きい
 };
 
 // カスタムマーカーアイコンを作成（メモ化用に外部で定義）
