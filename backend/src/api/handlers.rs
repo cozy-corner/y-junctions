@@ -49,7 +49,7 @@ impl IntoResponse for AppError {
 // GET /api/junctions のクエリパラメータ
 #[derive(Debug, Deserialize)]
 pub struct JunctionsQuery {
-    pub bbox: String, // "min_lon,min_lat,max_lon,max_lat"
+    pub bbox: String,               // "min_lon,min_lat,max_lon,max_lat"
     pub angle_type: Option<String>, // "sharp,even" など
     pub min_angle_lt: Option<i16>,
     pub min_angle_gt: Option<i16>,
@@ -68,8 +68,7 @@ impl JunctionsQuery {
         let coords: Result<Vec<f64>, _> = parts.iter().map(|s| s.parse::<f64>()).collect();
         let coords = coords.map_err(|_| AppError::BadRequest("Invalid bbox coordinates"))?;
 
-        let (min_lon, min_lat, max_lon, max_lat) =
-            (coords[0], coords[1], coords[2], coords[3]);
+        let (min_lon, min_lat, max_lon, max_lat) = (coords[0], coords[1], coords[2], coords[3]);
 
         // バリデーション
         if min_lon >= max_lon || min_lat >= max_lat {
@@ -151,5 +150,8 @@ pub async fn get_stats(State(pool): State<PgPool>) -> Result<Json<StatsResponse>
     let total_count = repository::count_total(&pool).await?;
     let by_type = repository::count_by_type(&pool).await?;
 
-    Ok(Json(StatsResponse { total_count, by_type }))
+    Ok(Json(StatsResponse {
+        total_count,
+        by_type,
+    }))
 }
