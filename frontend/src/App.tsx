@@ -43,6 +43,7 @@ function App() {
           onClick={toggleSidebar}
           aria-label="メニューを開閉"
           aria-expanded={isSidebarOpen}
+          aria-controls="app-sidebar"
         >
           ☰
         </button>
@@ -51,7 +52,7 @@ function App() {
       {/* メインコンテンツ */}
       <main className="app-main">
         {/* 左サイドバー */}
-        <aside className={`app-sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+        <aside id="app-sidebar" className={`app-sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
           {/* 統計表示 */}
           <StatsDisplay count={totalCount} isLoading={isLoading} />
 
