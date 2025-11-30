@@ -21,6 +21,8 @@ pub struct YJunctionWithCoords {
 pub struct NodeConnectionCounter {
     /// Maps node_id to set of way_ids that contain this node
     node_to_ways: HashMap<i64, HashSet<i64>>,
+    /// Maps way_id to list of node_ids in that way
+    way_nodes: HashMap<i64, Vec<i64>>,
     /// Valid highway types for Y-junction detection
     valid_highway_types: HashSet<String>,
 }
@@ -51,6 +53,7 @@ impl NodeConnectionCounter {
 
         Self {
             node_to_ways: HashMap::new(),
+            way_nodes: HashMap::new(),
             valid_highway_types,
         }
     }
@@ -62,9 +65,36 @@ impl NodeConnectionCounter {
 
     /// Add a way and its nodes to the connection counter
     pub fn add_way(&mut self, way_id: i64, node_ids: &[i64]) {
+        // Store way nodes
+        self.way_nodes.insert(way_id, node_ids.to_vec());
+
         for &node_id in node_ids {
             self.node_to_ways.entry(node_id).or_default().insert(way_id);
         }
+    }
+
+    /// Get the neighboring node IDs for a Y-junction node
+    /// Returns up to 3 neighboring nodes (one per connected way)
+    pub fn get_neighboring_nodes(&self, junction_node_id: i64) -> Vec<i64> {
+        let mut neighbors = Vec::new();
+
+        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
+            for &way_id in way_ids {
+                if let Some(nodes) = self.way_nodes.get(&way_id) {
+                    // Find the junction node in the way's node list
+                    if let Some(pos) = nodes.iter().position(|&id| id == junction_node_id) {
+                        // Get the neighboring node (prefer next, fallback to previous)
+                        if pos + 1 < nodes.len() {
+                            neighbors.push(nodes[pos + 1]);
+                        } else if pos > 0 {
+                            neighbors.push(nodes[pos - 1]);
+                        }
+                    }
+                }
+            }
+        }
+
+        neighbors
     }
 
     /// Find all nodes that have exactly 3 way connections (Y-junction candidates)
