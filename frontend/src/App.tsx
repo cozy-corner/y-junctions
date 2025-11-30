@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
@@ -20,8 +20,8 @@ function App() {
     toFilterParams,
   } = useFilters();
 
-  // フィルタパラメータ
-  const filterParams = toFilterParams();
+  // フィルタパラメータ（useMemoで最適化）
+  const filterParams = useMemo(() => toFilterParams(), [angleTypes, minAngleRange]);
 
   // サイドバートグル
   const toggleSidebar = useCallback(() => {
@@ -38,7 +38,12 @@ function App() {
       {/* ヘッダー */}
       <header className="app-header">
         <h1>Y字路マップ</h1>
-        <button className="mobile-menu-button" onClick={toggleSidebar}>
+        <button
+          className="mobile-menu-button"
+          onClick={toggleSidebar}
+          aria-label="メニューを開閉"
+          aria-expanded={isSidebarOpen}
+        >
           ☰
         </button>
       </header>
