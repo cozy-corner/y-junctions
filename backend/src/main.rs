@@ -37,9 +37,7 @@ async fn main() {
         .layer(cors);
 
     // サーバー起動
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
     tracing::info!("Server listening on {}", listener.local_addr().unwrap());
 
