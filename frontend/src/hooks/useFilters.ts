@@ -3,20 +3,17 @@ import type { AngleType, FilterParams } from '../types';
 
 export interface FilterState {
   angleTypes: AngleType[];
-  minAngleLt: number | null;
-  minAngleGt: number | null;
+  minAngleRange: [number, number];
 }
 
 export function useFilters() {
   const [angleTypes, setAngleTypes] = useState<AngleType[]>(['sharp', 'even', 'skewed', 'normal']);
-  const [minAngleLt, setMinAngleLt] = useState<number | null>(null);
-  const [minAngleGt, setMinAngleGt] = useState<number | null>(null);
+  const [minAngleRange, setMinAngleRange] = useState<[number, number]>([0, 180]);
 
   // フィルタをリセット
   const resetFilters = useCallback(() => {
     setAngleTypes(['sharp', 'even', 'skewed', 'normal']);
-    setMinAngleLt(null);
-    setMinAngleGt(null);
+    setMinAngleRange([0, 180]);
   }, []);
 
   // angle_typeの切り替え
@@ -39,27 +36,26 @@ export function useFilters() {
       params.angle_type = angleTypes;
     }
 
-    if (minAngleLt !== null) {
-      params.min_angle_lt = minAngleLt;
+    // minAngleRangeが初期値(0, 180)でない場合のみ送信
+    if (minAngleRange[0] > 0) {
+      params.min_angle_gt = minAngleRange[0];
     }
 
-    if (minAngleGt !== null) {
-      params.min_angle_gt = minAngleGt;
+    if (minAngleRange[1] < 180) {
+      params.min_angle_lt = minAngleRange[1];
     }
 
     return params;
-  }, [angleTypes, minAngleLt, minAngleGt]);
+  }, [angleTypes, minAngleRange]);
 
   return {
     // 状態
     angleTypes,
-    minAngleLt,
-    minAngleGt,
+    minAngleRange,
 
     // セッター
     setAngleTypes,
-    setMinAngleLt,
-    setMinAngleGt,
+    setMinAngleRange,
     toggleAngleType,
 
     // アクション
