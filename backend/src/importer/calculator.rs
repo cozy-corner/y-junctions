@@ -196,10 +196,7 @@ mod tests {
         let points = vec![
             (CENTER_LAT + LAT_OFFSET_SMALL, CENTER_LON),
             (CENTER_LAT, CENTER_LON + LON_OFFSET_SMALL),
-            (
-                CENTER_LAT - LAT_OFFSET_SMALL,
-                CENTER_LON - LON_OFFSET_SMALL,
-            ),
+            (CENTER_LAT - LAT_OFFSET_SMALL, CENTER_LON - LON_OFFSET_SMALL),
         ];
 
         let angles = calculate_junction_angles(center.0, center.1, &points);
