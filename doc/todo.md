@@ -58,7 +58,7 @@
 
 ---
 
-### Phase 3: 角度計算とデータモデル
+### Phase 3: 角度計算とデータモデル ✅
 
 **ゴール**: Y字路の3つの角度を計算し、タイプ分類
 
@@ -67,14 +67,14 @@
 - `backend/src/domain/junction.rs` - Junctionモデル（importで使用）
 
 **タスク**:
-- [ ] geo crateで方位角（bearing）計算
-- [ ] 3方向の角度を算出・昇順ソート
-- [ ] angle_type分類ロジック（sharp/even/skewed/normal）
-- [ ] Junction構造体定義（osm_node_id, location, angles, road_types）
+- [x] geo crateで方位角（bearing）計算
+- [x] 3方向の角度を算出・昇順ソート
+- [x] angle_type分類ロジック（sharp/even/skewed/normal）
+- [x] Junction構造体定義（osm_node_id, location, angles, road_types）
 
 **完了条件**:
-- Y字路候補に対して角度計算完了
-- ログに各Y字路の角度情報出力（例: `Node 123: [45°, 135°, 180°] type=sharp`）
+- ✅ Y字路候補に対して角度計算完了
+- ✅ ログに各Y字路の角度情報出力（例: `Node 123: [45°, 135°, 180°] type=sharp`）
 
 ---
 
