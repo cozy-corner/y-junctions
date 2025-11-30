@@ -248,7 +248,7 @@
 
 ---
 
-### Phase 3: フィルターパネルとポップアップ
+### Phase 3: フィルターパネルとポップアップ ✅
 
 **ゴール**: フィルタリング機能とY字路詳細表示
 
@@ -259,23 +259,31 @@
 - `frontend/src/hooks/useFilters.ts` - フィルタ状態管理
 
 **タスク**:
-- [ ] FilterPanel実装
+- [x] FilterPanel実装
   - angle_typeチェックボックス（sharp/even/skewed/normal）
   - min_angleスライダー（0-180°）
   - フィルタリセットボタン
-- [ ] JunctionPopup実装
+- [x] JunctionPopup実装
   - 角度表示
   - 道路タイプ表示
   - Street Viewリンク
-- [ ] StatsDisplay実装（検索結果件数）
-- [ ] useFiltersフック（フィルタ変更時API再取得）
+- [x] StatsDisplay実装（検索結果件数）
+- [x] useFiltersフック（フィルタ変更時API再取得）
+- [x] 型定義修正（angle_type配列対応）
+- [x] APIクライアント修正（複数angle_typeのクエリパラメータ送信）
 
 **完了条件**:
-- フィルタ変更でマーカーが絞り込まれる
-- マーカークリックでポップアップ表示
-- 検索結果件数が表示される
+- ✅ フィルタ変更でマーカーが絞り込まれる（バックエンドAPI連携時）
+- ✅ マーカークリックでポップアップ表示
+- ✅ 検索結果件数が表示される
 
 **依存**: Phase 2完了
+
+**実装メモ**:
+- バックエンドAPIは複数のangle_typeを配列で受け取る仕様（Vec<AngleType>）
+- フロントエンドはangle_type配列をクエリパラメータとして送信（例: ?angle_type=sharp&angle_type=even）
+- 左サイドバー（フィルタ + 統計）+ 右側地図のレイアウト実装済み
+- 動作確認は実APIで行う（App.tsx で useMockData={false} に変更）
 
 ---
 
