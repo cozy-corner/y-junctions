@@ -406,6 +406,113 @@
 
 ---
 
+## ⚙️ ワークフロー
+
+### Phase 1: lint-staged修正（monorepo対応）
+
+**ゴール**: pre-commit hookが確実にエラーを検出するように修正
+
+**問題**:
+現在の`.lintstagedrc.js`は`cd frontend &&`コマンドを使用しているが、lint-stagedはシェルコマンドとして実行せず、`cd`をコマンド名、`frontend`、`&&`、`npm`等を引数としてパースする。このため、エラーが発生してもタスクが[COMPLETED]となり、エラーが検出されない（false positive）。
+
+**影響**:
+- pre-commit hookが通過してもCIで失敗する
+- Prettierによるフォーマット済みファイルがコミットされない
+- ESLintエラーが見逃される
+
+**解決策**: Option A（推奨） - サブディレクトリごとに`.lintstagedrc.js`を配置
+
+**なぜこの方法を選択するか**:
+1. Git hooksは常にリポジトリルートから実行される（どこでcommitしても同じ動作）
+2. `cd frontend`をシェルスクリプト内で実行すれば確実に動作する
+3. 各ディレクトリの`.lintstagedrc.js`はシンプルな相対パス指定のみで済む
+4. エラーコードが正しく伝播する
+
+**成果物**:
+- `frontend/.lintstagedrc.js` - フロントエンド用lint-staged設定（新規）
+- `backend/.lintstagedrc.js` - バックエンド用lint-staged設定（新規）
+- `.husky/pre-commit` - 更新（サブディレクトリでlint-staged実行）
+- `.lintstagedrc.js` - 削除または空にする
+
+**タスク**:
+- [ ] `frontend/.lintstagedrc.js`を作成
+  ```javascript
+  export default {
+    '**/*.{ts,tsx}': (filenames) => [
+      'npm run typecheck',
+      `npm run lint:staged:fix ${filenames.join(' ')}`,
+      `npm run lint:staged ${filenames.join(' ')}`,
+      `npm run format:staged ${filenames.join(' ')}`,
+    ],
+    '**/*.css': (filenames) => [
+      `npm run format:staged ${filenames.join(' ')}`,
+    ],
+  };
+  ```
+- [ ] `backend/.lintstagedrc.js`を作成
+  ```javascript
+  export default {
+    '**/*.rs': () => [
+      'cargo fmt --',
+      'cargo clippy --all-targets --all-features -- -D warnings',
+    ],
+  };
+  ```
+- [ ] `.husky/pre-commit`を更新
+  ```bash
+  #!/bin/sh
+  set -e
+
+  # Run lint-staged in subdirectories
+  FRONTEND_CHANGED=$(git diff --cached --name-only | grep "^frontend/" || true)
+  BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
+
+  if [ -n "$FRONTEND_CHANGED" ]; then
+    echo "Running lint-staged in frontend..."
+    (cd frontend && npx lint-staged) || exit $?
+  fi
+
+  if [ -n "$BACKEND_CHANGED" ]; then
+    echo "Running lint-staged in backend..."
+    (cd backend && npx lint-staged) || exit $?
+  fi
+
+  # Run tests if files changed
+  if [ -n "$FRONTEND_CHANGED" ]; then
+    echo "Running frontend tests..."
+    (cd frontend && npm run test) || exit $?
+  fi
+
+  if [ -n "$BACKEND_CHANGED" ]; then
+    echo "Running backend tests..."
+    (cd backend && cargo test) || exit $?
+  fi
+  ```
+- [ ] ルートの`.lintstagedrc.js`を削除
+- [ ] テスト: 意図的なESLintエラーでpre-commit hookが失敗することを確認
+
+**テスト手順**:
+1. フロントエンドファイルに意図的なESLintエラーを追加
+2. `git add`して`git commit`を実行
+3. pre-commit hookがエラーを検出してコミットが失敗することを確認
+4. エラーを修正して再度コミット
+5. コミットが成功することを確認
+6. Prettierで整形されたファイルが自動でaddされることを確認
+
+**完了条件**:
+- pre-commit hookがESLintエラーを確実に検出する
+- pre-commit hookが型エラーを確実に検出する
+- Prettierで整形されたファイルが確実にコミットされる
+- CI（GitHub Actions）とローカルpre-commit hookの結果が一致する
+- リポジトリルート、frontend、backendどのディレクトリからcommitしても同じ動作をする
+
+**参考**:
+- lint-stagedはシェルコマンドを実行しない（`cd && command`が動作しない）
+- Git hooksは常にリポジトリルートから実行される
+- `git diff --cached --name-only`は常にリポジトリルートからの相対パスを返す
+
+---
+
 ## 📋 開発優先順位
 
 ### 推奨開始順序
