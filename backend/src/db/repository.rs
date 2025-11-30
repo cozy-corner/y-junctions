@@ -24,8 +24,38 @@ struct JunctionRow {
     created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, FromRow)]
+struct JunctionRowWithCount {
+    id: i64,
+    osm_node_id: i64,
+    lat: f64,
+    lon: f64,
+    angle_1: i16,
+    angle_2: i16,
+    angle_3: i16,
+    road_types: Vec<String>,
+    created_at: DateTime<Utc>,
+    total_count: i64,
+}
+
 impl From<JunctionRow> for Junction {
     fn from(row: JunctionRow) -> Self {
+        Junction {
+            id: row.id,
+            osm_node_id: row.osm_node_id,
+            lat: row.lat,
+            lon: row.lon,
+            angle_1: row.angle_1,
+            angle_2: row.angle_2,
+            angle_3: row.angle_3,
+            road_types: row.road_types,
+            created_at: row.created_at,
+        }
+    }
+}
+
+impl From<JunctionRowWithCount> for Junction {
+    fn from(row: JunctionRowWithCount) -> Self {
         Junction {
             id: row.id,
             osm_node_id: row.osm_node_id,
@@ -103,13 +133,14 @@ pub async fn find_by_bbox(
     pool: &PgPool,
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
     filters: FilterParams,
-) -> Result<Vec<Junction>, sqlx::Error> {
+) -> Result<(Vec<Junction>, i64), sqlx::Error> {
     let limit = filters.limit.unwrap_or(500).min(1000);
 
     let mut query_builder = QueryBuilder::new(
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
-         angle_1, angle_2, angle_3, road_types, created_at \
+         angle_1, angle_2, angle_3, road_types, created_at, \
+         COUNT(*) OVER() as total_count \
          FROM y_junctions ",
     );
 
@@ -132,9 +163,14 @@ pub async fn find_by_bbox(
     query_builder.push(" LIMIT ");
     query_builder.push_bind(limit);
 
-    let rows: Vec<JunctionRow> = query_builder.build_query_as().fetch_all(pool).await?;
+    let rows: Vec<JunctionRowWithCount> = query_builder.build_query_as().fetch_all(pool).await?;
 
-    Ok(rows.into_iter().map(Junction::from).collect())
+    // total_count を最初の行から取得（全行同じ値）
+    let total_count = rows.first().map(|r| r.total_count).unwrap_or(0);
+
+    let junctions: Vec<Junction> = rows.into_iter().map(Junction::from).collect();
+
+    Ok((junctions, total_count))
 }
 
 pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx::Error> {
