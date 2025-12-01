@@ -12,7 +12,7 @@ const ANGLE_TYPE_LABELS: Record<string, string> = {
 };
 
 export function JunctionPopup({ properties }: JunctionPopupProps) {
-  const { angles, angle_type, road_types, streetview_url } = properties;
+  const { angles, angle_type, streetview_url } = properties;
 
   return (
     <div style={{ minWidth: 200 }}>
@@ -26,18 +26,6 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
           <div>
             <strong>角度:</strong> {angles[0]}°, {angles[1]}°, {angles[2]}°
           </div>
-        </div>
-      </div>
-
-      {/* 道路タイプ */}
-      <div style={{ marginBottom: 12 }}>
-        <h4 style={{ margin: 0, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>道路タイプ</h4>
-        <div style={{ fontSize: 13 }}>
-          {road_types.map((type, i) => (
-            <div key={i}>
-              {i + 1}. {type}
-            </div>
-          ))}
         </div>
       </div>
 
