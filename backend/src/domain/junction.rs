@@ -94,10 +94,10 @@ mod tests {
     }
 
     #[test]
-    fn test_angle_type_even() {
-        // angle_1 >= 100 AND angle_3 <= 140
-        let angle_type = AngleType::from_angles(110, 120, 130);
-        assert_eq!(angle_type, AngleType::Even);
+    fn test_angle_type_verysharp() {
+        // angle_1 < 30 AND angle_3 <= 200
+        let angle_type = AngleType::from_angles(25, 120, 180);
+        assert_eq!(angle_type, AngleType::VerySharp);
     }
 
     #[test]
