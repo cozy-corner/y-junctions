@@ -209,10 +209,9 @@ pub fn parse_pbf(
             calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
         {
             let angle_type = AngleType::from_angles(angles[0], angles[1], angles[2]);
-            successful_calculations += 1;
 
             // Log first 10 junctions for verification
-            if successful_calculations <= 10 {
+            if junctions_for_insert.len() < 10 {
                 tracing::info!(
                     "Node {}: [{}\u{00b0}, {}\u{00b0}, {}\u{00b0}] type={:?}",
                     junction.node_id,
@@ -227,6 +226,8 @@ pub fn parse_pbf(
             if angles[0] >= 60 {
                 continue;
             }
+
+            successful_calculations += 1;
 
             // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {
