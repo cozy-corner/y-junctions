@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 
 use super::calculator::calculate_junction_angles;
-use super::detector::{NodeConnectionCounter, YJunctionWithCoords};
+use super::detector::{JunctionForInsert, NodeConnectionCounter, YJunctionWithCoords};
 use crate::domain::junction::AngleType;
 
 pub fn parse_pbf(
@@ -12,7 +12,7 @@ pub fn parse_pbf(
     min_lat: f64,
     max_lon: f64,
     max_lat: f64,
-) -> Result<()> {
+) -> Result<Vec<JunctionForInsert>> {
     tracing::info!(
         "Parsing PBF file with bbox: ({}, {}) to ({}, {})",
         min_lon,
@@ -44,7 +44,7 @@ pub fn parse_pbf(
                     let node_ids: Vec<i64> = way.refs().collect();
 
                     // Add this way and its nodes to the counter
-                    counter.add_way(way.id(), &node_ids);
+                    counter.add_way(way.id(), &node_ids, highway_type);
                 }
             }
         }
@@ -64,7 +64,7 @@ pub fn parse_pbf(
 
     if candidates.is_empty() {
         tracing::warn!("No Y-junction candidates found");
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     // 2nd pass: Retrieve coordinates for Y-junction candidates
@@ -180,7 +180,8 @@ pub fn parse_pbf(
         neighbor_coords.len()
     );
 
-    // Calculate angles for each Y-junction
+    // Calculate angles for each Y-junction and create JunctionForInsert records
+    let mut junctions_for_insert = Vec::new();
     let mut successful_calculations = 0;
     let mut failed_calculations = 0;
 
@@ -221,6 +222,20 @@ pub fn parse_pbf(
                     angle_type
                 );
             }
+
+            // Get road types for this junction
+            let road_types = counter.get_road_types(junction.node_id);
+
+            // Create JunctionForInsert
+            junctions_for_insert.push(JunctionForInsert {
+                osm_node_id: junction.node_id,
+                lat: junction.lat,
+                lon: junction.lon,
+                angle_1: angles[0],
+                angle_2: angles[1],
+                angle_3: angles[2],
+                road_types,
+            });
         } else {
             failed_calculations += 1;
         }
@@ -232,5 +247,5 @@ pub fn parse_pbf(
         failed_calculations
     );
 
-    Ok(())
+    Ok(junctions_for_insert)
 }
