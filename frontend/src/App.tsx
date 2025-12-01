@@ -1,4 +1,3 @@
-// Test comment for pre-commit hook verification
 import { useState, useCallback, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';

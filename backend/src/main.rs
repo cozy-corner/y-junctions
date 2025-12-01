@@ -1,4 +1,3 @@
-// Test comment for pre-commit hook verification
 use axum::{routing::get, Router};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::cors::{Any, CorsLayer};
