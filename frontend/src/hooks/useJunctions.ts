@@ -30,8 +30,8 @@ const MOCK_DATA: JunctionFeatureCollection = {
       properties: {
         id: 2,
         osm_node_id: 1002,
-        angles: [110, 120, 130],
-        angle_type: 'even',
+        angles: [25, 135, 200],
+        angle_type: 'verysharp',
         streetview_url:
           'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.682,139.770',
       },
