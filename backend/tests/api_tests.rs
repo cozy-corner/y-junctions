@@ -87,8 +87,8 @@ impl TestJunctionData {
 async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     let rec = sqlx::query_as::<_, (i64,)>(
         r#"
-        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, road_types, created_at)
-        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY['residential'], NOW())
+        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, created_at)
+        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, NOW())
         RETURNING id
         "#,
     )

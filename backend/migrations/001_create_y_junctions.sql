@@ -13,7 +13,6 @@ CREATE TABLE y_junctions (
     angle_3 SMALLINT NOT NULL CHECK (angle_3 BETWEEN 0 AND 360),
 
     -- メタデータ
-    road_types TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
