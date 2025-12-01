@@ -33,7 +33,6 @@ pub struct Junction {
     pub angle_1: i16,
     pub angle_2: i16,
     pub angle_3: i16,
-    pub road_types: Vec<String>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
 }
@@ -69,7 +68,6 @@ impl Junction {
                 "osm_node_id": self.osm_node_id,
                 "angles": self.angles(),
                 "angle_type": self.angle_type(),
-                "road_types": self.road_types,
                 "streetview_url": self.streetview_url()
             }
         })
@@ -128,7 +126,6 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
-            road_types: vec!["residential".to_string()],
             created_at: Utc::now(),
         };
 
@@ -145,7 +142,6 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
-            road_types: vec!["residential".to_string()],
             created_at: Utc::now(),
         };
 
@@ -162,7 +158,6 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
-            road_types: vec!["residential".to_string()],
             created_at: Utc::now(),
         };
 
@@ -182,7 +177,6 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
-            road_types: vec!["residential".to_string(), "tertiary".to_string()],
             created_at: Utc::now(),
         };
 
@@ -211,7 +205,6 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
-            road_types: vec!["residential".to_string()],
             created_at: Utc::now(),
         };
 
@@ -223,7 +216,6 @@ mod tests {
             angle_1: 110,
             angle_2: 120,
             angle_3: 130,
-            road_types: vec!["tertiary".to_string()],
             created_at: Utc::now(),
         };
 

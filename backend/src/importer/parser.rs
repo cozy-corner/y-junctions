@@ -223,9 +223,6 @@ pub fn parse_pbf(
                 );
             }
 
-            // Get road types for this junction
-            let road_types = counter.get_road_types(junction.node_id);
-
             // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {
                 osm_node_id: junction.node_id,
@@ -234,7 +231,6 @@ pub fn parse_pbf(
                 angle_1: angles[0],
                 angle_2: angles[1],
                 angle_3: angles[2],
-                road_types,
             });
         } else {
             failed_calculations += 1;

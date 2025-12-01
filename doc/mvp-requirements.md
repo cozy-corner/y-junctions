@@ -78,9 +78,8 @@ CREATE TABLE y_junctions (
             ELSE 'normal'
         END
     ) STORED,
-    
+
     -- メタデータ
-    road_types TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -131,7 +130,6 @@ Y字路一覧を取得する。
         "osm_node_id": 987654321,
         "angles": [42, 138, 180],
         "angle_type": "sharp",
-        "road_types": ["residential", "residential", "tertiary"],
         "streetview_url": "https://www.google.com/maps/@35.6812,139.7671,3a,75y,210h,90t"
       }
     }
@@ -160,7 +158,6 @@ GeoJSON Feature形式で返す（GET /junctions と一貫性を保つため）
     "osm_node_id": 987654321,
     "angles": [42, 138, 180],
     "angle_type": "sharp",
-    "road_types": ["residential", "residential", "tertiary"],
     "streetview_url": "https://www.google.com/maps/@35.6812,139.7671,3a,75y,210h,90t"
   }
 }

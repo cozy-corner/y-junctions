@@ -20,7 +20,6 @@ struct JunctionRow {
     angle_1: i16,
     angle_2: i16,
     angle_3: i16,
-    road_types: Vec<String>,
     created_at: DateTime<Utc>,
 }
 
@@ -33,7 +32,6 @@ struct JunctionRowWithCount {
     angle_1: i16,
     angle_2: i16,
     angle_3: i16,
-    road_types: Vec<String>,
     created_at: DateTime<Utc>,
     total_count: i64,
 }
@@ -48,7 +46,6 @@ impl From<JunctionRow> for Junction {
             angle_1: row.angle_1,
             angle_2: row.angle_2,
             angle_3: row.angle_3,
-            road_types: row.road_types,
             created_at: row.created_at,
         }
     }
@@ -64,7 +61,6 @@ impl From<JunctionRowWithCount> for Junction {
             angle_1: row.angle_1,
             angle_2: row.angle_2,
             angle_3: row.angle_3,
-            road_types: row.road_types,
             created_at: row.created_at,
         }
     }
