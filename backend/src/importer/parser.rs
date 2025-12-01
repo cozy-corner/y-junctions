@@ -223,6 +223,11 @@ pub fn parse_pbf(
                 );
             }
 
+            // 最小角度が60度以上の場合はT字路とみなして除外
+            if angles[0] >= 60 {
+                continue;
+            }
+
             // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {
                 osm_node_id: junction.node_id,
