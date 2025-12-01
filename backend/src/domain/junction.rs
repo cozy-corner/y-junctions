@@ -48,12 +48,10 @@ impl Junction {
     }
 
     pub fn streetview_url(&self) -> String {
-        // 最初の角度を使って向き（heading）を計算
-        // 簡易実装: デフォルトの向きを使用
-        let heading = 210;
+        // Google Maps Street View API の新しい形式
         format!(
-            "https://www.google.com/maps/@{},{},3a,75y,{}h,90t",
-            self.lat, self.lon, heading
+            "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={},{}",
+            self.lat, self.lon
         )
     }
 
@@ -167,9 +165,14 @@ mod tests {
         };
 
         let url = junction.streetview_url();
-        assert!(url.contains("35.6812"));
-        assert!(url.contains("139.7671"));
-        assert!(url.starts_with("https://www.google.com/maps/@"));
+        // 新しいAPI形式のチェック
+        assert_eq!(
+            url,
+            "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.6812,139.7671"
+        );
+        assert!(url.contains("api=1"));
+        assert!(url.contains("map_action=pano"));
+        assert!(url.contains("viewpoint=35.6812,139.7671"));
     }
 
     #[test]
