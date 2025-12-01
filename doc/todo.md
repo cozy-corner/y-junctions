@@ -442,7 +442,7 @@
 
 ## ⚙️ ワークフロー
 
-### Phase 1: lint-staged修正（monorepo対応）
+### ✅ Phase 1: lint-staged修正（monorepo対応）
 
 **ゴール**: pre-commit hookが確実にエラーを検出するように修正
 
@@ -469,38 +469,38 @@
 - `.lintstagedrc.js` - 削除または空にする
 
 **タスク**:
-- [ ] `frontend/.lintstagedrc.js`を作成
+- [x] `frontend/.lintstagedrc.js`を作成
   ```javascript
   export default {
     '**/*.{ts,tsx}': (filenames) => [
       'npm run typecheck',
-      `npm run lint:staged:fix ${filenames.join(' ')}`,
-      `npm run lint:staged ${filenames.join(' ')}`,
-      `npm run format:staged ${filenames.join(' ')}`,
+      `eslint --fix ${filenames.join(' ')}`,
+      `prettier --write ${filenames.join(' ')}`,
     ],
     '**/*.css': (filenames) => [
-      `npm run format:staged ${filenames.join(' ')}`,
+      `prettier --write ${filenames.join(' ')}`,
     ],
   };
   ```
-- [ ] `backend/.lintstagedrc.js`を作成
+- [x] `backend/.lintstagedrc.js`を作成
   ```javascript
   export default {
-    '**/*.rs': () => [
-      'cargo fmt --',
+    '**/*.rs': (filenames) => [
+      `cargo fmt -- ${filenames.join(' ')}`,
       'cargo clippy --all-targets --all-features -- -D warnings',
     ],
   };
   ```
-- [ ] `.husky/pre-commit`を更新
+- [x] `.husky/pre-commit`を更新
   ```bash
   #!/bin/sh
   set -e
 
-  # Run lint-staged in subdirectories
+  # Check which directories have changes
   FRONTEND_CHANGED=$(git diff --cached --name-only | grep "^frontend/" || true)
   BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
 
+  # Run lint-staged in subdirectories
   if [ -n "$FRONTEND_CHANGED" ]; then
     echo "Running lint-staged in frontend..."
     (cd frontend && npx lint-staged) || exit $?
@@ -510,20 +510,14 @@
     echo "Running lint-staged in backend..."
     (cd backend && npx lint-staged) || exit $?
   fi
-
-  # Run tests if files changed
-  if [ -n "$FRONTEND_CHANGED" ]; then
-    echo "Running frontend tests..."
-    (cd frontend && npm run test) || exit $?
-  fi
-
-  if [ -n "$BACKEND_CHANGED" ]; then
-    echo "Running backend tests..."
-    (cd backend && cargo test) || exit $?
-  fi
   ```
-- [ ] ルートの`.lintstagedrc.js`を削除
-- [ ] テスト: 意図的なESLintエラーでpre-commit hookが失敗することを確認
+- [x] ルートの`.lintstagedrc.js`を削除
+- [x] テスト: 意図的なESLintエラーでpre-commit hookが失敗することを確認
+
+**実装メモ**:
+- テスト実行をpre-commitから削除（frontend, backend両方）
+- テストはCI（GitHub Actions）でのみ実行
+- commitを高速化し、ローカル環境でのDB不要に
 
 **テスト手順**:
 1. フロントエンドファイルに意図的なESLintエラーを追加
@@ -534,16 +528,61 @@
 6. Prettierで整形されたファイルが自動でaddされることを確認
 
 **完了条件**:
-- pre-commit hookがESLintエラーを確実に検出する
-- pre-commit hookが型エラーを確実に検出する
-- Prettierで整形されたファイルが確実にコミットされる
-- CI（GitHub Actions）とローカルpre-commit hookの結果が一致する
-- リポジトリルート、frontend、backendどのディレクトリからcommitしても同じ動作をする
+- ✅ pre-commit hookがESLintエラーを確実に検出する
+- ✅ pre-commit hookが型エラーを確実に検出する
+- ✅ Prettierで整形されたファイルが確実にコミットされる
+- ✅ CI（GitHub Actions）とローカルpre-commit hookの結果が一致する
+- ✅ リポジトリルート、frontend、backendどのディレクトリからcommitしても同じ動作をする
 
 **参考**:
 - lint-stagedはシェルコマンドを実行しない（`cd && command`が動作しない）
 - Git hooksは常にリポジトリルートから実行される
 - `git diff --cached --name-only`は常にリポジトリルートからの相対パスを返す
+
+---
+
+### Phase 2: Worktree自動セットアップ
+
+**ゴール**: 新しいworktreeでnpm installを自動実行する仕組みを実装
+
+**問題**:
+新しいgit worktreeを作成した際、`node_modules`がインストールされていないため、pre-commit hookが動作しない。手動で`npm install`を実行する必要があるが、忘れる可能性がある。
+
+**影響**:
+- Pre-commit hookが`npx: command not found`エラーで失敗する
+- lint-stagedが実行されず、コード品質チェックがスキップされる
+- 開発者が手動セットアップを忘れる可能性
+
+**解決策**: pre-commitで依存関係を自動検出・インストール
+
+**成果物**:
+- `.husky/pre-commit` - 自動検出・インストール機能追加
+
+**タスク**:
+- [ ] `.husky/pre-commit`に依存関係チェックを追加
+  ```bash
+  # Check if dependencies are installed
+  if [ ! -d "node_modules" ]; then
+    echo "📦 Installing root dependencies..."
+    npm install || exit 1
+  fi
+
+  if [ ! -d "frontend/node_modules" ]; then
+    echo "📦 Installing frontend dependencies..."
+    (cd frontend && npm install) || exit 1
+  fi
+  ```
+- [ ] エラーメッセージの改善（わかりやすいガイダンス）
+- [ ] テスト: 新しいworktreeでcommitを試す
+
+**完了条件**:
+- 新しいworktreeで初回commit時に自動でnpm installが実行される
+- 依存関係がない場合、明確なメッセージが表示される
+- セットアップ忘れによるエラーが発生しない
+
+**参考**:
+- `node_modules`は`.gitignore`されているため、worktreeごとに独立
+- 初回commitは時間がかかるが、2回目以降は高速
 
 ---
 
