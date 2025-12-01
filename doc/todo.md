@@ -507,6 +507,51 @@
 
 ---
 
+### Phase 2: Worktree自動セットアップ
+
+**ゴール**: 新しいworktreeでnpm installを自動実行する仕組みを実装
+
+**問題**:
+新しいgit worktreeを作成した際、`node_modules`がインストールされていないため、pre-commit hookが動作しない。手動で`npm install`を実行する必要があるが、忘れる可能性がある。
+
+**影響**:
+- Pre-commit hookが`npx: command not found`エラーで失敗する
+- lint-stagedが実行されず、コード品質チェックがスキップされる
+- 開発者が手動セットアップを忘れる可能性
+
+**解決策**: pre-commitで依存関係を自動検出・インストール
+
+**成果物**:
+- `.husky/pre-commit` - 自動検出・インストール機能追加
+
+**タスク**:
+- [ ] `.husky/pre-commit`に依存関係チェックを追加
+  ```bash
+  # Check if dependencies are installed
+  if [ ! -d "node_modules" ]; then
+    echo "📦 Installing root dependencies..."
+    npm install || exit 1
+  fi
+
+  if [ ! -d "frontend/node_modules" ]; then
+    echo "📦 Installing frontend dependencies..."
+    (cd frontend && npm install) || exit 1
+  fi
+  ```
+- [ ] エラーメッセージの改善（わかりやすいガイダンス）
+- [ ] テスト: 新しいworktreeでcommitを試す
+
+**完了条件**:
+- 新しいworktreeで初回commit時に自動でnpm installが実行される
+- 依存関係がない場合、明確なメッセージが表示される
+- セットアップ忘れによるエラーが発生しない
+
+**参考**:
+- `node_modules`は`.gitignore`されているため、worktreeごとに独立
+- 初回commitは時間がかかるが、2回目以降は高速
+
+---
+
 ## 📋 開発優先順位
 
 ### 推奨開始順序
