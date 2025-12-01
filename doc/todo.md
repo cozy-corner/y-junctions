@@ -435,38 +435,38 @@
 - `.lintstagedrc.js` - 削除または空にする
 
 **タスク**:
-- [ ] `frontend/.lintstagedrc.js`を作成
+- [x] `frontend/.lintstagedrc.js`を作成
   ```javascript
   export default {
     '**/*.{ts,tsx}': (filenames) => [
       'npm run typecheck',
-      `npm run lint:staged:fix ${filenames.join(' ')}`,
-      `npm run lint:staged ${filenames.join(' ')}`,
-      `npm run format:staged ${filenames.join(' ')}`,
+      `eslint --fix ${filenames.join(' ')}`,
+      `prettier --write ${filenames.join(' ')}`,
     ],
     '**/*.css': (filenames) => [
-      `npm run format:staged ${filenames.join(' ')}`,
+      `prettier --write ${filenames.join(' ')}`,
     ],
   };
   ```
-- [ ] `backend/.lintstagedrc.js`を作成
+- [x] `backend/.lintstagedrc.js`を作成
   ```javascript
   export default {
-    '**/*.rs': () => [
-      'cargo fmt --',
+    '**/*.rs': (filenames) => [
+      `cargo fmt -- ${filenames.join(' ')}`,
       'cargo clippy --all-targets --all-features -- -D warnings',
     ],
   };
   ```
-- [ ] `.husky/pre-commit`を更新
+- [x] `.husky/pre-commit`を更新
   ```bash
   #!/bin/sh
   set -e
 
-  # Run lint-staged in subdirectories
+  # Check which directories have changes
   FRONTEND_CHANGED=$(git diff --cached --name-only | grep "^frontend/" || true)
   BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
 
+  # Run lint-staged in subdirectories
   if [ -n "$FRONTEND_CHANGED" ]; then
     echo "Running lint-staged in frontend..."
     (cd frontend && npx lint-staged) || exit $?
@@ -476,20 +476,14 @@
     echo "Running lint-staged in backend..."
     (cd backend && npx lint-staged) || exit $?
   fi
-
-  # Run tests if files changed
-  if [ -n "$FRONTEND_CHANGED" ]; then
-    echo "Running frontend tests..."
-    (cd frontend && npm run test) || exit $?
-  fi
-
-  if [ -n "$BACKEND_CHANGED" ]; then
-    echo "Running backend tests..."
-    (cd backend && cargo test) || exit $?
-  fi
   ```
-- [ ] ルートの`.lintstagedrc.js`を削除
-- [ ] テスト: 意図的なESLintエラーでpre-commit hookが失敗することを確認
+- [x] ルートの`.lintstagedrc.js`を削除
+- [x] テスト: 意図的なESLintエラーでpre-commit hookが失敗することを確認
+
+**実装メモ**:
+- テスト実行をpre-commitから削除（frontend, backend両方）
+- テストはCI（GitHub Actions）でのみ実行
+- commitを高速化し、ローカル環境でのDB不要に
 
 **テスト手順**:
 1. フロントエンドファイルに意図的なESLintエラーを追加
