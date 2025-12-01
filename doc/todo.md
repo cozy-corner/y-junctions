@@ -408,7 +408,7 @@
 
 ## ⚙️ ワークフロー
 
-### Phase 1: lint-staged修正（monorepo対応）
+### ✅ Phase 1: lint-staged修正（monorepo対応）
 
 **ゴール**: pre-commit hookが確実にエラーを検出するように修正
 
@@ -494,11 +494,11 @@
 6. Prettierで整形されたファイルが自動でaddされることを確認
 
 **完了条件**:
-- pre-commit hookがESLintエラーを確実に検出する
-- pre-commit hookが型エラーを確実に検出する
-- Prettierで整形されたファイルが確実にコミットされる
-- CI（GitHub Actions）とローカルpre-commit hookの結果が一致する
-- リポジトリルート、frontend、backendどのディレクトリからcommitしても同じ動作をする
+- ✅ pre-commit hookがESLintエラーを確実に検出する
+- ✅ pre-commit hookが型エラーを確実に検出する
+- ✅ Prettierで整形されたファイルが確実にコミットされる
+- ✅ CI（GitHub Actions）とローカルpre-commit hookの結果が一致する
+- ✅ リポジトリルート、frontend、backendどのディレクトリからcommitしても同じ動作をする
 
 **参考**:
 - lint-stagedはシェルコマンドを実行しない（`cd && command`が動作しない）
