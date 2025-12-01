@@ -10,17 +10,17 @@ interface FilterPanelProps {
 }
 
 const ANGLE_TYPE_LABELS: Record<AngleType, string> = {
+  verysharp: '超鋭角',
   sharp: '鋭角',
-  even: '三叉路',
   skewed: '直線分岐',
   normal: '中間',
 };
 
 const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
-  sharp: '#4444ff', // 青 - 最小角度が最も小さい
-  skewed: '#44aaff', // 水色
+  verysharp: '#0000cc', // 濃い青 - 最小角度が最も小さい
+  sharp: '#3399ff', // 明るい青
   normal: '#88dd44', // 黄緑
-  even: '#ff4444', // 赤 - 最小角度が最も大きい
+  skewed: '#9900ff', // 紫 - 直線分岐（特殊）
 };
 
 export const FilterPanel = memo(function FilterPanel({
@@ -53,7 +53,7 @@ export const FilterPanel = memo(function FilterPanel({
         <h3>角度タイプ</h3>
         <div className="angle-type-options">
           {/* 最小角度の小さい順に並べる */}
-          {(['sharp', 'skewed', 'normal', 'even'] as AngleType[]).map(type => (
+          {(['verysharp', 'sharp', 'normal', 'skewed'] as AngleType[]).map(type => (
             <label key={type} className="angle-type-label">
               <input
                 type="checkbox"
@@ -89,7 +89,7 @@ export const FilterPanel = memo(function FilterPanel({
             <input
               type="range"
               min="0"
-              max="180"
+              max="60"
               value={minValue}
               onChange={e => handleMinChange(Number(e.target.value))}
               className="angle-range-slider"
@@ -102,7 +102,7 @@ export const FilterPanel = memo(function FilterPanel({
             <input
               type="range"
               min="0"
-              max="180"
+              max="60"
               value={maxValue}
               onChange={e => handleMaxChange(Number(e.target.value))}
               className="angle-range-slider"
@@ -110,7 +110,7 @@ export const FilterPanel = memo(function FilterPanel({
           </div>
 
           <button
-            onClick={() => onMinAngleRangeChange([0, 180])}
+            onClick={() => onMinAngleRangeChange([0, 60])}
             className="angle-range-clear-button"
           >
             リセット
