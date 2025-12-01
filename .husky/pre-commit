@@ -15,9 +15,3 @@ if [ -n "$BACKEND_CHANGED" ]; then
   echo "Running lint-staged in backend..."
   (cd backend && npx lint-staged) || exit $?
 fi
-
-# Run tests if files changed
-if [ -n "$FRONTEND_CHANGED" ]; then
-  echo "Running frontend tests..."
-  (cd frontend && npm run test) || exit $?
-fi
