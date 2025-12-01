@@ -11,7 +11,6 @@ export interface Junction {
   };
   angles: [number, number, number];
   angle_type: AngleType;
-  road_types: string[];
   streetview_url: string;
 }
 
@@ -26,7 +25,6 @@ export interface JunctionProperties {
   osm_node_id: number;
   angles: [number, number, number];
   angle_type: AngleType;
-  road_types: string[];
   streetview_url: string;
 }
 
