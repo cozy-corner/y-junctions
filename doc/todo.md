@@ -424,6 +424,39 @@
 
 ---
 
+### Phase 5: road_typesの削除 ✅
+
+**ゴール**: フロントエンドからroad_types（道路タイプ）の表示・処理を削除
+
+**背景**:
+- 現在の実装ではJunctionPopupでroad_typesを表示しているが、この情報が不要であることが判明
+- データの簡素化とUIの見やすさを向上させるため、road_types関連の機能を削除する
+
+**成果物**:
+- `frontend/src/types/index.ts` - 型定義修正
+- `frontend/src/components/JunctionPopup.tsx` - road_types表示削除
+- `frontend/src/hooks/useJunctions.ts` - モックデータ修正
+
+**タスク**:
+- [x] Junction型からroad_typesフィールドを削除
+- [x] JunctionPopupコンポーネントからroad_types表示を削除
+- [x] 関連するCSSスタイルの削除（該当する場合）
+- [x] 型エラーがないことを確認（`npm run typecheck`）
+
+**完了条件**:
+- ✅ Junction型にroad_typesが含まれていない（types/index.ts:14, 28）
+- ✅ ポップアップにroad_typesが表示されない（JunctionPopup.tsx:32-42削除済み）
+- ✅ TypeScriptの型チェックが通る（`npm run typecheck`成功）
+- ⚠️ 実際にブラウザで表示して動作確認（次のステップ）
+
+**実装メモ**:
+- JunctionとJunctionProperties両方の型定義からroad_typesを削除
+- JunctionPopupから道路タイプセクション全体を削除
+- useJunctionsフックのモックデータからもroad_typesを削除（3箇所）
+- CSS削除は不要（インラインスタイルのみ使用）
+
+---
+
 ## 🔗 統合・テスト・デプロイ
 
 ### Phase: エンドツーエンド動作確認
