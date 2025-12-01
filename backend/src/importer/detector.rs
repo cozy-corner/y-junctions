@@ -16,6 +16,18 @@ pub struct YJunctionWithCoords {
     pub connected_ways: Vec<i64>,
 }
 
+/// Y-junction data ready for database insertion
+#[derive(Debug, Clone)]
+pub struct JunctionForInsert {
+    pub osm_node_id: i64,
+    pub lat: f64,
+    pub lon: f64,
+    pub angle_1: i16,
+    pub angle_2: i16,
+    pub angle_3: i16,
+    pub road_types: Vec<String>,
+}
+
 /// Node connection counter for Y-junction detection
 #[derive(Debug)]
 pub struct NodeConnectionCounter {
@@ -23,6 +35,8 @@ pub struct NodeConnectionCounter {
     node_to_ways: HashMap<i64, HashSet<i64>>,
     /// Maps way_id to list of node_ids in that way
     way_nodes: HashMap<i64, Vec<i64>>,
+    /// Maps way_id to highway type
+    way_highway_types: HashMap<i64, String>,
     /// Valid highway types for Y-junction detection
     valid_highway_types: HashSet<String>,
 }
@@ -54,6 +68,7 @@ impl NodeConnectionCounter {
         Self {
             node_to_ways: HashMap::new(),
             way_nodes: HashMap::new(),
+            way_highway_types: HashMap::new(),
             valid_highway_types,
         }
     }
@@ -64,12 +79,28 @@ impl NodeConnectionCounter {
     }
 
     /// Add a way and its nodes to the connection counter
-    pub fn add_way(&mut self, way_id: i64, node_ids: &[i64]) {
+    pub fn add_way(&mut self, way_id: i64, node_ids: &[i64], highway_type: &str) {
         // Store way nodes
         self.way_nodes.insert(way_id, node_ids.to_vec());
 
+        // Store highway type
+        self.way_highway_types
+            .insert(way_id, highway_type.to_string());
+
         for &node_id in node_ids {
             self.node_to_ways.entry(node_id).or_default().insert(way_id);
+        }
+    }
+
+    /// Get road types for a junction node (from its connected ways)
+    pub fn get_road_types(&self, junction_node_id: i64) -> Vec<String> {
+        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
+            way_ids
+                .iter()
+                .filter_map(|way_id| self.way_highway_types.get(way_id).cloned())
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
@@ -143,13 +174,13 @@ mod tests {
         let mut counter = NodeConnectionCounter::new();
 
         // Way 1: nodes [1, 2, 3]
-        counter.add_way(1, &[1, 2, 3]);
+        counter.add_way(1, &[1, 2, 3], "residential");
 
         // Way 2: nodes [2, 4]
-        counter.add_way(2, &[2, 4]);
+        counter.add_way(2, &[2, 4], "tertiary");
 
         // Way 3: nodes [2, 5]
-        counter.add_way(3, &[2, 5]);
+        counter.add_way(3, &[2, 5], "primary");
 
         assert_eq!(counter.get_connection_count(1), 1); // Node 1: 1 way
         assert_eq!(counter.get_connection_count(2), 3); // Node 2: 3 ways (Y-junction)
@@ -161,6 +192,13 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].node_id, 2);
         assert_eq!(candidates[0].connected_ways.len(), 3);
+
+        // Test get_road_types
+        let road_types = counter.get_road_types(2);
+        assert_eq!(road_types.len(), 3);
+        assert!(road_types.contains(&"residential".to_string()));
+        assert!(road_types.contains(&"tertiary".to_string()));
+        assert!(road_types.contains(&"primary".to_string()));
     }
 
     #[test]
