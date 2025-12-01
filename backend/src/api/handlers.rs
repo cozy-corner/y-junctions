@@ -87,8 +87,8 @@ impl JunctionsQuery {
             let types: Result<Vec<AngleType>, _> = types_str
                 .split(',')
                 .map(|s| match s.trim() {
+                    "verysharp" => Ok(AngleType::VerySharp),
                     "sharp" => Ok(AngleType::Sharp),
-                    "even" => Ok(AngleType::Even),
                     "skewed" => Ok(AngleType::Skewed),
                     "normal" => Ok(AngleType::Normal),
                     _ => Err(AppError::BadRequest("Invalid angle_type")),
