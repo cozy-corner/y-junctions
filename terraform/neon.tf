@@ -16,6 +16,5 @@ resource "neon_project" "main" {
   default_endpoint_settings {
     autoscaling_limit_min_cu = 0.25
     autoscaling_limit_max_cu = 0.25
-    suspend_timeout_seconds  = 300
   }
 }
