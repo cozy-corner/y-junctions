@@ -4,20 +4,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AngleType {
+    VerySharp,
     Sharp,
-    Even,
     Skewed,
     Normal,
 }
 
 impl AngleType {
     pub fn from_angles(angle_1: i16, _angle_2: i16, angle_3: i16) -> Self {
-        if angle_1 < 45 {
-            Self::Sharp
-        } else if angle_1 >= 100 && angle_3 <= 140 {
-            Self::Even
-        } else if angle_3 > 200 {
+        if angle_3 > 200 {
             Self::Skewed
+        } else if angle_1 < 30 {
+            Self::VerySharp
+        } else if angle_1 < 45 {
+            Self::Sharp
         } else {
             Self::Normal
         }
@@ -94,10 +94,10 @@ mod tests {
     }
 
     #[test]
-    fn test_angle_type_even() {
-        // angle_1 >= 100 AND angle_3 <= 140
-        let angle_type = AngleType::from_angles(110, 120, 130);
-        assert_eq!(angle_type, AngleType::Even);
+    fn test_angle_type_verysharp() {
+        // angle_1 < 30 AND angle_3 <= 200
+        let angle_type = AngleType::from_angles(25, 120, 180);
+        assert_eq!(angle_type, AngleType::VerySharp);
     }
 
     #[test]

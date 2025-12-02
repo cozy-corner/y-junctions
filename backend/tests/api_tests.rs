@@ -48,20 +48,20 @@ impl TestJunctionData {
             osm_node_id: TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             lat: 35.0,
             lon: 139.0,
-            angle_1: 30,
-            angle_2: 120,
-            angle_3: 210,
+            angle_1: 35,
+            angle_2: 145,
+            angle_3: 180,
         }
     }
 
-    fn even_type() -> Self {
+    fn verysharp_type() -> Self {
         Self {
             osm_node_id: TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             lat: 35.0,
             lon: 139.0,
-            angle_1: 120,
-            angle_2: 120,
-            angle_3: 120,
+            angle_1: 20,
+            angle_2: 140,
+            angle_3: 200,
         }
     }
 
@@ -159,7 +159,7 @@ async fn test_get_junctions_with_angle_type_filter() {
     let pool = setup_test_db().await;
 
     insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
-    insert_test_junction(&pool, TestJunctionData::even_type()).await;
+    insert_test_junction(&pool, TestJunctionData::verysharp_type()).await;
 
     let app = create_test_app(pool);
 
@@ -309,7 +309,7 @@ async fn test_get_junction_by_id_success() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["type"], "Feature");
-    assert_eq!(json["properties"]["angles"][0], 30);
+    assert_eq!(json["properties"]["angles"][0], 35);
 }
 
 #[tokio::test]
@@ -335,8 +335,8 @@ async fn test_get_stats_with_data() {
     insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
     insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
 
-    // even タイプ × 1
-    insert_test_junction(&pool, TestJunctionData::even_type()).await;
+    // verysharp タイプ × 1
+    insert_test_junction(&pool, TestJunctionData::verysharp_type()).await;
 
     let app = create_test_app(pool);
 
