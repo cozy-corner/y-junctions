@@ -72,7 +72,7 @@ function App() {
         {/* 右側の地図 */}
         <div className="app-map-container">
           <MapView
-            useMockData={true}
+            useMockData={false}
             filters={filterParams}
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
