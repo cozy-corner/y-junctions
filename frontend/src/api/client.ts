@@ -1,6 +1,6 @@
 import type { Junction, JunctionFeatureCollection, Stats, FilterParams } from '../types';
 
-const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
 // カスタムエラークラス
 export class ApiError extends Error {
