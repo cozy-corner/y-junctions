@@ -17,7 +17,7 @@ resource "google_project_service" "artifactregistry" {
 # Artifact Registry repository for Docker images
 resource "google_artifact_registry_repository" "main" {
   location      = var.region
-  repository_id = "y-junction"
+  repository_id = "y-junctions"
   description   = "Docker repository for Y-Junction application"
   format        = "DOCKER"
 
@@ -26,8 +26,9 @@ resource "google_artifact_registry_repository" "main" {
 
 # Cloud Run service for backend API
 resource "google_cloud_run_v2_service" "backend" {
-  name     = var.backend_service_name
-  location = var.region
+  name               = var.backend_service_name
+  location           = var.region
+  deletion_protection = false
 
   template {
     containers {

@@ -6,8 +6,8 @@ region     = "asia-northeast1"
 neon_api_key = "your-neon-api-key-here"
 
 # Backend settings
-backend_service_name = "y-junction-api"
-backend_image        = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junction/backend:latest"
+backend_service_name = "y-junctions-api"
+backend_image        = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/backend:latest"
 
 # Frontend settings
 frontend_bucket_name = "y-junctions-prod-frontend"

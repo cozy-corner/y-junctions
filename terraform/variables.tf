@@ -19,13 +19,13 @@ variable "neon_api_key" {
 variable "backend_image" {
   description = "Backend Docker image URL"
   type        = string
-  default     = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junction/backend:latest"
+  default     = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/backend:latest"
 }
 
 variable "backend_service_name" {
   description = "Cloud Run service name for backend"
   type        = string
-  default     = "y-junction-api"
+  default     = "y-junctions-api"
 }
 
 variable "frontend_bucket_name" {
