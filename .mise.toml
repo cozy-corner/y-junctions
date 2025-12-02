@@ -4,6 +4,7 @@
 [tools]
 node = "23.11.0"
 rust = "1.90.0"
+terraform = "1.14.0"
 
 [env]
 # Environment variables can be set here if needed

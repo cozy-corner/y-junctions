@@ -1,0 +1,13 @@
+# Google Cloud settings
+project_id = "y-junctions-prod"
+region     = "asia-northeast1"
+
+# Neon API key (get from https://console.neon.tech/app/settings/api-keys)
+neon_api_key = "your-neon-api-key-here"
+
+# Backend settings
+backend_service_name = "y-junction-api"
+backend_image        = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junction/backend:latest"
+
+# Frontend settings
+frontend_bucket_name = "y-junctions-prod-frontend"
