@@ -95,8 +95,8 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
 
 #### PR作成
 
-- [ ] ブランチ作成: `feat/github-actions-infrastructure`
-- [ ] PR作成: "feat: Add GitHub Actions infrastructure with Terraform"
+- [x] ブランチ作成: `feat/github-actions-infrastructure`
+- [x] PR作成: "feat: Add GitHub Actions infrastructure with Terraform" (PR #22)
 - [ ] レビュー依頼
 - [ ] レビュー対応
 - [ ] PRマージ
@@ -335,6 +335,7 @@ post-deploy (サマリ生成)
 ### Phase 1 (PR1): インフラ準備
 - [x] 開始
 - [x] 実装中（Terraformファイル作成完了、terraform plan 成功）
+- [x] PR作成完了 (PR #22: https://github.com/cozy-corner/y-junctions/pull/22)
 - [ ] レビュー中
 - [ ] 完了
 
