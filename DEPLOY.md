@@ -27,44 +27,37 @@ mise exec -- terraform init
 mise exec -- terraform apply
 ```
 
-### 2. バックエンド
+### 2. バックエンド（ビルド）
 ```bash
-cd backend
-gcloud builds submit --tag asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/backend:latest .
+mise run backend:build
 ```
 
-### 3. データベースマイグレーション
+### 3. バックエンド（マイグレーション）
 ```bash
-# 接続文字列取得
-cd terraform
-DB_URL=$(mise exec -- terraform output -raw neon_connection_uri)
-
-# マイグレーション実行
-cd ../backend
-/opt/homebrew/opt/libpq/bin/psql "$DB_URL" -f migrations/001_create_y_junctions.sql
+mise run backend:migrate
 ```
 
-### 4. フロントエンド
+### 4. フロントエンド（ビルド + アップロード）
 ```bash
-cd frontend
-npm run build
-gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
+mise run frontend:deploy
 ```
 
 ## 更新デプロイ
 
-### バックエンド更新
+### バックエンド更新（コード変更時）
 ```bash
-cd backend
-gcloud builds submit --tag asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/backend:latest .
+mise run backend:build
 # Cloud Runが自動的に新しいイメージをデプロイ
+```
+
+### バックエンド更新（スキーマ変更時）
+```bash
+mise run backend:migrate
 ```
 
 ### フロントエンド更新
 ```bash
-cd frontend
-npm run build
-gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
+mise run frontend:deploy
 ```
 
 ## デプロイ確認
