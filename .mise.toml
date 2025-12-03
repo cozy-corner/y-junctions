@@ -6,5 +6,27 @@ node = "23.11.0"
 rust = "1.90.0"
 terraform = "1.14.0"
 
-[env]
-# Environment variables can be set here if needed
+# =====================================
+# Deploy Tasks
+# =====================================
+
+[tasks."backend:build"]
+description = "Build and push backend Docker image"
+run = "gcloud builds submit --tag asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/backend:latest ."
+dir = "backend"
+
+[tasks."backend:migrate"]
+description = "Run database migrations"
+run = """
+DB_URL=$(mise exec -- terraform output -raw neon_connection_uri)
+psql "$DB_URL" -f ../backend/migrations/001_create_y_junctions.sql
+"""
+dir = "terraform"
+
+[tasks."frontend:deploy"]
+description = "Build and deploy frontend"
+run = """
+npm run build
+gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
+"""
+dir = "frontend"
