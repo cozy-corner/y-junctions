@@ -1,0 +1,4 @@
+# OSM data files
+*.osm.pbf
+*.osm
+*.osm.bz2
