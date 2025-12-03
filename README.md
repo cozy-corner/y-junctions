@@ -56,7 +56,22 @@ git clone <repository-url>
 cd y-junctions
 ```
 
-#### 2. 環境変数の設定
+#### 2. Git Worktree Runner の設定
+
+このプロジェクトでは [git-worktree-runner](https://github.com/coderabbitai/git-worktree-runner) を使用してworktreeを管理します。
+
+```bash
+# worktree作成時の自動セットアップを有効化
+git gtr config add gtr.hook.postCreate "npm install"
+git gtr config add gtr.hook.postCreate "cd frontend && npm install"
+
+# 設定確認
+git config --get-all gtr.hook.postCreate
+```
+
+この設定により、`git gtr new <branch>` で新しいworktreeを作成すると、自動的に必要な依存関係（husky, lint-staged, フロントエンド開発ツール）がインストールされます。
+
+#### 3. 環境変数の設定
 
 ```bash
 # .envファイルを作成
