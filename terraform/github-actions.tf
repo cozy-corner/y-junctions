@@ -54,7 +54,6 @@ locals {
     "roles/run.admin",
     "roles/cloudbuild.builds.editor",
     "roles/storage.objectAdmin",
-    "roles/iam.serviceAccountUser",
   ])
 }
 
