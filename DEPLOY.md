@@ -71,12 +71,24 @@ gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
 
 ### バックエンド
 ```bash
-curl https://y-junctions-api-o32oa7fija-an.a.run.app/health
-curl https://y-junctions-api-o32oa7fija-an.a.run.app/api/stats
+# URL取得
+cd terraform
+BACKEND_URL=$(mise exec -- terraform output -raw backend_url)
+
+# ヘルスチェック
+curl $BACKEND_URL/health
+curl $BACKEND_URL/api/stats
 ```
 
 ### フロントエンド
-ブラウザで開く：`https://storage.googleapis.com/y-junctions-prod-frontend/index.html`
+```bash
+# URL取得
+cd terraform
+FRONTEND_URL=$(mise exec -- terraform output -raw frontend_bucket_url)
+
+# URLを表示
+echo "ブラウザで開く: $FRONTEND_URL"
+```
 
 **注意**: キャッシュがある場合はハードリフレッシュ（Cmd+Shift+R）
 
