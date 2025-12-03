@@ -33,13 +33,19 @@ pub struct Junction {
     pub angle_1: i16,
     pub angle_2: i16,
     pub angle_3: i16,
+    /// Bearings (azimuth) of the three roads from the junction node
+    /// Each bearing is in degrees (0-360), where 0° is North, 90° is East
+    /// Order corresponds to angle_1, angle_2, angle_3
+    pub bearings: Vec<f32>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
 }
 
 impl Junction {
     pub fn angle_type(&self) -> AngleType {
-        AngleType::from_angles(self.angle_1, self.angle_2, self.angle_3)
+        let mut angles = [self.angle_1, self.angle_2, self.angle_3];
+        angles.sort_unstable();
+        AngleType::from_angles(angles[0], angles[1], angles[2])
     }
 
     pub fn angles(&self) -> [i16; 3] {
@@ -47,11 +53,47 @@ impl Junction {
     }
 
     pub fn streetview_url(&self) -> String {
-        // Google Maps Street View API の新しい形式
-        format!(
+        let base_url = format!(
             "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={},{}",
             self.lat, self.lon
-        )
+        );
+
+        if self.bearings.len() == 3 {
+            // angles and bearings are in clockwise order
+            // angle_1 is between bearings[0] and bearings[1]
+            // angle_2 is between bearings[1] and bearings[2]
+            // angle_3 is between bearings[2] and bearings[0]
+
+            // Find which angle is minimum
+            let angles = [self.angle_1, self.angle_2, self.angle_3];
+            let min_angle = *angles.iter().min().unwrap();
+
+            // Determine which two bearings create the minimum angle
+            let (b1, b2) = if self.angle_1 == min_angle {
+                (self.bearings[0], self.bearings[1])
+            } else if self.angle_2 == min_angle {
+                (self.bearings[1], self.bearings[2])
+            } else {
+                (self.bearings[2], self.bearings[0])
+            };
+
+            // Calculate heading as the middle direction between the two roads
+            let heading = if (b2 - b1).abs() > 180.0 {
+                // Wrap around 360 degrees
+                let avg = (b1 + b2 + 360.0) / 2.0;
+                if avg >= 360.0 {
+                    avg - 360.0
+                } else {
+                    avg
+                }
+            } else {
+                (b1 + b2) / 2.0
+            };
+
+            return format!("{}&heading={:.0}", base_url, heading);
+        }
+
+        base_url
     }
 
     pub fn to_feature(&self) -> serde_json::Value {
@@ -124,6 +166,7 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
+            bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
         };
 
@@ -140,6 +183,7 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
+            bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
         };
 
@@ -156,18 +200,15 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
+            bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
         };
 
         let url = junction.streetview_url();
-        // 新しいAPI形式のチェック
-        assert_eq!(
-            url,
-            "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.6812,139.7671"
-        );
         assert!(url.contains("api=1"));
         assert!(url.contains("map_action=pano"));
         assert!(url.contains("viewpoint=35.6812,139.7671"));
+        assert!(url.contains("heading=25"));
     }
 
     #[test]
@@ -180,6 +221,7 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
+            bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
         };
 
@@ -208,6 +250,7 @@ mod tests {
             angle_1: 30,
             angle_2: 150,
             angle_3: 180,
+            bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
         };
 
@@ -219,6 +262,7 @@ mod tests {
             angle_1: 110,
             angle_2: 120,
             angle_3: 130,
+            bearings: vec![50.0, 160.0, 280.0],
             created_at: Utc::now(),
         };
 
