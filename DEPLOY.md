@@ -80,17 +80,34 @@ curl https://y-junctions-api-o32oa7fija-an.a.run.app/api/stats
 
 **注意**: キャッシュがある場合はハードリフレッシュ（Cmd+Shift+R）
 
-## 次回デプロイ時に必要な作業
+## データインポート
 
-### データインポート【未実施】
+### OSMデータのダウンロードとインポート
 ```bash
 cd backend
-# OSMデータダウンロード
-wget https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
+
+# OSMデータダウンロード（関東地方）
+curl -L -o kanto-latest.osm.pbf https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
+
+# 接続文字列取得
+cd ../terraform
+DB_URL=$(mise exec -- terraform output -raw neon_connection_uri)
 
 # インポート実行
-cargo run --bin import -- --input kanto-latest.osm.pbf --database-url "$DB_URL"
+# --bbox: 境界ボックス (min_lon,min_lat,max_lon,max_lat)
+cd ../backend
+DATABASE_URL="$DB_URL" cargo run --bin import -- \
+  --input kanto-latest.osm.pbf \
+  --bbox "138.5,34.5,140.9,36.5"
 ```
+
+**実行結果（2025-12-03）:**
+- 処理したウェイ総数: 8,964,117
+- Y字路件数: 34,165件
+- データベースサイズ: 7.5 MB
+- 処理時間: 約5分
+
+## 次回デプロイ時に必要な作業
 
 ### フロントエンド配信改善【推奨】
 現在：Cloud Storage直接配信（キャッシュ問題あり）
