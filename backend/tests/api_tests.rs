@@ -40,6 +40,7 @@ struct TestJunctionData {
     angle_1: i16,
     angle_2: i16,
     angle_3: i16,
+    bearings: [f32; 3],
 }
 
 impl TestJunctionData {
@@ -51,6 +52,7 @@ impl TestJunctionData {
             angle_1: 35,
             angle_2: 145,
             angle_3: 180,
+            bearings: [10.0, 45.0, 190.0],
         }
     }
 
@@ -62,6 +64,7 @@ impl TestJunctionData {
             angle_1: 20,
             angle_2: 140,
             angle_3: 200,
+            bearings: [5.0, 25.0, 165.0],
         }
     }
 
@@ -73,6 +76,7 @@ impl TestJunctionData {
             angle_1: 60,
             angle_2: 150,
             angle_3: 150,
+            bearings: [30.0, 90.0, 240.0],
         }
     }
 
@@ -87,8 +91,8 @@ impl TestJunctionData {
 async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     let rec = sqlx::query_as::<_, (i64,)>(
         r#"
-        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, created_at)
-        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, NOW())
+        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, created_at)
+        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY[$7, $8, $9], NOW())
         RETURNING id
         "#,
     )
@@ -98,6 +102,9 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     .bind(data.angle_1)
     .bind(data.angle_2)
     .bind(data.angle_3)
+    .bind(data.bearings[0])
+    .bind(data.bearings[1])
+    .bind(data.bearings[2])
     .fetch_one(pool)
     .await
     .expect("Failed to insert test junction");

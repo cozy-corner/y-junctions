@@ -12,6 +12,7 @@ export interface Junction {
   angles: [number, number, number];
   angle_type: AngleType;
   streetview_url: string;
+  bearings: number[];
 }
 
 // GeoJSON型定義
@@ -26,6 +27,7 @@ export interface JunctionProperties {
   angles: [number, number, number];
   angle_type: AngleType;
   streetview_url: string;
+  bearings: number[];
 }
 
 export interface JunctionFeature {

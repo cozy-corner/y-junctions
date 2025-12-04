@@ -204,26 +204,34 @@ pub fn parse_pbf(
             continue;
         }
 
-        // Calculate angles
-        if let Some(angles) =
+        // Calculate angles and bearings
+        if let Some((angles, bearings)) =
             calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
         {
-            let angle_type = AngleType::from_angles(angles[0], angles[1], angles[2]);
+            // Find minimum angle for filtering and type classification
+            let min_angle = *angles.iter().min().unwrap();
+            let mut sorted_angles = angles;
+            sorted_angles.sort_unstable();
+            let angle_type =
+                AngleType::from_angles(sorted_angles[0], sorted_angles[1], sorted_angles[2]);
 
             // Log first 10 junctions for verification
             if junctions_for_insert.len() < 10 {
                 tracing::info!(
-                    "Node {}: [{}\u{00b0}, {}\u{00b0}, {}\u{00b0}] type={:?}",
+                    "Node {}: [{}\u{00b0}, {}\u{00b0}, {}\u{00b0}] type={:?}, bearings=[{:.1}\u{00b0}, {:.1}\u{00b0}, {:.1}\u{00b0}]",
                     junction.node_id,
                     angles[0],
                     angles[1],
                     angles[2],
-                    angle_type
+                    angle_type,
+                    bearings[0],
+                    bearings[1],
+                    bearings[2]
                 );
             }
 
             // 最小角度が60度以上の場合はT字路とみなして除外
-            if angles[0] >= 60 {
+            if min_angle >= 60 {
                 continue;
             }
 
@@ -237,6 +245,7 @@ pub fn parse_pbf(
                 angle_1: angles[0],
                 angle_2: angles[1],
                 angle_3: angles[2],
+                bearings,
             });
         } else {
             failed_calculations += 1;
