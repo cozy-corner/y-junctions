@@ -11,3 +11,6 @@ backend_image        = "asia-northeast1-docker.pkg.dev/y-junctions-prod/y-juncti
 
 # Frontend settings
 frontend_bucket_name = "y-junctions-prod-frontend"
+
+# GitHub Actions settings
+github_repository = "your-username/y-junctions"
