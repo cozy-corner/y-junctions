@@ -36,6 +36,8 @@ pub struct Junction {
     /// Bearings (azimuth) of the three roads from the junction node
     /// Each bearing is in degrees (0-360), where 0° is North, 90° is East
     /// Order corresponds to angle_1, angle_2, angle_3
+    /// Note: f32 provides sufficient precision (~7 decimal digits) for bearing angles
+    /// while optimizing storage size (REAL in PostgreSQL)
     pub bearings: Vec<f32>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
