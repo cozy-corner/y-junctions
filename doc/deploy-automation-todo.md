@@ -157,7 +157,7 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
 
 #### .mise.toml修正
 
-- [ ] `backend:migrate` タスクをsqlx-cliに変更
+- [x] `backend:migrate` タスクをsqlx-cliに変更
   ```toml
   [tasks."backend:migrate"]
   description = "Run database migrations"
@@ -170,44 +170,44 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
 
 #### GitHub Secretsの設定（手動作業）
 
-- [ ] GitHubリポジトリの Settings > Secrets and variables > Actions を開く
-- [ ] 以下のシークレットを追加:
-  - [ ] `WORKLOAD_IDENTITY_PROVIDER`
+- [x] GitHubリポジトリの Settings > Secrets and variables > Actions を開く
+- [x] 以下のシークレットを追加:
+  - [x] `WORKLOAD_IDENTITY_PROVIDER`
     ```bash
     cd terraform
     terraform output -raw workload_identity_provider
     ```
-  - [ ] `SERVICE_ACCOUNT`
+  - [x] `SERVICE_ACCOUNT`
     ```bash
     terraform output -raw service_account_email
     ```
-  - [ ] `DATABASE_URL`
+  - [x] `DATABASE_URL`
     ```bash
     terraform output -raw neon_connection_uri
     ```
-  - [ ] `GCP_REGION` = `asia-northeast1`
-  - [ ] `GCP_PROJECT_ID` = `y-junctions-prod`
-  - [ ] `GCP_BUCKET_NAME` = `y-junctions-prod-frontend`
-  - [ ] `BACKEND_URL` (Cloud Runデプロイ後に取得)
+  - [x] `GCP_REGION` = `asia-northeast1`
+  - [x] `GCP_PROJECT_ID` = `y-junctions-prod`
+  - [x] `GCP_BUCKET_NAME` = `y-junctions-prod-frontend`
+  - [x] `BACKEND_URL` (Cloud Runデプロイ後に取得)
 
 #### ワークフローファイル作成
 
-- [ ] `.github/workflows/deploy.yml` 作成（改善版を使用）
-  - [ ] backend-test ジョブ
+- [x] `.github/workflows/deploy.yml` 作成（改善版を使用）
+  - [x] backend-test ジョブ
     - Setup Rust
     - Cache Cargo
     - Run tests
     - Check formatting
     - Run Clippy
     - Security audit
-  - [ ] frontend-test ジョブ
+  - [x] frontend-test ジョブ
     - Setup Node.js
     - Install dependencies
     - Run tests
     - Type check
     - Lint
     - Format check
-  - [ ] backend-deploy ジョブ
+  - [x] backend-deploy ジョブ
     - Checkout code
     - Authenticate to Google Cloud
     - Setup Cloud SDK
@@ -220,7 +220,7 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
     - Verify deployment (health check)
     - Rollback on failure
     - Cleanup old revisions
-  - [ ] frontend-deploy ジョブ
+  - [x] frontend-deploy ジョブ
     - Checkout code
     - Setup Node.js
     - Install dependencies
@@ -230,7 +230,7 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
     - Setup Cloud SDK
     - Deploy to Cloud Storage
     - Verify deployment
-  - [ ] post-deploy ジョブ
+  - [x] post-deploy ジョブ
     - Generate deployment summary
     - Check overall deployment status
 
@@ -255,15 +255,21 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
 
 ### 完了条件
 
-- [ ] `.mise.toml` がsqlx-cli版に更新されている
-- [ ] `.github/workflows/deploy.yml` が作成されている
-- [ ] GitHub Secretsがすべて設定されている
-- [ ] PRがマージされる
-- [ ] mainにマージ後、自動デプロイが成功する
-- [ ] Cloud Runサービスが更新される
-- [ ] フロントエンドがCloud Storageに配信される
-- [ ] ヘルスチェックがパスする
-- [ ] デプロイサマリーが生成される
+- ✅ `.mise.toml` がsqlx-cli版に更新されている
+- ✅ `.github/workflows/deploy.yml` が作成されている
+- ✅ GitHub Secretsがすべて設定されている
+- ⚠️ PRがマージされる（作成待ち）
+- ⚠️ mainにマージ後、自動デプロイが成功する（マージ後に確認）
+- ⚠️ Cloud Runサービスが更新される（デプロイ後に確認）
+- ⚠️ フロントエンドがCloud Storageに配信される（デプロイ後に確認）
+- ⚠️ ヘルスチェックがパスする（デプロイ後に確認）
+- ⚠️ デプロイサマリーが生成される（デプロイ後に確認）
+
+### 実装メモ
+
+- Phase 1のterraform設定にattribute_conditionが欠けていたため、Phase 2で修正
+- Workload Identity Pool Providerを作成し、GitHub Actions認証が可能に
+- 全GitHub Secretsをgh CLIで設定完了
 
 ### デプロイフロー
 
@@ -340,7 +346,7 @@ post-deploy (サマリ生成)
 - [ ] 完了
 
 ### Phase 2 (PR2): デプロイ自動化
-- [ ] 開始
-- [ ] 実装中
-- [ ] レビュー中
+- [x] 開始
+- [x] 実装中
+- [ ] レビュー中（PR作成待ち）
 - [ ] 完了
