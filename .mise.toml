@@ -18,10 +18,10 @@ dir = "backend"
 [tasks."backend:migrate"]
 description = "Run database migrations"
 run = """
-DB_URL=$(mise exec -- terraform output -raw neon_connection_uri)
-psql "$DB_URL" -f ../backend/migrations/001_create_y_junctions.sql
+export DATABASE_URL=$(mise exec -- terraform output -raw neon_connection_uri)
+sqlx migrate run
 """
-dir = "terraform"
+dir = "backend"
 
 [tasks."frontend:deploy"]
 description = "Build and deploy frontend"
