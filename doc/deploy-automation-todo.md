@@ -225,7 +225,6 @@ mainブランチへのpush時に、バックエンド・フロントエンドを
     - Setup Node.js
     - Install dependencies
     - Build
-    - Verify no secrets in build
     - Authenticate to Google Cloud
     - Setup Cloud SDK
     - Deploy to Cloud Storage
