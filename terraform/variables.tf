@@ -33,3 +33,8 @@ variable "frontend_bucket_name" {
   type        = string
   default     = "y-junctions-prod-frontend"
 }
+
+variable "github_repository" {
+  description = "GitHub repository in the format 'owner/repo'"
+  type        = string
+}
