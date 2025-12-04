@@ -563,7 +563,7 @@
   - 003_update_angle_constraints.sqlは削除（002に統合したため不要）
 - **デプロイ確認**:
   - 香川県エリア（bbox: 133.5,34.0,134.5,34.5）で3257件のY字路をインポート成功
-  - バックエンド（http://localhost:8080）とフロントエンド（http://localhost:3001）起動確認
+  - バックエンド（<http://localhost:8080>）とフロントエンド（<http://localhost:3001>）起動確認
   - Street View URLにheadingパラメータが含まれることを確認
 
 ---
