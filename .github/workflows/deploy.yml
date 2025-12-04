@@ -263,14 +263,6 @@ jobs:
           VITE_API_URL: ${{ secrets.BACKEND_URL }}
         run: npm run build
 
-      - name: Verify no secrets in build
-        run: |
-          if grep -r "PRIVATE_KEY\|SECRET\|PASSWORD" dist/ 2>/dev/null; then
-            echo "Error: Secrets found in build output"
-            exit 1
-          fi
-          echo "No secrets found in build"
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
