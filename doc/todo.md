@@ -467,6 +467,107 @@
 
 ---
 
+## 🛠️ 改善タスク
+
+### Street View方向修正 ✅
+
+**ゴール**: OSMデータから道路の実際の方位角を計算・保存し、正確な方向でStreet Viewを開く
+
+**背景**:
+現在のStreet View URLには方向（heading）パラメータがなく、開いた際にY字路の方向を向いていないことが多い。現在のデータには道路の絶対的な方位角情報がないため、角度データ（angle_1, angle_2, angle_3）からは推定できない。OSMの道路データ（Way）からY字路に接続する各道路の方位角（bearing）を計算する必要がある。
+
+**アプローチ**:
+1. インポート時に各道路の方位角を計算
+   - Y字路ノードから次のノードへの方位角を計算（geo crateのbearing関数使用）
+   - 3本の道路それぞれのbearingを保存
+2. データベースに方位角データを追加
+   - `bearings REAL[3]` 列追加（北を0度として0-360度）
+3. Street View URL生成時に適切なheadingを計算
+   - 最も鋭角な道路の方向、または3方向の中間方向など
+
+**メリット**:
+- 正確な方位角データに基づく、信頼性の高い方向設定
+- 将来的に「特定の道路方向から見る」などの機能拡張が可能
+- データとして再利用可能
+
+**必要な作業**:
+- データベーススキーマ変更（マイグレーション）
+- 既存データの再インポート
+- フロントエンド・バックエンドの修正
+
+**成果物**:
+- `backend/migrations/002_add_bearings.sql` - マイグレーション
+- `backend/src/domain/junction.rs` - bearingsフィールド追加
+- `backend/src/importer/calculator.rs` - bearing計算実装
+- `backend/src/importer/detector.rs` - JunctionForInsert構造体にbearings追加
+- `backend/src/importer/parser.rs` - bearing計算呼び出し実装
+- `backend/src/importer/inserter.rs` - bearings保存
+- `backend/src/db/repository.rs` - bearings読み込み
+- `frontend/src/types/index.ts` - bearingsフィールド追加
+- `frontend/src/hooks/useJunctions.ts` - モックデータにbearings追加
+- API修正（bearingsをレスポンスに含める）
+
+**タスク**:
+- [x] データベーススキーマ変更
+  - bearings列追加（REAL[3] NOT NULL）
+- [x] インポート処理修正
+  - Y字路の各道路について、次のノード座標を取得
+  - geo::Point::bearing()で方位角計算（3方向）
+  - bearings配列を時計回り順で保存（ソートしない）
+  - 角度とbearingsの対応関係を維持
+- [x] ドメインモデル修正
+  - Junction構造体にbearings: Vec<f32>フィールド追加
+  - streetview_url()でheading計算ロジック実装
+  - angle_type()でローカルソート（データはソートしない）
+- [x] API修正
+  - レスポンスにbearingsを含める
+  - GeoJSON propertiesにbearings追加
+- [x] フロントエンド型定義修正
+  - JunctionProperties型にbearings: number[]追加
+- [x] テスト修正
+  - バックエンドユニットテスト（18テスト）
+  - バックエンド統合テスト（14テスト）
+  - フロントエンド型チェックとビルド
+- [x] 動作確認
+  - 全テスト合格を確認
+
+**完了条件**:
+- ✅ データベースにbearingsデータが保存される（REAL[3] NOT NULL列追加）
+- ✅ Street View URLに正確なheadingパラメータが含まれる
+- ✅ 全テストが合格（バックエンド32テスト、フロントエンドビルド成功）
+
+**工数**: 中（1日程度）
+
+**依存**: Import Phase 4完了
+
+**実装メモ**:
+- **角度とbearingsの対応関係を維持**:
+  - 角度をソートせず、時計回り順で保存
+  - angle_1は bearings[0] と bearings[1] の間
+  - angle_2は bearings[1] と bearings[2] の間
+  - angle_3は bearings[2] と bearings[0] の間
+- **heading計算ロジック**:
+  - 最小角度を見つける
+  - その角度を形成する2つのbearingを特定
+  - 2つのbearingの平均を計算（360度のまたぎに対応）
+- **データ型**:
+  - データベース: `REAL[3]` (PostgreSQL配列)
+  - Rust: `Vec<f32>`
+  - TypeScript: `number[]`
+- **テスト対応**:
+  - 全てのJunctionテストデータにbearings追加
+  - INSERT文にARRAY[$7, $8, $9]構文使用
+- **既存データ**: 全削除して再インポート
+- **マイグレーション統合**:
+  - 002_add_bearings.sqlに角度制約の更新を統合（angle_1, angle_2も360度まで許容）
+  - 003_update_angle_constraints.sqlは削除（002に統合したため不要）
+- **デプロイ確認**:
+  - 香川県エリア（bbox: 133.5,34.0,134.5,34.5）で3257件のY字路をインポート成功
+  - バックエンド（http://localhost:8080）とフロントエンド（http://localhost:3001）起動確認
+  - Street View URLにheadingパラメータが含まれることを確認
+
+---
+
 ## 🔗 統合・テスト・デプロイ
 
 ### Phase: エンドツーエンド動作確認

@@ -25,6 +25,10 @@ pub struct JunctionForInsert {
     pub angle_1: i16,
     pub angle_2: i16,
     pub angle_3: i16,
+    /// Bearings (azimuth) of the three roads from the junction node
+    /// Each bearing is in degrees (0-360), where 0° is North, 90° is East
+    /// Order corresponds to angle_1, angle_2, angle_3
+    pub bearings: [f64; 3],
 }
 
 /// Node connection counter for Y-junction detection

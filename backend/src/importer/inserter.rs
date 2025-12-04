@@ -45,13 +45,13 @@ async fn insert_batch(
     }
 
     // Build VALUES clause dynamically for bulk insert
-    // Example: VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7),
-    //                 ($8, ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography, $11, $12, $13, $14), ...
+    // Example: VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, ARRAY[$7, $8, $9]),
+    //                 ($10, ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography, $13, $14, $15, ARRAY[$16, $17, $18]), ...
     let mut query = String::from(
-        "INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3) VALUES ",
+        "INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings) VALUES ",
     );
 
-    const PARAMS_PER_ROW: usize = 6; // osm_node_id, lon, lat, angle_1, angle_2, angle_3
+    const PARAMS_PER_ROW: usize = 9; // osm_node_id, lon, lat, angle_1, angle_2, angle_3, bearing_1, bearing_2, bearing_3
 
     for (i, _) in junctions.iter().enumerate() {
         if i > 0 {
@@ -59,13 +59,16 @@ async fn insert_batch(
         }
         let base = i * PARAMS_PER_ROW + 1;
         query.push_str(&format!(
-            "(${}, ST_SetSRID(ST_MakePoint(${}, ${}), 4326)::geography, ${}, ${}, ${})",
+            "(${}, ST_SetSRID(ST_MakePoint(${}, ${}), 4326)::geography, ${}, ${}, ${}, ARRAY[${}, ${}, ${}])",
             base,
             base + 1,
             base + 2,
             base + 3,
             base + 4,
-            base + 5
+            base + 5,
+            base + 6,
+            base + 7,
+            base + 8
         ));
     }
 
@@ -80,7 +83,10 @@ async fn insert_batch(
             .bind(junction.lat) // lat second for ST_MakePoint
             .bind(junction.angle_1)
             .bind(junction.angle_2)
-            .bind(junction.angle_3);
+            .bind(junction.angle_3)
+            .bind(junction.bearings[0] as f32)
+            .bind(junction.bearings[1] as f32)
+            .bind(junction.bearings[2] as f32);
     }
 
     q.execute(&mut **tx).await?;
