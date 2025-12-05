@@ -54,7 +54,7 @@ resource "google_service_account" "github_actions_deployer" {
 locals {
   github_actions_roles = toset([
     "roles/run.admin",
-    "roles/cloudbuild.builds.editor",
+    "roles/cloudbuild.builds.builder",
     "roles/storage.objectAdmin",
   ])
 }
