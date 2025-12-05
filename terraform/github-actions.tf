@@ -75,3 +75,10 @@ resource "google_service_account_iam_member" "workload_identity_binding" {
 
   depends_on = [google_project_service.iamcredentials]
 }
+
+# Grant access to Cloud Build staging bucket
+resource "google_storage_bucket_iam_member" "cloudbuild_bucket_access" {
+  bucket = "${var.project_id}_cloudbuild"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_actions_deployer.email}"
+}
