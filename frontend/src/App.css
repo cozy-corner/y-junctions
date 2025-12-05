@@ -15,10 +15,9 @@ body {
 
 /* アプリケーション全体のレイアウト */
 .app {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* ヘッダー */
@@ -55,6 +54,7 @@ body {
   display: flex;
   overflow: hidden;
   position: relative;
+  min-height: 0;
 }
 
 /* サイドバー */
@@ -256,6 +256,30 @@ body {
 
 .marker-warning-icon {
   font-size: 18px;
+}
+
+/* フッター */
+.app-footer {
+  padding: 8px 20px;
+  background: #f8f9fa;
+  color: #999;
+  text-align: center;
+  font-size: 11px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.app-footer a {
+  color: #999;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.app-footer a:hover {
+  color: #666;
 }
 
 /* レスポンシブ対応 */
