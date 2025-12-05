@@ -54,7 +54,7 @@ resource "google_service_account" "github_actions_deployer" {
 locals {
   github_actions_roles = toset([
     "roles/run.admin",
-    "roles/cloudbuild.builds.builder",
+    "roles/artifactregistry.writer",
     "roles/storage.objectAdmin",
   ])
 }
@@ -74,11 +74,4 @@ resource "google_service_account_iam_member" "workload_identity_binding" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.repository/${var.github_repository}"
 
   depends_on = [google_project_service.iamcredentials]
-}
-
-# Grant access to Cloud Build staging bucket
-resource "google_storage_bucket_iam_member" "cloudbuild_bucket_access" {
-  bucket = "${var.project_id}_cloudbuild"
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.github_actions_deployer.email}"
 }
