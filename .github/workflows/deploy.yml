@@ -60,7 +60,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
 
       - name: Run database migrations
         run: sqlx migrate run
@@ -151,7 +151,7 @@ jobs:
           key: ${{ runner.os }}-sqlx-cli
 
       - name: Install SQLx CLI
-        run: cargo install sqlx-cli --no-default-features --features postgres
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
 
       - name: Run database migrations
         working-directory: backend
