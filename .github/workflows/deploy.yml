@@ -145,12 +145,14 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache SQLx CLI
+        id: cache-sqlx
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/sqlx
           key: ${{ runner.os }}-sqlx-cli
 
       - name: Install SQLx CLI
+        if: steps.cache-sqlx.outputs.cache-hit != 'true'
         run: cargo install sqlx-cli --no-default-features --features postgres,rustls
 
       - name: Run database migrations
