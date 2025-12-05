@@ -75,3 +75,22 @@ resource "google_service_account_iam_member" "workload_identity_binding" {
 
   depends_on = [google_project_service.iamcredentials]
 }
+
+# Cloud Run Runtime Service Account
+resource "google_service_account" "cloud_run_runtime" {
+  project      = var.project_id
+  account_id   = "cloud-run-runtime"
+  display_name = "Cloud Run Runtime"
+  description  = "Service account for Cloud Run services runtime"
+
+  depends_on = [google_project_service.iam]
+}
+
+# Allow GitHub Actions to use Cloud Run Runtime Service Account
+resource "google_service_account_iam_member" "github_actions_can_use_runtime_sa" {
+  service_account_id = google_service_account.cloud_run_runtime.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_actions_deployer.email}"
+
+  depends_on = [google_project_service.iamcredentials]
+}
