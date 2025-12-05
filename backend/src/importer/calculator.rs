@@ -16,21 +16,26 @@ fn calculate_bearing(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     }
 }
 
-/// Calculate the three angles at a Y-junction
-/// Returns angles in degrees, sorted in ascending order
+/// Calculate the three angles and bearings at a Y-junction
+/// Returns angles and bearings in clockwise order (not sorted by angle size)
 ///
 /// # Arguments
 /// * `center_lat`, `center_lon` - Coordinates of the Y-junction node
 /// * `points` - List of (lat, lon) coordinates of neighboring nodes (should be exactly 3)
 ///
 /// # Returns
-/// * `Some([angle1, angle2, angle3])` if successful (sorted in ascending order)
+/// * `Some((angles, bearings))` if successful
+///   - `angles`: [angle1, angle2, angle3] in clockwise order
+///   - `bearings`: [bearing1, bearing2, bearing3] in clockwise order
+///   - angle1 is between bearings[0] and bearings[1]
+///   - angle2 is between bearings[1] and bearings[2]
+///   - angle3 is between bearings[2] and bearings[0]
 /// * `None` if input is invalid
 pub fn calculate_junction_angles(
     center_lat: f64,
     center_lon: f64,
     points: &[(f64, f64)],
-) -> Option<[i16; 3]> {
+) -> Option<([i16; 3], [f64; 3])> {
     if points.len() != 3 {
         return None;
     }
@@ -41,23 +46,23 @@ pub fn calculate_junction_angles(
         .map(|&(lat, lon)| calculate_bearing(center_lat, center_lon, lat, lon))
         .collect();
 
-    // Sort bearings to ensure consistent angle calculation
+    // Sort bearings to ensure clockwise order
     bearings.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    // Calculate angles between consecutive bearings
+    // Calculate angles between consecutive bearings (clockwise order)
     let angle1 = bearings[1] - bearings[0];
     let angle2 = bearings[2] - bearings[1];
     let angle3 = 360.0 - bearings[2] + bearings[0];
 
-    // Convert to i16 and sort
-    let mut angles = [
+    let angles = [
         angle1.round() as i16,
         angle2.round() as i16,
         angle3.round() as i16,
     ];
-    angles.sort_unstable();
 
-    Some(angles)
+    let bearings_array = [bearings[0], bearings[1], bearings[2]];
+
+    Some((angles, bearings_array))
 }
 
 #[cfg(test)]
@@ -164,10 +169,10 @@ mod tests {
             (CENTER_LAT - LAT_OFFSET_SMALL, CENTER_LON),
         ];
 
-        let angles = calculate_junction_angles(center.0, center.1, &points);
-        assert!(angles.is_some());
+        let result = calculate_junction_angles(center.0, center.1, &points);
+        assert!(result.is_some());
 
-        let angles = angles.unwrap();
+        let (angles, bearings) = result.unwrap();
 
         // The smallest angle should be less than the sharp angle threshold
         assert!(
@@ -176,6 +181,15 @@ mod tests {
             SHARP_ANGLE_THRESHOLD,
             angles[0]
         );
+
+        // Check that bearings are in valid range
+        for bearing in &bearings {
+            assert!(
+                *bearing >= 0.0 && *bearing < 360.0,
+                "Bearing {} out of range",
+                bearing
+            );
+        }
     }
 
     #[test]
@@ -186,8 +200,8 @@ mod tests {
             (CENTER_LAT - LAT_OFFSET_SMALL, CENTER_LON),
         ];
 
-        let angles = calculate_junction_angles(center.0, center.1, &points);
-        assert!(angles.is_none(), "Expected None for invalid input");
+        let result = calculate_junction_angles(center.0, center.1, &points);
+        assert!(result.is_none(), "Expected None for invalid input");
     }
 
     #[test]
@@ -199,10 +213,10 @@ mod tests {
             (CENTER_LAT - LAT_OFFSET_SMALL, CENTER_LON - LON_OFFSET_SMALL),
         ];
 
-        let angles = calculate_junction_angles(center.0, center.1, &points);
-        assert!(angles.is_some());
+        let result = calculate_junction_angles(center.0, center.1, &points);
+        assert!(result.is_some());
 
-        let angles = angles.unwrap();
+        let (angles, _bearings) = result.unwrap();
         let sum: i16 = angles.iter().sum();
 
         assert!(

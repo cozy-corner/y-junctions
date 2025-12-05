@@ -79,6 +79,16 @@ function App() {
           />
         </div>
       </main>
+
+      {/* フッター */}
+      <footer className="app-footer">
+        <p>
+          © 2025 Y字路マップ | Created by{' '}
+          <a href="https://x.com/coozy_corner" target="_blank" rel="noopener noreferrer">
+            @coozy_corner
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
