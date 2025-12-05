@@ -17,10 +17,10 @@ const ANGLE_TYPE_LABELS: Record<AngleType, string> = {
 };
 
 const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
-  verysharp: '#0000cc', // 濃い青 - 最小角度が最も小さい
-  sharp: '#3399ff', // 明るい青
-  normal: '#88dd44', // 黄緑
-  skewed: '#9900ff', // 紫 - 直線分岐（特殊）
+  verysharp: '#1E3A8A', // 暗い青（濃紺） - 最小角度が最も小さい
+  sharp: '#3B82F6', // 明るい青
+  normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
+  skewed: '#7C3AED', // 紫 - 直線分岐（特殊）
 };
 
 export const FilterPanel = memo(function FilterPanel({
