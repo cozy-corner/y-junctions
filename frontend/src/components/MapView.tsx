@@ -9,12 +9,12 @@ import { JunctionPopup } from './JunctionPopup';
 const INITIAL_CENTER: [number, number] = [35.6812, 139.7671];
 const INITIAL_ZOOM = 14;
 
-// angle_typeごとのマーカー色（最小角度が小さい順にグラデーション）
+// angle_typeごとのマーカー色（Y字路書籍をイメージした紫、黄色、暗い青のパレット）
 const MARKER_COLORS: Record<AngleType, string> = {
-  verysharp: '#0000cc', // 濃い青 - 最小角度が最も小さい
-  sharp: '#3399ff', // 明るい青
-  normal: '#88dd44', // 黄緑
-  skewed: '#9900ff', // 紫 - 直線分岐（特殊）
+  verysharp: '#1E3A8A', // 暗い青（濃紺） - 最小角度が最も小さい
+  sharp: '#3B82F6', // 明るい青
+  normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
+  skewed: '#7C3AED', // 紫 - 直線分岐（特殊）
 };
 
 // カスタムマーカーアイコンを作成（メモ化用に外部で定義）
