@@ -64,12 +64,15 @@ cd y-junctions
 # worktree作成時の自動セットアップを有効化
 git gtr config add gtr.hook.postCreate "npm install"
 git gtr config add gtr.hook.postCreate "cd frontend && npm install"
+git gtr config add gtr.hook.postCreate "mise trust"
 
 # 設定確認
 git config --get-all gtr.hook.postCreate
 ```
 
-この設定により、`git gtr new <branch>` で新しいworktreeを作成すると、自動的に必要な依存関係（husky, lint-staged, フロントエンド開発ツール）がインストールされます。
+この設定により、`git gtr new <branch>` で新しいworktreeを作成すると、自動的に以下が実行されます：
+- 必要な依存関係（husky, lint-staged, フロントエンド開発ツール）のインストール
+- mise設定ファイル（.mise.toml）の自動trust（worktree間のcd移動時のエラー回避）
 
 #### 3. 環境変数の設定
 

@@ -20,6 +20,7 @@ struct JunctionRow {
     angle_1: i16,
     angle_2: i16,
     angle_3: i16,
+    bearings: Vec<f32>,
     created_at: DateTime<Utc>,
 }
 
@@ -32,6 +33,7 @@ struct JunctionRowWithCount {
     angle_1: i16,
     angle_2: i16,
     angle_3: i16,
+    bearings: Vec<f32>,
     created_at: DateTime<Utc>,
     total_count: i64,
 }
@@ -46,6 +48,7 @@ impl From<JunctionRow> for Junction {
             angle_1: row.angle_1,
             angle_2: row.angle_2,
             angle_3: row.angle_3,
+            bearings: row.bearings,
             created_at: row.created_at,
         }
     }
@@ -61,6 +64,7 @@ impl From<JunctionRowWithCount> for Junction {
             angle_1: row.angle_1,
             angle_2: row.angle_2,
             angle_3: row.angle_3,
+            bearings: row.bearings,
             created_at: row.created_at,
         }
     }
@@ -135,7 +139,7 @@ pub async fn find_by_bbox(
     let mut query_builder = QueryBuilder::new(
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
-         angle_1, angle_2, angle_3, created_at, \
+         angle_1, angle_2, angle_3, bearings, created_at, \
          COUNT(*) OVER() as total_count \
          FROM y_junctions ",
     );
@@ -173,7 +177,7 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx
     let row: Option<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
-         angle_1, angle_2, angle_3, created_at \
+         angle_1, angle_2, angle_3, bearings, created_at \
          FROM y_junctions \
          WHERE id = $1",
     )

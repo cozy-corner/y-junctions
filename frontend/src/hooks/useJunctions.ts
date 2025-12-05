@@ -19,6 +19,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angle_type: 'sharp',
         streetview_url:
           'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.6812,139.7671',
+        bearings: [10, 55, 190],
       },
     },
     {
@@ -34,6 +35,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angle_type: 'verysharp',
         streetview_url:
           'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.682,139.770',
+        bearings: [5, 30, 165],
       },
     },
     {
@@ -49,6 +51,7 @@ const MOCK_DATA: JunctionFeatureCollection = {
         angle_type: 'skewed',
         streetview_url:
           'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.680,139.765',
+        bearings: [20, 50, 150],
       },
     },
   ],
