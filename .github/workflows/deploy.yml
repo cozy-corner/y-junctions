@@ -182,6 +182,7 @@ jobs:
             --region ${{ secrets.GCP_REGION }} \
             --platform managed \
             --allow-unauthenticated \
+            --no-service-account \
             --set-env-vars DATABASE_URL="${{ secrets.DATABASE_URL }}",RUST_LOG=info \
             --memory 512Mi \
             --cpu 1 \
