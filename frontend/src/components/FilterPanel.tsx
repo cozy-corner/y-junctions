@@ -12,7 +12,7 @@ interface FilterPanelProps {
 const ANGLE_TYPE_LABELS: Record<AngleType, string> = {
   verysharp: '超鋭角',
   sharp: '鋭角',
-  normal: '中間',
+  normal: '広角',
 };
 
 const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
