@@ -318,6 +318,29 @@ docker exec integration-db-1 psql -U y_junction -d y_junction -c "SELECT 1;"
 └── .env                  # 環境変数
 ```
 
+## 本番環境デプロイ
+
+### インフラ管理
+- Terraform（`terraform/`ディレクトリ）で管理
+- Terraform Cloudでstate管理（`terraform login`が必要）
+- mainブランチへのpush時、GitHub Actionsで自動デプロイ
+
+### データインポート（本番環境）
+```bash
+# データベース接続文字列を取得
+cd terraform
+DB_URL=$(terraform output -raw neon_connection_uri)
+
+# OSMデータをダウンロード（例：関東地方）
+curl -L -o kanto-latest.osm.pbf https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
+
+# データインポート
+cd ../backend
+DATABASE_URL="$DB_URL" cargo run --bin import -- \
+  --input kanto-latest.osm.pbf \
+  --bbox "138.5,34.5,140.9,36.5"
+```
+
 ## ライセンス
 
 MIT
