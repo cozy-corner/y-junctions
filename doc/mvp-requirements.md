@@ -49,7 +49,7 @@ angle_1 + angle_2 + angle_3 = 360°
 |--------|------|------|
 | verysharp | min_angle < 30° | 超鋭角Y字 |
 | sharp | 30° ≤ min_angle < 45° | 鋭角Y字 |
-| normal | min_angle ≥ 45° | 通常Y字 |
+| normal | min_angle ≥ 45° | 広角Y字 |
 
 ## DB設計
 

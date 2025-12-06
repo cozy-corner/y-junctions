@@ -22,7 +22,7 @@ cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
 cd frontend && npm test
 
 # 2. 型チェック（必須）
-npm run type-check
+npm run typecheck
 
 # 3. フォーマットチェック（必須）
 npm run format:check

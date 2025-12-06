@@ -7,7 +7,7 @@ interface JunctionPopupProps {
 const ANGLE_TYPE_LABELS: Record<string, string> = {
   verysharp: '超鋭角',
   sharp: '鋭角',
-  normal: '中間',
+  normal: '広角',
 };
 
 export function JunctionPopup({ properties }: JunctionPopupProps) {
