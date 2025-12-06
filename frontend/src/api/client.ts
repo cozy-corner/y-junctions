@@ -23,10 +23,8 @@ export async function fetchJunctions(
     const params = new URLSearchParams({ bbox });
 
     if (filters?.angle_type && filters.angle_type.length > 0) {
-      // 配列の各要素をクエリパラメータとして追加
-      filters.angle_type.forEach(type => {
-        params.append('angle_type', type);
-      });
+      // カンマ区切りの文字列として送信（バックエンドの期待形式）
+      params.append('angle_type', filters.angle_type.join(','));
     }
     if (filters?.min_angle_lt !== undefined) {
       params.append('min_angle_lt', filters.min_angle_lt.toString());
