@@ -14,7 +14,6 @@ const MARKER_COLORS: Record<AngleType, string> = {
   verysharp: '#1E3A8A', // 暗い青（濃紺） - 最小角度が最も小さい
   sharp: '#3B82F6', // 明るい青
   normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
-  skewed: '#7C3AED', // 紫 - 直線分岐（特殊）
 };
 
 // カスタムマーカーアイコンを作成（メモ化用に外部で定義）

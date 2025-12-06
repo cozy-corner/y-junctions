@@ -96,16 +96,13 @@ fn add_angle_type_filter(builder: &mut QueryBuilder<sqlx::Postgres>, angle_types
         }
         match angle_type {
             AngleType::VerySharp => {
-                builder.push("(angle_1 < 30 AND angle_3 <= 200)");
+                builder.push("angle_1 < 30");
             }
             AngleType::Sharp => {
-                builder.push("(angle_1 >= 30 AND angle_1 < 45 AND angle_3 <= 200)");
-            }
-            AngleType::Skewed => {
-                builder.push("angle_3 > 200");
+                builder.push("(angle_1 >= 30 AND angle_1 < 45)");
             }
             AngleType::Normal => {
-                builder.push("(angle_1 >= 45 AND angle_3 <= 200)");
+                builder.push("angle_1 >= 45");
             }
         }
     }
@@ -192,7 +189,6 @@ pub async fn count_by_type(pool: &PgPool) -> Result<HashMap<String, i64>, sqlx::
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
            CASE \
-             WHEN angle_3 > 200 THEN 'skewed' \
              WHEN angle_1 < 30 THEN 'verysharp' \
              WHEN angle_1 < 45 THEN 'sharp' \
              ELSE 'normal' \

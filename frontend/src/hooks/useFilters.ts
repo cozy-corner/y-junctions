@@ -7,17 +7,12 @@ export interface FilterState {
 }
 
 export function useFilters() {
-  const [angleTypes, setAngleTypes] = useState<AngleType[]>([
-    'verysharp',
-    'sharp',
-    'skewed',
-    'normal',
-  ]);
+  const [angleTypes, setAngleTypes] = useState<AngleType[]>(['verysharp', 'sharp', 'normal']);
   const [minAngleRange, setMinAngleRange] = useState<[number, number]>([0, 60]);
 
   // フィルタをリセット
   const resetFilters = useCallback(() => {
-    setAngleTypes(['verysharp', 'sharp', 'skewed', 'normal']);
+    setAngleTypes(['verysharp', 'sharp', 'normal']);
     setMinAngleRange([0, 60]);
   }, []);
 
@@ -36,8 +31,8 @@ export function useFilters() {
   const toFilterParams = useCallback((): Omit<FilterParams, 'bbox'> => {
     const params: Omit<FilterParams, 'bbox'> = {};
 
-    // angle_typeを配列として送る（0個または4個の場合は送らない＝全選択扱い）
-    if (angleTypes.length > 0 && angleTypes.length < 4) {
+    // angle_typeを配列として送る（0個または3個の場合は送らない＝全選択扱い）
+    if (angleTypes.length > 0 && angleTypes.length < 3) {
       params.angle_type = angleTypes;
     }
 
