@@ -47,11 +47,11 @@ const MOCK_DATA: JunctionFeatureCollection = {
       properties: {
         id: 3,
         osm_node_id: 1003,
-        angles: [30, 100, 230],
-        angle_type: 'skewed',
+        angles: [60, 120, 180],
+        angle_type: 'normal',
         streetview_url:
           'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.680,139.765',
-        bearings: [20, 50, 150],
+        bearings: [30, 90, 210],
       },
     },
   ],

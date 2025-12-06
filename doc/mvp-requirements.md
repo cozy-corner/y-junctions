@@ -47,9 +47,9 @@ angle_1 + angle_2 + angle_3 = 360°
 
 | タイプ | 条件 | 説明 |
 |--------|------|------|
-| sharp | min_angle < 45° | 鋭角Y字 |
-| even | 全角度が 100°〜140° | 均等Y字 |
-| skewed | max_angle > 200° | 偏りY字 |
+| verysharp | min_angle < 30° | 超鋭角Y字 |
+| sharp | 30° ≤ min_angle < 45° | 鋭角Y字 |
+| normal | min_angle ≥ 45° | 通常Y字 |
 
 ## DB設計
 
@@ -62,22 +62,14 @@ CREATE TABLE y_junctions (
     id BIGSERIAL PRIMARY KEY,
     osm_node_id BIGINT UNIQUE NOT NULL,
     location GEOGRAPHY(POINT, 4326) NOT NULL,
-    
-    -- 角度（度数法、小さい順にソート済み）
-    angle_1 SMALLINT NOT NULL CHECK (angle_1 BETWEEN 0 AND 180),
-    angle_2 SMALLINT NOT NULL CHECK (angle_2 BETWEEN 0 AND 180),
-    angle_3 SMALLINT NOT NULL CHECK (angle_3 BETWEEN 0 AND 360),
-    
-    -- 派生カラム
-    min_angle SMALLINT GENERATED ALWAYS AS (angle_1) STORED,
-    angle_type VARCHAR(10) GENERATED ALWAYS AS (
-        CASE
-            WHEN angle_1 < 45 THEN 'sharp'
-            WHEN angle_1 >= 100 AND angle_3 <= 140 THEN 'even'
-            WHEN angle_3 > 200 THEN 'skewed'
-            ELSE 'normal'
-        END
-    ) STORED,
+
+    -- 角度（度数法、時計回り順）
+    angle_1 SMALLINT NOT NULL CHECK (angle_1 >= 0 AND angle_1 <= 360),
+    angle_2 SMALLINT NOT NULL CHECK (angle_2 >= 0 AND angle_2 <= 360),
+    angle_3 SMALLINT NOT NULL CHECK (angle_3 >= 0 AND angle_3 <= 360),
+
+    -- 各道路の方位角（北を0度として時計回りに0-360度）
+    bearings REAL[3] NOT NULL,
 
     -- メタデータ
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -85,8 +77,7 @@ CREATE TABLE y_junctions (
 
 -- インデックス
 CREATE INDEX idx_y_junctions_location ON y_junctions USING GIST (location);
-CREATE INDEX idx_y_junctions_min_angle ON y_junctions (min_angle);
-CREATE INDEX idx_y_junctions_angle_type ON y_junctions (angle_type);
+CREATE INDEX idx_y_junctions_angle_1 ON y_junctions (angle_1);
 ```
 
 ## API仕様
@@ -108,7 +99,7 @@ Y字路一覧を取得する。
 | パラメータ | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
 | bbox | string | Yes | バウンディングボックス `min_lon,min_lat,max_lon,max_lat` |
-| angle_type | string | No | `sharp`, `even`, `skewed`, `normal` |
+| angle_type | string | No | `verysharp`, `sharp`, `normal` (複数指定可) |
 | min_angle_lt | int | No | 最小角度がこの値未満 |
 | min_angle_gt | int | No | 最小角度がこの値より大きい |
 | limit | int | No | 取得件数上限（デフォルト: 500, 最大: 1000） |
@@ -173,10 +164,9 @@ GeoJSON Feature形式で返す（GET /junctions と一貫性を保つため）
 {
   "total_count": 45678,
   "by_type": {
-    "sharp": 5432,
-    "even": 12345,
-    "skewed": 8901,
-    "normal": 19000
+    "verysharp": 5432,
+    "sharp": 12345,
+    "normal": 27901
   }
 }
 ```
@@ -225,7 +215,7 @@ interface AppState {
   
   // フィルタ条件
   filters: {
-    angleTypes: ('sharp' | 'even' | 'skewed' | 'normal')[];
+    angleTypes: ('verysharp' | 'sharp' | 'normal')[];
     minAngleLt: number | null;
     minAngleGt: number | null;
   };
