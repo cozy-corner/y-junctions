@@ -69,7 +69,7 @@
 **タスク**:
 - [x] geo crateで方位角（bearing）計算
 - [x] 3方向の角度を算出・昇順ソート
-- [x] angle_type分類ロジック（sharp/even/skewed/normal）
+- [x] angle_type分類ロジック（verysharp/sharp/normal）
 - [x] Junction構造体定義（osm_node_id, location, angles, road_types）
 
 **完了条件**:
@@ -374,8 +374,8 @@
 
 **タスク**:
 - [x] FilterPanel実装
-  - angle_typeチェックボックス（sharp/even/skewed/normal）
-  - min_angleスライダー（0-180°）
+  - angle_typeチェックボックス（verysharp/sharp/normal）
+  - min_angleスライダー（0-60°）
   - フィルタリセットボタン
 - [x] JunctionPopup実装
   - 角度表示
@@ -426,7 +426,7 @@
 **実装メモ**:
 - App.cssでスタイルを整理（インラインスタイルから移行）
 - モバイルでサイドバーをトグル可能に実装
-- 角度タイプラベルを直感的な名前に変更（鋭角、三叉路、直線分岐、中間）
+- 角度タイプラベルを直感的な名前に変更（超鋭角、鋭角、中間）
 - マーカー色を最小角度でグラデーション化（青→水色→黄緑→赤）
 - 最小角度フィルターをレンジスライダーに改善
 - Street View URLを新しいAPI形式に修正
@@ -464,6 +464,61 @@
 - JunctionPopupから道路タイプセクション全体を削除
 - useJunctionsフックのモックデータからもroad_typesを削除（3箇所）
 - CSS削除は不要（インラインスタイルのみ使用）
+
+---
+
+### Phase 6: 直線分岐（Skewed）の削除 ✅
+
+**ゴール**: フィルターから直線分岐（Skewed）タイプを削除し、シンプルな3分類に変更
+
+**背景**:
+- 直線分岐（`angle_3 > 200`）はわかりにくい
+- 需要があるか不明
+- UIをシンプルにするため削除
+
+**成果物**:
+- `backend/src/domain/junction.rs` - AngleType enumから`Skewed`を削除
+- `backend/src/api/handlers.rs` - パース処理から削除
+- `backend/src/db/repository.rs` - クエリロジックから削除
+- `frontend/src/types/index.ts` - AngleType型から削除
+- `frontend/src/components/FilterPanel.tsx` - UIから削除
+- `frontend/src/components/MapView.tsx` - マーカー色から削除
+- `frontend/src/components/JunctionPopup.tsx` - ラベルから削除
+- `frontend/src/hooks/useFilters.ts` - デフォルト値から削除
+- `frontend/src/hooks/useJunctions.ts` - モックデータを修正
+- `doc/mvp-requirements.md` - ドキュメント更新
+- `doc/todo.md` - ドキュメント更新
+
+**タスク**:
+- [x] Backend: AngleType enumから`Skewed`を削除し、分類ロジックを修正
+- [x] Backend: ユニットテストを修正
+- [x] Backend: API handlers、repositoryから`skewed`の参照を削除
+- [x] Backend: cargo test、cargo fmt、cargo clippyを実行
+- [x] Frontend: AngleType型から`'skewed'`を削除
+- [x] Frontend: FilterPanel、MapView、JunctionPopupから直線分岐のUIを削除
+- [x] Frontend: useFilters、useJunctionsから`skewed`の参照を削除
+- [x] Frontend: npm run typecheck、lint、formatを実行
+- [x] Docs: mvp-requirements.mdを現在の実装に合わせて更新
+- [x] Docs: todo.mdを更新
+
+**完了条件**:
+- ✅ Backend: AngleTypeが3つ（verysharp/sharp/normal）になった
+- ✅ Backend: 全ユニットテスト（17個）が成功
+- ✅ Backend: cargo fmt、clippyチェックが成功
+- ✅ Frontend: フィルターパネルに3つのチェックボックスのみ表示
+- ✅ Frontend: 型チェック、Lint、フォーマットが成功
+- ✅ Docs: 全ドキュメントが更新され、skewedの参照が0件
+
+**新しい分類ロジック**:
+- **verysharp**（超鋭角）: `angle_1 < 30°`
+- **sharp**（鋭角）: `30° ≤ angle_1 < 45°`
+- **normal**（中間）: `angle_1 ≥ 45°`
+
+**実装メモ**:
+- 以前のSkewed（`angle_3 > 200`）は最小角度に基づいて再分類される
+- `angle_3 > 200`の条件をSQLとRustコードから削除
+- フィルターのロジックを4→3に変更（`angleTypes.length < 4` → `angleTypes.length < 3`）
+- コードベース全体でskewedの参照が完全に削除された
 
 ---
 

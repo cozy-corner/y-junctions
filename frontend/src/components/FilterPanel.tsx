@@ -12,7 +12,6 @@ interface FilterPanelProps {
 const ANGLE_TYPE_LABELS: Record<AngleType, string> = {
   verysharp: '超鋭角',
   sharp: '鋭角',
-  skewed: '直線分岐',
   normal: '中間',
 };
 
@@ -20,7 +19,6 @@ const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
   verysharp: '#1E3A8A', // 暗い青（濃紺） - 最小角度が最も小さい
   sharp: '#3B82F6', // 明るい青
   normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
-  skewed: '#7C3AED', // 紫 - 直線分岐（特殊）
 };
 
 export const FilterPanel = memo(function FilterPanel({
@@ -53,7 +51,7 @@ export const FilterPanel = memo(function FilterPanel({
         <h3>角度タイプ</h3>
         <div className="angle-type-options">
           {/* 最小角度の小さい順に並べる */}
-          {(['verysharp', 'sharp', 'normal', 'skewed'] as AngleType[]).map(type => (
+          {(['verysharp', 'sharp', 'normal'] as AngleType[]).map(type => (
             <label key={type} className="angle-type-label">
               <input
                 type="checkbox"
