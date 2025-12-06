@@ -10,8 +10,33 @@ env:
   NODE_VERSION: '23.11.0'
 
 jobs:
+  # Detect changes to determine which jobs to run
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/deploy.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/deploy.yml'
+
   # Backend Test Job
   backend-test:
+    needs: [changes]
+    if: needs.changes.outputs.backend == 'true'
     name: Backend - Test
     runs-on: ubuntu-latest
     defaults:
@@ -81,6 +106,8 @@ jobs:
 
   # Frontend Test Job
   frontend-test:
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true'
     name: Frontend - Test
     runs-on: ubuntu-latest
     defaults:
@@ -117,7 +144,11 @@ jobs:
   backend-deploy:
     name: Backend - Deploy
     runs-on: ubuntu-latest
-    needs: [backend-test]
+    needs: [changes, backend-test]
+    if: |
+      always() &&
+      needs.changes.outputs.backend == 'true' &&
+      needs.backend-test.result == 'success'
 
     permissions:
       contents: read
@@ -202,7 +233,7 @@ jobs:
 
           # Health check
           for i in {1..5}; do
-            if curl -f "$SERVICE_URL/health"; then
+            if curl -f --max-time 30 "$SERVICE_URL/health"; then
               echo "Health check passed"
               exit 0
             fi
@@ -248,7 +279,11 @@ jobs:
   frontend-deploy:
     name: Frontend - Deploy
     runs-on: ubuntu-latest
-    needs: [frontend-test]
+    needs: [changes, frontend-test]
+    if: |
+      always() &&
+      needs.changes.outputs.frontend == 'true' &&
+      needs.frontend-test.result == 'success'
 
     permissions:
       contents: read
@@ -300,8 +335,11 @@ jobs:
   post-deploy:
     name: Post-Deploy Summary
     runs-on: ubuntu-latest
-    needs: [backend-deploy, frontend-deploy]
-    if: always()
+    needs: [changes, backend-deploy, frontend-deploy]
+    if: |
+      always() &&
+      (needs.backend-deploy.result != 'skipped' ||
+       needs.frontend-deploy.result != 'skipped')
 
     permissions:
       contents: read
@@ -325,18 +363,24 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Backend status
-          if [ "${{ needs.backend-deploy.result }}" == "success" ]; then
+          BACKEND_RESULT="${{ needs.backend-deploy.result }}"
+          if [ "$BACKEND_RESULT" == "success" ]; then
             BACKEND_URL=$(gcloud run services describe y-junctions-api \
               --region ${{ secrets.GCP_REGION }} \
               --format 'value(status.url)')
             echo "✅ **Backend**: Deployed successfully to $BACKEND_URL" >> $GITHUB_STEP_SUMMARY
+          elif [ "$BACKEND_RESULT" == "skipped" ]; then
+            echo "⏭️ **Backend**: Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Backend**: Deployment failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           # Frontend status
-          if [ "${{ needs.frontend-deploy.result }}" == "success" ]; then
+          FRONTEND_RESULT="${{ needs.frontend-deploy.result }}"
+          if [ "$FRONTEND_RESULT" == "success" ]; then
             echo "✅ **Frontend**: Deployed successfully to Cloud Storage" >> $GITHUB_STEP_SUMMARY
+          elif [ "$FRONTEND_RESULT" == "skipped" ]; then
+            echo "⏭️ **Frontend**: Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Frontend**: Deployment failed" >> $GITHUB_STEP_SUMMARY
           fi
@@ -347,10 +391,25 @@ jobs:
 
       - name: Check overall status
         run: |
-          if [ "${{ needs.backend-deploy.result }}" == "success" ] && [ "${{ needs.frontend-deploy.result }}" == "success" ]; then
-            echo "✅ All deployments successful"
-            exit 0
-          else
-            echo "❌ Some deployments failed"
+          BACKEND_STATUS="${{ needs.backend-deploy.result }}"
+          FRONTEND_STATUS="${{ needs.frontend-deploy.result }}"
+
+          # スキップされたものは無視し、実行されたものが全て成功かチェック
+          FAILED=false
+
+          if [ "$BACKEND_STATUS" != "skipped" ] && [ "$BACKEND_STATUS" != "success" ]; then
+            echo "❌ Backend deployment failed or was cancelled"
+            FAILED=true
+          fi
+
+          if [ "$FRONTEND_STATUS" != "skipped" ] && [ "$FRONTEND_STATUS" != "success" ]; then
+            echo "❌ Frontend deployment failed or was cancelled"
+            FAILED=true
+          fi
+
+          if [ "$FAILED" = true ]; then
             exit 1
+          else
+            echo "✅ All executed deployments successful"
+            exit 0
           fi

@@ -623,6 +623,61 @@
 
 ---
 
+### セキュリティ脆弱性の対応
+
+**ゴール**: cargo auditで検出された脆弱性を修正し、CI/CDで脆弱性検出を有効化
+
+**背景**:
+現在のワークフローでは `cargo audit || true` により脆弱性が見つかってもCIが成功している。2つの脆弱性と2つの警告が検出されている：
+
+**検出された問題**:
+1. **sqlx 0.7.4** - Binary Protocol Misinterpretation (RUSTSEC-2024-0363)
+   - 修正版: 0.8.1以上にアップグレード可能
+   - 優先度: High
+2. **rsa 0.9.9** - Marvin Attack / タイミングサイドチャネル攻撃 (RUSTSEC-2023-0071)
+   - 深刻度: 5.9 (medium)
+   - 修正版: なし（sqlx-mysql経由の推移的依存）
+   - 優先度: Medium
+3. **paste 1.0.15** - メンテナンスされていない (RUSTSEC-2024-0436)
+   - sqlx-core経由で使用
+   - 優先度: Low
+4. **rustls-pemfile 1.0.4** - メンテナンスされていない (RUSTSEC-2025-0134)
+   - sqlx-core経由で使用
+   - 優先度: Low
+
+**成果物**:
+- `backend/Cargo.toml` - sqlxバージョンアップ
+- `.github/workflows/deploy.yml` - `|| true` 削除
+
+**タスク**:
+- [ ] sqlxを0.8.1以上にアップグレード
+  - Cargo.tomlの依存関係を更新
+  - マイグレーション手順の確認（0.7→0.8で破壊的変更がある可能性）
+  - 全テストが通ることを確認
+- [ ] paste, rustls-pemfileの問題が解決されたか確認
+  - sqlx 0.8.xで依存関係が更新されている可能性
+- [ ] rsa脆弱性の影響範囲を評価
+  - MySQL接続を使用していない場合は影響なし
+  - 必要に応じて対応策を検討
+- [ ] ワークフローから `|| true` を削除
+  - `.github/workflows/deploy.yml` の105行目を修正
+  - 今後の脆弱性を自動検出できるようにする
+
+**完了条件**:
+- sqlxが0.8.1以上にアップグレードされている
+- cargo auditで Critical/High の脆弱性が0件
+- CI/CDで脆弱性が検出された場合、ビルドが失敗する
+- 全テスト（ユニット、統合）が成功
+
+**工数**: 中（半日～1日程度）
+
+**参考**:
+- [RUSTSEC-2024-0363](https://rustsec.org/advisories/RUSTSEC-2024-0363)
+- [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071)
+- sqlx 0.8 migration guide（該当する場合）
+
+---
+
 ## 🔗 統合・テスト・デプロイ
 
 ### Phase: エンドツーエンド動作確認
