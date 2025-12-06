@@ -10,18 +10,15 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 
 ## Y字路の分類システム
 
-このシステムでは、Y字路を4つのタイプに分類します。分類は3つの分岐角度（angle_1, angle_2, angle_3）のうち、最小角度（angle_1）と最大角度（angle_3）に基づいて行われます。
+このシステムでは、Y字路を3つのタイプに分類します。分類は3つの分岐角度（angle_1, angle_2, angle_3）のうち、最小角度（angle_1）に基づいて行われます。
 
 ### 分類基準
 
 | タイプ | 条件 | 説明 | UIカラー |
 |--------|------|------|----------|
-| **VerySharp** | angle_1 < 30° | 非常に鋭角なY字路。視認性が低く注意が必要 | <span style="color: #0000cc">■</span> 濃い青 (#0000cc) |
-| **Sharp** | 30° ≤ angle_1 < 45° | 鋭角なY字路。やや見通しが悪い | <span style="color: #3399ff">■</span> 明るい青 (#3399ff) |
-| **Normal** | 45° ≤ angle_1 < 60° | 標準的なY字路。比較的見通しが良い | <span style="color: #88dd44">■</span> 緑 (#88dd44) |
-| **Skewed** | angle_3 > 200° | 歪んだY字路。ほぼ一直線に近い形状 | <span style="color: #9900ff">■</span> 紫 (#9900ff) |
-
-**注意:** Skewedタイプは他の条件より優先されます（angle_3 > 200°の場合、angle_1の値に関わらずSkewedと判定）。
+| **VerySharp** | angle_1 < 30° | 非常に鋭角なY字路。視認性が低く注意が必要 | <span style="color: #8B5CF6">■</span> 紫 (#8B5CF6) |
+| **Sharp** | 30° ≤ angle_1 < 45° | 鋭角なY字路。やや見通しが悪い | <span style="color: #3B82F6">■</span> 明るい青 (#3B82F6) |
+| **Normal** | 45° ≤ angle_1 < 60° | 標準的なY字路。比較的見通しが良い | <span style="color: #F59E0B">■</span> 琥珀色 (#F59E0B) |
 
 ### インポート時のフィルタリング
 
@@ -35,7 +32,6 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 この分類システムにより、以下が可能になります：
 
 - **視認性の評価**: 最小角度が小さいほど見通しが悪く、注意が必要な交差点
-- **道路設計の分析**: Skewedタイプは特殊な形状を持ち、設計上の制約がある可能性
 - **データフィルタリング**: UIで特定のタイプのY字路のみを表示可能
 
 ## 環境構築
@@ -142,7 +138,7 @@ cargo run --bin server
 - `bbox` - 境界ボックス（形式: `min_lon,min_lat,max_lon,max_lat`）
 
 **オプションパラメータ:**
-- `angle_type` - 角度タイプでフィルタ（複数指定可: `verysharp`, `sharp`, `normal`, `skewed`）
+- `angle_type` - 角度タイプでフィルタ（複数指定可: `verysharp`, `sharp`, `normal`）
 - `min_angle_gt` - 最小角度の下限（例: `min_angle_gt=30` で angle_1 > 30°）
 - `min_angle_lt` - 最小角度の上限（例: `min_angle_lt=45` で angle_1 < 45°）
 - `limit` - 取得件数の上限（デフォルト: 1000）
@@ -208,8 +204,7 @@ curl "http://localhost:8080/api/stats"
   "by_type": {
     "verysharp": 123,
     "sharp": 456,
-    "normal": 567,
-    "skewed": 88
+    "normal": 567
   }
 }
 ```
