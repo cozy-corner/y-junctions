@@ -89,7 +89,6 @@ impl JunctionsQuery {
                 .map(|s| match s.trim() {
                     "verysharp" => Ok(AngleType::VerySharp),
                     "sharp" => Ok(AngleType::Sharp),
-                    "skewed" => Ok(AngleType::Skewed),
                     "normal" => Ok(AngleType::Normal),
                     _ => Err(AppError::BadRequest("Invalid angle_type")),
                 })

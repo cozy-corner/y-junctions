@@ -6,15 +6,12 @@ use serde::{Deserialize, Serialize};
 pub enum AngleType {
     VerySharp,
     Sharp,
-    Skewed,
     Normal,
 }
 
 impl AngleType {
-    pub fn from_angles(angle_1: i16, _angle_2: i16, angle_3: i16) -> Self {
-        if angle_3 > 200 {
-            Self::Skewed
-        } else if angle_1 < 30 {
+    pub fn from_angles(angle_1: i16, _angle_2: i16, _angle_3: i16) -> Self {
+        if angle_1 < 30 {
             Self::VerySharp
         } else if angle_1 < 45 {
             Self::Sharp
@@ -140,13 +137,6 @@ mod tests {
         // angle_1 < 30 AND angle_3 <= 200
         let angle_type = AngleType::from_angles(25, 120, 180);
         assert_eq!(angle_type, AngleType::VerySharp);
-    }
-
-    #[test]
-    fn test_angle_type_skewed() {
-        // angle_3 > 200
-        let angle_type = AngleType::from_angles(50, 100, 210);
-        assert_eq!(angle_type, AngleType::Skewed);
     }
 
     #[test]

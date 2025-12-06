@@ -5,9 +5,8 @@ interface JunctionPopupProps {
 }
 
 const ANGLE_TYPE_LABELS: Record<string, string> = {
+  verysharp: '超鋭角',
   sharp: '鋭角',
-  even: '三叉路',
-  skewed: '直線分岐',
   normal: '中間',
 };
 

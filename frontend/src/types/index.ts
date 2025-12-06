@@ -1,5 +1,5 @@
 // AngleType
-export type AngleType = 'verysharp' | 'sharp' | 'skewed' | 'normal';
+export type AngleType = 'verysharp' | 'sharp' | 'normal';
 
 // Junction (単体取得時のレスポンス)
 export interface Junction {
@@ -48,7 +48,6 @@ export interface Stats {
   by_type: {
     verysharp: number;
     sharp: number;
-    skewed: number;
     normal: number;
   };
 }
