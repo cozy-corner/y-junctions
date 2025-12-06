@@ -9,9 +9,9 @@ import { JunctionPopup } from './JunctionPopup';
 const INITIAL_CENTER: [number, number] = [35.6812, 139.7671];
 const INITIAL_ZOOM = 14;
 
-// angle_typeごとのマーカー色（Y字路書籍をイメージした紫、黄色、暗い青のパレット）
+// angle_typeごとのマーカー色（Y字路書籍をイメージした紫、青、黄色のパレット）
 const MARKER_COLORS: Record<AngleType, string> = {
-  verysharp: '#1E3A8A', // 暗い青（濃紺） - 最小角度が最も小さい
+  verysharp: '#8B5CF6', // 紫（violet-500） - 最小角度が最も小さい
   sharp: '#3B82F6', // 明るい青
   normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
 };
