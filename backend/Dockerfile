@@ -1,16 +1,24 @@
-# Build stage
-FROM rust:1.90 AS builder
-
+# Chef stage - prepare recipe
+FROM rust:1.90 AS chef
+RUN cargo install cargo-chef
 WORKDIR /app
 
-# Copy manifests
+# Planner stage - generate recipe
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Copy source code
+# Builder stage - build dependencies then app
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build dependencies - this layer is cached
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy source and build app
 COPY src ./src
 COPY migrations ./migrations
-
-# Build for release
+COPY Cargo.toml Cargo.lock ./
 RUN cargo build --release --bin server
 
 # Runtime stage
