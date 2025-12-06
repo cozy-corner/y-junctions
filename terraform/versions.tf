@@ -1,6 +1,17 @@
 terraform {
   required_version = ">= 1.14"
 
+  cloud {
+    organization = "y-junctions"
+
+    workspaces {
+      name = "y-junctions-prod"
+    }
+
+    # Locally run operations with remote state
+    execution_mode = "local"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
