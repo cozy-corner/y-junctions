@@ -101,6 +101,10 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Install cargo-audit
+        if: steps.cache-cargo-test.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
+
       - name: Security audit
         run: |
           # Ignore RUSTSEC-2023-0071 (rsa crate via sqlx-mysql): PostgreSQL-only project, MySQL code not executed
