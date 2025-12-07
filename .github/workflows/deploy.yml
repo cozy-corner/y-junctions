@@ -72,22 +72,46 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
-        id: cache-cargo-test
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             backend/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-deps-${{ hashFiles('backend/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-deps-
 
-      - name: Install sqlx-cli
-        if: steps.cache-cargo-test.outputs.cache-hit != 'true'
-        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+      - name: Cache cargo-binstall
+        id: cache-binstall
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-binstall
+          key: ${{ runner.os }}-cargo-binstall-v1.16.1
+
+      - name: Install cargo-binstall
+        if: steps.cache-binstall.outputs.cache-hit != 'true'
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf \
+            https://github.com/cargo-bins/cargo-binstall/releases/download/v1.16.1/cargo-binstall-x86_64-unknown-linux-musl.tgz \
+            | tar -xz -C ~/.cargo/bin
+          chmod +x ~/.cargo/bin/cargo-binstall
+
+      - name: Cache tools
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/sqlx
+            ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-tools-sqlx-0.8.6-audit-0.21.0
+
+      - name: Install tools
+        if: steps.cache-tools.outputs.cache-hit != 'true'
+        run: |
+          cargo binstall sqlx-cli --version 0.8.6 --no-confirm --no-default-features --features postgres,rustls
+          cargo binstall cargo-audit --version 0.21.0 --no-confirm --locked
 
       - name: Run database migrations
         run: sqlx migrate run
@@ -100,10 +124,6 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Install cargo-audit
-        if: steps.cache-cargo-test.outputs.cache-hit != 'true'
-        run: cargo install cargo-audit --locked
 
       - name: Security audit
         run: |
