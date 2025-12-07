@@ -102,7 +102,9 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Security audit
-        run: cargo audit || true
+        run: |
+          # Ignore RUSTSEC-2023-0071 (rsa crate via sqlx-mysql): PostgreSQL-only project, MySQL code not executed
+          cargo audit --ignore RUSTSEC-2023-0071
 
   # Frontend Test Job
   frontend-test:
