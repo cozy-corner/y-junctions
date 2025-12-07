@@ -13,6 +13,13 @@ updates:
       - "dependencies"
       - "backend"
       - "rust"
+    groups:
+      security-updates:
+        update-types:
+          - "security"
+      all-dependencies:
+        patterns:
+          - "*"
 
   # Frontend (npm)
   - package-ecosystem: "npm"
@@ -27,28 +34,12 @@ updates:
       - "dependencies"
       - "frontend"
     groups:
-      # React関連を1つのPRにまとめる
-      react:
+      security-updates:
+        update-types:
+          - "security"
+      all-dependencies:
         patterns:
-          - "react*"
-          - "@types/react*"
-      # Vite関連を1つのPRにまとめる
-      vite:
-        patterns:
-          - "vite*"
-          - "@vitejs/*"
-      # テスト関連を1つのPRにまとめる
-      testing:
-        patterns:
-          - "vitest*"
-          - "@testing-library/*"
-          - "@vitest/*"
-      # ESLint/Prettier関連を1つのPRにまとめる
-      linting:
-        patterns:
-          - "eslint*"
-          - "prettier*"
-          - "@typescript-eslint/*"
+          - "*"
 
   # Root (開発ツール)
   - package-ecosystem: "npm"
@@ -62,12 +53,19 @@ updates:
     labels:
       - "dependencies"
       - "devtools"
+    groups:
+      security-updates:
+        update-types:
+          - "security"
+      all-dependencies:
+        patterns:
+          - "*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
@@ -75,3 +73,10 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      security-updates:
+        update-types:
+          - "security"
+      all-actions:
+        patterns:
+          - "*"
