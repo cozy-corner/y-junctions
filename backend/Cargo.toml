@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "tls-rustls", "macros"], default-features = false }
 osmpbf = "0.3"
-geo = "0.28"
+geo = "0.32"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tower-http = { version = "0.5", features = ["cors"] }
