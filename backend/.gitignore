@@ -2,3 +2,6 @@
 *.osm.pbf
 *.osm
 *.osm.bz2
+
+# GSI elevation data (too large for git)
+data/
