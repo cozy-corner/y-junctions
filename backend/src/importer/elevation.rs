@@ -50,8 +50,8 @@ impl GsiTile {
 pub struct ElevationProvider {
     /// Cache of loaded tiles, keyed by XML file path
     cache: HashMap<PathBuf, GsiTile>,
-    /// Directory path containing XML files
-    data_dir: String,
+    /// List of XML file paths (cached at initialization)
+    xml_files: Vec<PathBuf>,
 }
 
 impl ElevationProvider {
@@ -60,13 +60,21 @@ impl ElevationProvider {
     /// # Arguments
     /// * `data_dir` - Path to directory containing GSI .xml files (e.g., "data/gsi")
     pub fn new(data_dir: &str) -> Self {
+        // Scan for XML files once at initialization
+        let pattern = format!("{}/xml/*.xml", data_dir);
+        let xml_files: Vec<PathBuf> = glob(&pattern)
+            .map(|paths| paths.filter_map(|p| p.ok()).collect())
+            .unwrap_or_default();
+
         tracing::info!(
-            "Initialized ElevationProvider with data directory: {}",
-            data_dir
+            "Initialized ElevationProvider with data directory: {} ({} XML files found)",
+            data_dir,
+            xml_files.len()
         );
+
         Self {
             cache: HashMap::new(),
-            data_dir: data_dir.to_string(),
+            xml_files,
         }
     }
 
@@ -81,16 +89,10 @@ impl ElevationProvider {
     /// * `Ok(None)` - Valid coordinate but no data available
     /// * `Err(...)` - File read or parse error
     pub fn get_elevation(&mut self, lat: f64, lon: f64) -> Result<Option<f64>> {
-        // Find all XML files in data directory
-        let pattern = format!("{}/xml/*.xml", self.data_dir);
-        let xml_files = glob(&pattern).context("Failed to read XML pattern")?;
-
-        // Try each XML file
-        for entry in xml_files {
-            let xml_path = entry.context("Failed to get XML path")?;
-
+        // Try each XML file (using cached file list)
+        for xml_path in &self.xml_files {
             // Check cache first
-            if let Some(tile) = self.cache.get(&xml_path) {
+            if let Some(tile) = self.cache.get(xml_path) {
                 if let Some(elevation) = tile.get_elevation(lat, lon) {
                     return Ok(Some(elevation));
                 }
@@ -99,7 +101,7 @@ impl ElevationProvider {
             }
 
             // Load and parse XML file
-            match Self::parse_xml_file(&xml_path) {
+            match Self::parse_xml_file(xml_path) {
                 Ok(tile) => {
                     // Check if this tile contains the coordinate
                     if let Some(elevation) = tile.get_elevation(lat, lon) {
@@ -108,7 +110,7 @@ impl ElevationProvider {
                         return Ok(Some(elevation));
                     }
                     // Cache even if not found (to skip next time)
-                    self.cache.insert(xml_path, tile);
+                    self.cache.insert(xml_path.clone(), tile);
                 }
                 Err(e) => {
                     tracing::warn!("Failed to parse XML {:?}: {}", xml_path, e);
@@ -261,8 +263,11 @@ mod tests {
     #[test]
     fn test_new_provider() {
         let provider = ElevationProvider::new("tests/fixtures/gsi");
-        assert_eq!(provider.data_dir, "tests/fixtures/gsi");
         assert_eq!(provider.cache.len(), 0);
+        assert!(
+            !provider.xml_files.is_empty(),
+            "Should find at least one XML file in fixtures"
+        );
     }
 
     #[test]
