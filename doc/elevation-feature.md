@@ -6,16 +6,16 @@ Y字路の標高情報（elevation）と隣接ノード間の高低差を取得�
 
 ### 技術スタック
 
-- **標高データソース**: SRTM1 (Shuttle Radar Topography Mission)
-  - 解像度: 約30m (1 arc-second)
-  - 垂直精度: ±6-16m
-  - カバー範囲: 全世界（日本を含む）
-- **データ形式**: HGT (Height) バイナリファイル
-- **Rustクレート**: `srtm` または `hgt`
+- **標高データソース**: GSI DEM5A (国土地理院 5mメッシュ標高データ)
+  - 解像度: 5m
+  - 垂直精度: ±0.3m以内（レーザー測量）
+  - カバー範囲: 日本全国の約70%（主要都市部）
+- **データ形式**: JPGIS (GML/XML) ファイル
+- **Rustクレート**: `glob`, `roxmltree`
 
 ### アーキテクチャ方針
 
-- **データ取得**: インポート時にSRTM HGTファイルから標高を計算
+- **データ取得**: インポート時にGSI XMLファイルから標高を計算
 - **データ保存**: PostgreSQLに計算済み標高値を保存（非正規化設計）
 - **検索最適化**: 計算済みフィールド + インデックスで高速検索
 
@@ -45,40 +45,45 @@ min_angle_elevation_diff REAL      -- 最小角を構成する2本の道路間�
 
 ---
 
-## 🗄️ Phase 1: SRTM基盤実装
+## 🗄️ Phase 1: GSI標高データ基盤実装 ✅
 
-**ゴール**: SRTM HGTファイルから標高を取得する基盤を実装
+**ゴール**: GSI JPGIS XMLファイルから標高を取得する基盤を実装
+
+**方針変更**: SRTM → GSI（国土地理院）
+- **理由**: SRTM (30-90m解像度) では都市部Y字路の標高差測定に不十分
+- **採用**: GSI DEM5A (5m解像度) で高精度測定を実現
 
 **成果物**:
-- `backend/src/importer/elevation.rs` - 標高取得モジュール
-- `backend/Cargo.toml` - srtmクレート追加
+- ✅ `backend/src/importer/elevation.rs` - 標高取得モジュール
+- ✅ `backend/Cargo.toml` - glob, roxmltree クレート追加
 
 **タスク**:
-- [ ] srtmクレート依存関係追加（`srtm = "0.3"`）
-- [ ] `ElevationProvider`構造体実装
-  - [ ] `new(data_dir: &str)` - HGTディレクトリパス指定
-  - [ ] `get_elevation(lat: f64, lon: f64)` - 緯度経度から標高取得
-  - [ ] HGTファイルのキャッシング機能（HashMap利用）
-  - [ ] タイル座標計算（N35E138形式）
-- [ ] エラーハンドリング
-  - [ ] HGTファイル未存在の処理
-  - [ ] 海域・欠損値（-32768）の処理
-- [ ] ユニットテスト
-  - [ ] 標高取得の正常系テスト
-  - [ ] ファイル未存在時のテスト
-  - [ ] キャッシング動作のテスト
+- [x] データソース選定（SRTM → GSI）
+- [x] 依存関係追加（`glob = "0.3"`, `roxmltree = "0.20"`）
+- [x] `ElevationProvider`構造体実装
+  - [x] `new(data_dir: &str)` - XMLディレクトリパス指定
+  - [x] `get_elevation(lat: f64, lon: f64)` - 緯度経度から標高取得
+  - [x] XMLファイルのキャッシング機能（HashMap<PathBuf, GsiTile>）
+  - [x] JPGIS XML パース処理
+- [x] エラーハンドリング
+  - [x] XMLファイル未存在の処理
+  - [x] パースエラーの処理
+- [x] ユニットテスト（5テスト実装）
+  - [x] 標高取得の正常系テスト (富士山、東京駅)
+  - [x] ファイル未存在時のテスト
+  - [x] キャッシング動作のテスト
+  - [x] 初期化テスト
 
 **完了条件**:
-- [ ] `cargo test` で elevation モジュールのテスト合格
-- [ ] 富士山頂（35.3606, 138.7274）の標高が約3776m取得できる
-- [ ] 東京駅（35.6812, 139.7671）の標高が約3m取得できる
+- ✅ `cargo test` で elevation モジュールのテスト合格（5/5 passed）
+- ✅ 富士山頂（35.3606, 138.7274）の標高が約3776m取得できる
+- ✅ 東京駅（35.6812, 139.7671）の標高が約3m取得できる
+- ✅ ZIP依存を削除、シンプルな実装
 
-**工数**: 中（1日程度）
-
-**実装例**:
+**実装**:
 ```rust
 pub struct ElevationProvider {
-    tiles: HashMap<(i32, i32), srtm::Tile>,
+    cache: HashMap<PathBuf, GsiTile>,  // XMLファイルパス → タイル
     data_dir: String,
 }
 
@@ -86,14 +91,22 @@ impl ElevationProvider {
     pub fn new(data_dir: &str) -> Self { /* ... */ }
 
     pub fn get_elevation(&mut self, lat: f64, lon: f64) -> Result<Option<f64>> {
-        // タイル座標計算
-        let tile_lat = lat.floor() as i32;
-        let tile_lon = lon.floor() as i32;
+        // XMLファイルを列挙
+        let pattern = format!("{}/xml/*.xml", self.data_dir);
 
-        // HGTファイル読み込み（キャッシュ利用）
-        // 標高値取得
+        // 各XMLファイルをチェック（キャッシュ優先）
+        // 座標を含むタイルから標高取得
     }
 }
+```
+
+**データ配置**:
+```
+backend/data/gsi/
+  └── xml/
+      ├── FG-GML-5338-05-00-DEM5A-*.xml
+      ├── FG-GML-5338-05-01-DEM5A-*.xml
+      └── ... (解凍済みXMLファイル)
 ```
 
 ---
@@ -137,7 +150,7 @@ impl ElevationProvider {
 
 **完了条件**:
 - [ ] `cargo test` でドメインモデルのテスト合格
-- [ ] 標高データがOptionalで扱える（HGTファイルがない場合もエラーにならない）
+- [ ] 標高データがOptionalで扱える（XMLファイルがない場合もエラーにならない）
 
 **工数**: 小（半日程度）
 
@@ -152,11 +165,11 @@ impl ElevationProvider {
 - `backend/src/importer/mod.rs` - elevationモジュール公開
 
 **タスク**:
-- [ ] `parse_pbf`関数にsrtm_dir引数追加
+- [ ] `parse_pbf`関数にgsi_dir引数追加
   ```rust
   pub fn parse_pbf(
       input_path: &str,
-      srtm_dir: Option<&str>,  // 追加
+      gsi_dir: Option<&str>,  // 追加
       min_lon: f64,
       min_lat: f64,
       max_lon: f64,
@@ -173,11 +186,11 @@ impl ElevationProvider {
   - [ ] 標高取得成功/失敗の統計
   - [ ] 例: "Elevation data retrieved: 1500/2000 (75%)"
 - [ ] エラーハンドリング
-  - [ ] HGTファイルがない場合は標高なしで続行
+  - [ ] XMLファイルがない場合は標高なしで続行
   - [ ] 一部のノードで標高が取得できない場合の処理
 
 **完了条件**:
-- [ ] `cargo run --bin import -- --input test.pbf --srtm-dir data/srtm --bbox ...` が成功
+- [ ] `cargo run --bin import -- --input test.pbf --gsi-dir data/gsi --bbox ...` が成功
 - [ ] 標高データが取得され、JunctionForInsertに格納される
 - [ ] ログに標高取得の統計が表示される
 
@@ -188,7 +201,7 @@ impl ElevationProvider {
 **実装ポイント**:
 ```rust
 // 3rd pass内での標高取得
-let mut elevation_provider = srtm_dir.map(|dir| ElevationProvider::new(dir));
+let mut elevation_provider = gsi_dir.map(|dir| ElevationProvider::new(dir));
 
 for junction in &y_junctions {
     // 既存の角度計算...
@@ -281,7 +294,7 @@ CREATE INDEX idx_y_junctions_min_angle_elevation_diff
     WHERE min_angle_elevation_diff IS NOT NULL;
 
 -- コメント
-COMMENT ON COLUMN y_junctions.elevation IS 'ジャンクションノードの標高（メートル、SRTM1データ由来）';
+COMMENT ON COLUMN y_junctions.elevation IS 'ジャンクションノードの標高（メートル、GSI DEM5Aデータ由来）';
 COMMENT ON COLUMN y_junctions.min_angle_index IS '最小角のインデックス（1=angle_1, 2=angle_2, 3=angle_3）';
 COMMENT ON COLUMN y_junctions.min_angle_elevation_diff IS '最小角を構成する2本の道路間の標高差（メートル）';
 ```
@@ -464,48 +477,49 @@ sqlx::query(
 
 ## 📦 データ準備
 
-### SRTMデータのダウンロード
+### GSIデータのダウンロード
 
-**必要なHGTファイル（日本の場合）**:
-- 北緯24°〜46° × 東経123°〜146°
-- 陸地のみで約150-200タイル
-- 合計サイズ: 約3.75-5GB
+**データソース**: 国土地理院 基盤地図情報 数値標高モデル (DEM5A)
 
 **ダウンロード方法**:
 
-1. **OpenTopography S3バケット（推奨・認証不要）**
-   ```bash
-   # AWS CLIインストール
-   brew install awscli  # macOS
+1. **国土地理院 基盤地図情報ダウンロードサービス**
+   - URL: https://fgd.gsi.go.jp/download/menu.php
+   - 手順:
+     1. 「数値標高モデル（5mメッシュ DEM）」を選択
+     2. 対象地域を地図上で選択（複数選択可能）
+     3. 「ダウンロードファイル確認へ」をクリック
+     4. ZIPファイルをダウンロード
 
-   # 日本の範囲をダウンロード
-   mkdir -p data/srtm
-   for lat in {24..46}; do
-     for lon in {123..146}; do
-       aws s3 cp \
-         s3://raster/SRTM_GL1/N${lat}E${lon}.hgt \
-         data/srtm/ \
-         --endpoint-url https://opentopography.s3.sdsc.edu \
-         --no-sign-request 2>/dev/null && \
-         echo "Downloaded N${lat}E${lon}.hgt"
-     done
-   done
+2. **データの解凍と配置**
+   ```bash
+   # ダウンロードフォルダからbackendディレクトリへ移動
+   cd backend
+   mkdir -p data/gsi
+   mv ~/Downloads/FG-GML-*.zip data/gsi/
+
+   # XMLファイルを解凍
+   cd data/gsi
+   mkdir -p xml
+   unzip -j '*.zip' -d xml/
    ```
 
-2. **インタラクティブツール**
-   - https://dwtkns.com/srtm30m/
-   - 地図上でクリックしてダウンロード
-
-3. **NASA Earthdata（公式）**
-   - https://search.earthdata.nasa.gov/
-   - アカウント登録が必要
+**必要なデータ範囲**:
+- 対象地域: インポート対象のOSM PBFファイルがカバーする範囲
+- 例: 東京都全域の場合、約100-150タイル
+- 合計サイズ: 数百MB〜数GB（対象範囲による）
 
 ### .gitignoreへの追加
 
 ```bash
-# data/srtm/*.hgt
-echo "data/srtm/*.hgt" >> .gitignore
+# GSI XMLデータは大きいのでgit管理外
+echo "backend/data/gsi/*.zip" >> .gitignore
+echo "backend/data/gsi/xml/*.xml" >> .gitignore
 ```
+
+**注意**:
+- テスト用の小規模XMLファイル（数ファイル）はリポジトリに含めてもよい
+- CI/本番環境では別途データ配置が必要（Phase 2/3で検討）
 
 ---
 
@@ -515,7 +529,7 @@ echo "data/srtm/*.hgt" >> .gitignore
 
 - **Phase 1**: ElevationProviderの動作確認
 - **Phase 2**: 高低差計算ロジックの確認
-- **Phase 3**: 標高取得処理の確認（モックHGTファイル使用）
+- **Phase 3**: 標高取得処理の確認（テスト用XMLファイル使用）
 
 ### 統合テスト
 
@@ -543,7 +557,7 @@ echo "data/srtm/*.hgt" >> .gitignore
 
 - [ ] doc/elevation-feature.md の該当Phaseを完了マーク
 - [ ] 完了条件をすべて満たしている
-- [ ] READMEに必要な手順を追記（SRTMダウンロード方法など）
+- [ ] READMEに必要な手順を追記（GSIダウンロード方法など）
 
 ---
 
@@ -552,9 +566,10 @@ echo "data/srtm/*.hgt" >> .gitignore
 ### 本番環境での実行
 
 ```bash
-# 1. SRTMデータのダウンロード（本番サーバーで実行）
-mkdir -p data/srtm
-# ... ダウンロードスクリプト実行 ...
+# 1. GSIデータのダウンロードと配置（本番サーバーで実行）
+mkdir -p data/gsi/xml
+# GSI基盤地図情報からダウンロードしたZIPファイルを解凍
+unzip -j 'FG-GML-*.zip' -d data/gsi/xml/
 
 # 2. マイグレーション実行
 sqlx migrate run
@@ -562,12 +577,12 @@ sqlx migrate run
 # 3. データの再インポート
 cargo run --bin import -- \
   --input data/japan-latest.osm.pbf \
-  --srtm-dir data/srtm \
+  --gsi-dir data/gsi \
   --min-lon 123.0 --max-lon 146.0 \
   --min-lat 24.0 --max-lat 46.0
 
-# 4. インポート後、HGTファイルは削除可能（任意）
-# rm -rf data/srtm
+# 4. インポート後、XMLファイルは削除可能（任意）
+# rm -rf data/gsi
 ```
 
 ### パフォーマンス目標
@@ -580,6 +595,8 @@ cargo run --bin import -- \
 
 ## 🔗 関連ドキュメント
 
-- [SRTM - OpenStreetMap Wiki](https://wiki.openstreetmap.org/wiki/SRTM)
-- [NASA SRTM Documentation](https://lpdaac.usgs.gov/products/srtmgl1v003/)
-- [srtm crate documentation](https://docs.rs/srtm/)
+- [国土地理院 基盤地図情報](https://fgd.gsi.go.jp/)
+- [基盤地図情報ダウンロードサービス](https://fgd.gsi.go.jp/download/menu.php)
+- [JPGIS (GML) 仕様](https://www.gsi.go.jp/common/000194267.pdf)
+- [roxmltree crate documentation](https://docs.rs/roxmltree/)
+- [glob crate documentation](https://docs.rs/glob/)
