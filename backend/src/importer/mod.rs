@@ -1,5 +1,6 @@
 pub mod calculator;
 pub mod detector;
+pub mod elevation;
 pub mod inserter;
 pub mod parser;
 
