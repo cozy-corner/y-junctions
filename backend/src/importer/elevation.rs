@@ -36,8 +36,13 @@ impl GsiTile {
 
         // Convert to grid coordinates
         // Note: GSI data is ordered +x-y (west to east, north to south)
-        let x = (lon_frac * (self.grid_width - 1) as f64).round() as usize;
-        let y = ((1.0 - lat_frac) * (self.grid_height - 1) as f64).round() as usize;
+        // Clamp to prevent floating point edge cases
+        let x = ((lon_frac * (self.grid_width - 1) as f64)
+            .round()
+            .clamp(0.0, (self.grid_width - 1) as f64)) as usize;
+        let y = (((1.0 - lat_frac) * (self.grid_height - 1) as f64)
+            .round()
+            .clamp(0.0, (self.grid_height - 1) as f64)) as usize;
 
         // Calculate index in flat array
         let index = y * self.grid_width + x;
