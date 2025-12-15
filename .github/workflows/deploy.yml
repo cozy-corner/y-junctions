@@ -72,7 +72,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -85,7 +85,7 @@ jobs:
 
       - name: Cache tools
         id: cache-tools
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/sqlx
@@ -190,7 +190,7 @@ jobs:
 
       - name: Cache SQLx CLI
         id: cache-sqlx
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/sqlx
           key: ${{ runner.os }}-sqlx-cli
