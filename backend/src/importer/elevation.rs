@@ -91,8 +91,8 @@ impl ElevationProvider {
     ///
     /// # Returns
     /// * `Ok(Some(elevation))` - Elevation in meters
-    /// * `Ok(None)` - Valid coordinate but no data available
-    /// * `Err(...)` - File read or parse error
+    /// * `Ok(None)` - Valid coordinate but no data available (XML parse errors are logged and skipped)
+    /// * `Err(...)` - File read error
     pub fn get_elevation(&mut self, lat: f64, lon: f64) -> Result<Option<f64>> {
         // Try each XML file (using cached file list)
         for xml_path in &self.xml_files {
