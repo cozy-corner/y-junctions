@@ -50,6 +50,10 @@ impl From<JunctionRow> for Junction {
             angle_3: row.angle_3,
             bearings: row.bearings,
             created_at: row.created_at,
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         }
     }
 }
@@ -66,6 +70,10 @@ impl From<JunctionRowWithCount> for Junction {
             angle_3: row.angle_3,
             bearings: row.bearings,
             created_at: row.created_at,
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         }
     }
 }
