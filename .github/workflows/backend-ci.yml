@@ -93,8 +93,10 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install sqlx-cli
-        if: steps.cache-cargo.outputs.cache-hit != 'true'
-        run: cargo install sqlx-cli --no-default-features --features postgres
+        run: |
+          if ! command -v sqlx &> /dev/null; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
 
       - name: Run database migrations
         run: sqlx migrate run
