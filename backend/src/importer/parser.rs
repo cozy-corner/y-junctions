@@ -246,6 +246,12 @@ pub fn parse_pbf(
                 angle_2: angles[1],
                 angle_3: angles[2],
                 bearings,
+                elevation: None,
+                neighbor_elevations: None,
+                elevation_diffs: None,
+                min_angle_index: None,
+                min_elevation_diff: None,
+                max_elevation_diff: None,
             });
         } else {
             failed_calculations += 1;

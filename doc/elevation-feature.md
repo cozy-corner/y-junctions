@@ -111,7 +111,7 @@ backend/data/gsi/
 
 ---
 
-## 🔧 Phase 2: データモデル拡張
+## 🔧 Phase 2: データモデル拡張 ✅
 
 **ゴール**: 標高データを扱うためのデータ構造を拡張
 
@@ -120,7 +120,7 @@ backend/data/gsi/
 - `backend/src/domain/junction.rs` - Junction構造体拡張
 
 **タスク**:
-- [ ] `JunctionForInsert`構造体に標高フィールド追加
+- [x] `JunctionForInsert`構造体に標高フィールド追加
   ```rust
   pub struct JunctionForInsert {
       // 既存フィールド...
@@ -128,13 +128,15 @@ backend/data/gsi/
       pub neighbor_elevations: Option<[f64; 3]>,
       pub elevation_diffs: Option<[f64; 3]>,
       pub min_angle_index: Option<i16>,
+      pub min_elevation_diff: Option<f64>,
+      pub max_elevation_diff: Option<f64>,
   }
   ```
-- [ ] ヘルパーメソッド実装
-  - [ ] `calculate_min_angle_index(angles: &[i16; 3]) -> i16`
-  - [ ] `calculate_elevation_diffs(base: f64, neighbors: &[f64; 3]) -> [f64; 3]`
-  - [ ] `calculate_min_max_diffs(diffs: &[f64; 3]) -> (f64, f64)`
-- [ ] `Junction`構造体に標高フィールド追加
+- [x] ヘルパーメソッド実装
+  - [x] `calculate_min_angle_index(angles: &[i16; 3]) -> i16` - 1-based (1,2,3)を返すよう実装
+  - [x] `calculate_elevation_diffs(base: f64, neighbors: &[f64; 3]) -> [f64; 3]`
+  - [x] `calculate_min_max_diffs(diffs: &[f64; 3]) -> (f64, f64)`
+- [x] `Junction`構造体に標高フィールド追加
   ```rust
   pub struct Junction {
       // 既存フィールド...
@@ -144,15 +146,25 @@ backend/data/gsi/
       pub min_angle_elevation_diff: Option<f64>,
   }
   ```
-- [ ] ユニットテスト
-  - [ ] 最小角インデックス計算のテスト
-  - [ ] 高低差計算のテスト
+- [x] ユニットテスト
+  - [x] 最小角インデックス計算のテスト (1,2,3を期待)
+  - [x] 高低差計算のテスト
+- [x] `to_feature()` メソッド更新（標高データをGeoJSON propertiesに追加）
+- [x] 既存の初期化箇所の修正（None値で初期化）
 
 **完了条件**:
-- [ ] `cargo test` でドメインモデルのテスト合格
-- [ ] 標高データがOptionalで扱える（XMLファイルがない場合もエラーにならない）
+- ✅ `cargo test` でドメインモデルのテスト合格（26テスト全て成功）
+- ✅ 標高データがOptionalで扱える（XMLファイルがない場合もエラーにならない）
+- ✅ `cargo fmt` と `cargo clippy` チェック成功
+- ✅ Phase 7の検索要件を満たすデータ構造（elevation, min_elevation_diff, min_angle_elevation_diff）
 
 **工数**: 小（半日程度）
+
+**実装メモ**:
+- `calculate_min_angle_index` は1-based (1,2,3) を返す（PostgreSQL CHECK制約とCASE文に対応）
+- 全フィールドに `#[allow(dead_code)]` 属性を付与（Phase 3以降で使用）
+- `elevation_diffs` はジャンクションノードと隣接ノードの高低差を計算（junction-to-neighbor）
+- `min_angle_elevation_diff` はPostgreSQLのGenerated Columnで自動計算（neighbor-to-neighbor）
 
 ---
 
