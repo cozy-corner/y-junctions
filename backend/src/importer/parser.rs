@@ -9,7 +9,7 @@ use crate::domain::junction::AngleType;
 
 pub fn parse_pbf(
     input_path: &str,
-    _elevation_dir: Option<&str>,
+    elevation_dir: Option<&str>,
     min_lon: f64,
     min_lat: f64,
     max_lon: f64,
@@ -142,7 +142,7 @@ pub fn parse_pbf(
     tracing::info!("Starting 3rd pass: calculating angles for Y-junctions");
 
     // Initialize elevation provider if directory is provided
-    let mut elevation_provider = _elevation_dir.map(ElevationProvider::new);
+    let mut elevation_provider = elevation_dir.map(ElevationProvider::new);
     let mut elevation_stats = ElevationStats::new();
 
     // Collect all neighboring node IDs
