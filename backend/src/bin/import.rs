@@ -13,6 +13,10 @@ struct Args {
     /// Bounding box: min_lon,min_lat,max_lon,max_lat
     #[arg(short, long)]
     bbox: String,
+
+    /// Directory containing elevation data (e.g., GSI XML files)
+    #[arg(long)]
+    elevation_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -63,6 +67,7 @@ async fn main() -> Result<()> {
     y_junction_backend::importer::import_from_pbf(
         &pool,
         &args.input,
+        args.elevation_dir.as_deref(),
         min_lon,
         min_lat,
         max_lon,
