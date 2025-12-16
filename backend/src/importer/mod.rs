@@ -10,6 +10,7 @@ use sqlx::PgPool;
 pub async fn import_from_pbf(
     pool: &PgPool,
     input_path: &str,
+    elevation_dir: Option<&str>,
     min_lon: f64,
     min_lat: f64,
     max_lon: f64,
@@ -18,7 +19,14 @@ pub async fn import_from_pbf(
     tracing::info!("Opening PBF file: {}", input_path);
 
     // Parse PBF and extract Y-junctions
-    let junctions = parser::parse_pbf(input_path, min_lon, min_lat, max_lon, max_lat)?;
+    let junctions = parser::parse_pbf(
+        input_path,
+        elevation_dir,
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+    )?;
 
     tracing::info!("Found {} Y-junctions to insert", junctions.len());
 
