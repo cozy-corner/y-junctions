@@ -1,0 +1,17 @@
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - ".*"
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/target/**"
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/Cargo.lock"
+
+chat:
+  auto_reply: true
