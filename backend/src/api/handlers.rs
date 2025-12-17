@@ -54,6 +54,8 @@ pub struct JunctionsQuery {
     pub min_angle_lt: Option<i16>,
     pub min_angle_gt: Option<i16>,
     pub limit: Option<i64>,
+    // 最小角の高低差フィルタ
+    pub min_angle_elevation_diff: Option<f64>,
 }
 
 impl JunctionsQuery {
@@ -112,6 +114,7 @@ impl JunctionsQuery {
             min_angle_lt: self.min_angle_lt,
             min_angle_gt: self.min_angle_gt,
             limit: self.limit,
+            min_angle_elevation_diff: self.min_angle_elevation_diff,
         })
     }
 }
