@@ -352,7 +352,7 @@ COMMENT ON COLUMN y_junctions.min_angle_elevation_diff IS '最小角を構成す
 
 ---
 
-## 💾 Phase 5: インサート処理更新
+## 💾 Phase 5: インサート処理更新 ✅
 
 **ゴール**: 標高データをデータベースに保存
 
@@ -361,28 +361,36 @@ COMMENT ON COLUMN y_junctions.min_angle_elevation_diff IS '最小角を構成す
 - `backend/src/db/repository.rs` - find_by_bbox関数修正
 
 **タスク**:
-- [ ] `insert_junctions`関数のSQL修正
-  - [ ] INSERT文に標高カラム追加
-  - [ ] プレースホルダー追加（$10, $11, ...）
-  - [ ] バインド処理追加
-- [ ] バルクインサートの対応
-  - [ ] 1000件バッチでの標高データ保存確認
-- [ ] `find_by_bbox`関数のSELECT修正
-  - [ ] 標高カラムを取得対象に追加
-  - [ ] Junction構造体へのマッピング
-- [ ] テストデータ更新
-  - [ ] api_tests.rs のテストデータに標高追加
-- [ ] エラーハンドリング
-  - [ ] NULL値の扱い（Option型）
+- [x] `insert_junctions`関数のSQL修正
+  - [x] INSERT文に標高カラム追加
+  - [x] プレースホルダー追加（$10, $11, ...）
+  - [x] バインド処理追加
+- [x] バルクインサートの対応
+  - [x] 1000件バッチでの標高データ保存確認
+- [x] `find_by_bbox`関数のSELECT修正
+  - [x] 標高カラムを取得対象に追加
+  - [x] Junction構造体へのマッピング
+- [x] テストデータ更新
+  - [x] api_tests.rs のテストデータに標高追加
+- [x] エラーハンドリング
+  - [x] NULL値の扱い（Option型）
 
 **完了条件**:
-- [ ] インポート時に標高データがDBに保存される
-- [ ] `cargo test` で全テスト合格（統合テスト含む）
-- [ ] SELECT時に標高データが正しく取得される
+- ✅ インポート時に標高データがDBに保存される
+- ✅ `cargo test` で全テスト合格（ユニットテスト29個、統合テスト14個）
+- ✅ SELECT時に標高データが正しく取得される
 
 **工数**: 中（1日程度）
 
 **依存**: Phase 4完了（マイグレーション実行済み）
+
+**実装メモ**:
+- **型の不一致修正**: DB（REAL/FLOAT4）とRust（Option<f64>→Option<f32>）の型を統一
+- **原因**: Phase 3でf64を選択、Phase 4でREALを選択したため不一致が発生
+- **解決**: repository.rsのJunctionRow構造体をOption<f32>に変更し、Fromトレイトでf64へキャスト
+- **INSERT文**: 11個の標高関連カラムを追加（PARAMS_PER_ROW: 9→19）
+- **バルクインサート**: 1000件バッチでの一括挿入に対応
+- **テスト**: 全43テスト合格（cargo fmt、cargo clippy も合格）
 
 **実装ポイント**:
 ```rust

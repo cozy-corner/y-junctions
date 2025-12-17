@@ -41,6 +41,12 @@ struct TestJunctionData {
     angle_2: i16,
     angle_3: i16,
     bearings: [f32; 3],
+    elevation: Option<f64>,
+    neighbor_elevations: Option<[f64; 3]>,
+    elevation_diffs: Option<[f64; 3]>,
+    min_angle_index: Option<i16>,
+    min_elevation_diff: Option<f64>,
+    max_elevation_diff: Option<f64>,
 }
 
 impl TestJunctionData {
@@ -53,6 +59,12 @@ impl TestJunctionData {
             angle_2: 145,
             angle_3: 180,
             bearings: [10.0, 45.0, 190.0],
+            elevation: Some(100.0),
+            neighbor_elevations: Some([95.0, 105.0, 100.0]),
+            elevation_diffs: Some([5.0, 5.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(5.0),
         }
     }
 
@@ -65,6 +77,12 @@ impl TestJunctionData {
             angle_2: 140,
             angle_3: 200,
             bearings: [5.0, 25.0, 165.0],
+            elevation: Some(50.0),
+            neighbor_elevations: Some([45.0, 55.0, 50.0]),
+            elevation_diffs: Some([5.0, 5.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(5.0),
         }
     }
 
@@ -77,6 +95,12 @@ impl TestJunctionData {
             angle_2: 150,
             angle_3: 150,
             bearings: [30.0, 90.0, 240.0],
+            elevation: Some(200.0),
+            neighbor_elevations: Some([190.0, 210.0, 200.0]),
+            elevation_diffs: Some([10.0, 10.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(10.0),
         }
     }
 
@@ -91,8 +115,20 @@ impl TestJunctionData {
 async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     let rec = sqlx::query_as::<_, (i64,)>(
         r#"
-        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, created_at)
-        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY[$7, $8, $9], NOW())
+        INSERT INTO y_junctions (
+            osm_node_id, location, angle_1, angle_2, angle_3, bearings,
+            elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
+            elevation_diff_1, elevation_diff_2, elevation_diff_3,
+            min_angle_index, min_elevation_diff, max_elevation_diff,
+            created_at
+        )
+        VALUES (
+            $1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY[$7, $8, $9],
+            $10, $11, $12, $13,
+            $14, $15, $16,
+            $17, $18, $19,
+            NOW()
+        )
         RETURNING id
         "#,
     )
@@ -105,6 +141,16 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     .bind(data.bearings[0])
     .bind(data.bearings[1])
     .bind(data.bearings[2])
+    .bind(data.elevation)
+    .bind(data.neighbor_elevations.map(|e| e[0]))
+    .bind(data.neighbor_elevations.map(|e| e[1]))
+    .bind(data.neighbor_elevations.map(|e| e[2]))
+    .bind(data.elevation_diffs.map(|e| e[0]))
+    .bind(data.elevation_diffs.map(|e| e[1]))
+    .bind(data.elevation_diffs.map(|e| e[2]))
+    .bind(data.min_angle_index)
+    .bind(data.min_elevation_diff)
+    .bind(data.max_elevation_diff)
     .fetch_one(pool)
     .await
     .expect("Failed to insert test junction");
