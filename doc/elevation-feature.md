@@ -102,12 +102,21 @@ impl ElevationProvider {
 
 **データ配置**:
 ```
-backend/data/gsi/
-  └── xml/
-      ├── FG-GML-5338-05-00-DEM5A-*.xml
-      ├── FG-GML-5338-05-01-DEM5A-*.xml
-      └── ... (解凍済みXMLファイル)
+# worktree環境を考慮した共有ディレクトリ構成（推奨）
+/Users/username/code/y-junctions-worktrees/
+├── shared-data/                    # 全worktreeで共有
+│   └── gsi/
+│       └── xml/
+│           ├── FG-GML-5338-05-00-DEM5A-*.xml
+│           ├── FG-GML-5338-05-01-DEM5A-*.xml
+│           └── ... (解凍済みXMLファイル)
+├── develop-elevation-worktrees/
+│   ├── elevation-phase3/
+│   ├── elevation-phase5/
+│   └── elevation-phase7/           # 各worktreeはデータを含まない
 ```
+
+**注意**: リポジトリ内にデータを置かない。worktreeごとに同じ数GBのデータをコピーすることになる。
 
 ---
 
@@ -504,40 +513,44 @@ sqlx::query(
 
 ---
 
-## 🎨 Phase 7: フロントエンド表示（オプション）
+## 🎨 Phase 7: フロントエンド表示 ✅
 
 **ゴール**: UIで標高データを表示・フィルタリング
 
 **成果物**:
-- `frontend/src/types/index.ts` - 型定義更新
-- `frontend/src/components/FilterPanel.tsx` - 標高フィルタ追加
-- `frontend/src/components/JunctionPopup.tsx` - 標高表示追加
+- ✅ `frontend/src/types/index.ts` - 型定義更新
+- ✅ `frontend/src/components/FilterPanel.tsx` - 標高フィルタ追加
+- ✅ `frontend/src/components/JunctionPopup.tsx` - 標高表示追加
 
 **タスク**:
-- [ ] JunctionProperties型に標高フィールド追加
-- [ ] FilterPanelに標高フィルタUI追加
-  - [ ] 標高範囲スライダー（0-4000m）
-  - [ ] 最小高低差スライダー（0-500m）
-  - [ ] 最小角高低差スライダー（0-500m）
-- [ ] JunctionPopupに標高情報表示
-  - [ ] ジャンクション標高
-  - [ ] 最小/最大高低差
-  - [ ] 最小角を構成する道路間の高低差
-- [ ] マーカー色を標高で変える（オプション）
-  - [ ] 標高が高いほど濃い色
-  - [ ] または高低差で色分け
-- [ ] ツールチップに標高表示（オプション）
+- [x] JunctionProperties型に標高フィールド追加（`min_angle_elevation_diff`）
+- [x] FilterPanelに標高フィルタUI追加
+  - [x] 最小角高低差スライダー（0-50m）
+- [x] JunctionPopupに標高情報表示
+  - [x] 最小角を構成する道路間の高低差
 
 **完了条件**:
-- [ ] フィルタパネルで標高フィルタが動作する
-- [ ] ポップアップに標高情報が表示される
-- [ ] `npm run typecheck` 合格
+- ✅ フィルタパネルで最小角標高差フィルタが動作する
+- ✅ ポップアップに最小角標高差が表示される
+- ✅ `npm run typecheck` 合格
 
 **工数**: 中（1日程度）
 
 **依存**: Phase 6完了
 
-**優先度**: 低（バックエンド完成後に実装）
+**実装メモ**:
+- **最小構成で実装**: ニーズが最も高い「最小角の標高差」のみに絞って実装
+- **FilterPanel (124-155行目)**:
+  - 0-50mのスライダー（1m刻み）
+  - 0の場合はフィルタなし（null）
+  - リセットボタンでnullに戻す
+- **JunctionPopup (28-32行目)**:
+  - `min_angle_elevation_diff`が定義されている場合のみ表示
+  - 小数点1桁で表示（例: 15.2m）
+- **型定義**:
+  - `JunctionProperties.min_angle_elevation_diff?: number` (types/index.ts:31)
+  - `FilterParams.min_angle_elevation_diff?: number` (types/index.ts:62)
+- **削除した機能**: ユーザーフィードバックに基づき、使用頻度の低い標高関連の表示・フィルタを削除
 
 ---
 
@@ -557,17 +570,32 @@ sqlx::query(
      3. 「ダウンロードファイル確認へ」をクリック
      4. ZIPファイルをダウンロード
 
-2. **データの解凍と配置**
+2. **データの解凍と配置（worktree環境）**
    ```bash
-   # ダウンロードフォルダからbackendディレクトリへ移動
-   cd backend
-   mkdir -p data/gsi
-   mv ~/Downloads/FG-GML-*.zip data/gsi/
+   # worktreeの親ディレクトリに共有データディレクトリを作成
+   cd /Users/username/code/y-junctions-worktrees
+   mkdir -p shared-data/gsi/xml
 
-   # XMLファイルを解凍
-   cd data/gsi
-   mkdir -p xml
-   unzip -j '*.zip' -d xml/
+   # ダウンロードしたZIPファイルを解凍
+   unzip -j ~/Downloads/'FG-GML-*.zip' -d shared-data/gsi/xml/
+   ```
+
+3. **インポート時のパス指定**
+   ```bash
+   # worktreeディレクトリから実行する場合
+   cd elevation-phase7
+
+   # 絶対パス指定（推奨）
+   cargo run --bin import -- \
+     --input data.pbf \
+     --elevation-dir /Users/username/code/y-junctions-worktrees/shared-data/gsi \
+     --bbox 132,33,135,35
+
+   # または相対パス（worktreeから2階層上）
+   cargo run --bin import -- \
+     --input data.pbf \
+     --elevation-dir ../../shared-data/gsi \
+     --bbox 132,33,135,35
    ```
 
 **必要なデータ範囲**:
@@ -575,17 +603,15 @@ sqlx::query(
 - 例: 東京都全域の場合、約100-150タイル
 - 合計サイズ: 数百MB〜数GB（対象範囲による）
 
-### .gitignoreへの追加
-
-```bash
-# GSI XMLデータは大きいのでgit管理外
-echo "backend/data/gsi/*.zip" >> .gitignore
-echo "backend/data/gsi/xml/*.xml" >> .gitignore
-```
+**worktree環境での利点**:
+- 全worktreeで同じデータを共有（ディスク容量の節約）
+- データは1回だけダウンロード・解凍すればよい
+- 各worktreeにデータをコピーする必要なし
 
 **注意**:
-- テスト用の小規模XMLファイル（数ファイル）はリポジトリに含めてもよい
-- CI/本番環境では別途データ配置が必要（Phase 2/3で検討）
+- リポジトリ内（worktree内）にデータを置かない
+- .gitignoreへの追加は不要（リポジトリ外に配置するため）
+- CI/本番環境では別途データ配置が必要
 
 ---
 
@@ -633,9 +659,9 @@ echo "backend/data/gsi/xml/*.xml" >> .gitignore
 
 ```bash
 # 1. GSIデータのダウンロードと配置（本番サーバーで実行）
-mkdir -p data/gsi/xml
+mkdir -p /var/lib/gsi-elevation-data/xml
 # GSI基盤地図情報からダウンロードしたZIPファイルを解凍
-unzip -j 'FG-GML-*.zip' -d data/gsi/xml/
+unzip -j 'FG-GML-*.zip' -d /var/lib/gsi-elevation-data/xml/
 
 # 2. マイグレーション実行
 sqlx migrate run
@@ -643,12 +669,11 @@ sqlx migrate run
 # 3. データの再インポート
 cargo run --bin import -- \
   --input data/japan-latest.osm.pbf \
-  --gsi-dir data/gsi \
-  --min-lon 123.0 --max-lon 146.0 \
-  --min-lat 24.0 --max-lat 46.0
+  --elevation-dir /var/lib/gsi-elevation-data \
+  --bbox 123.0,24.0,146.0,46.0
 
 # 4. インポート後、XMLファイルは削除可能（任意）
-# rm -rf data/gsi
+# rm -rf /var/lib/gsi-elevation-data
 ```
 
 ### パフォーマンス目標
@@ -656,6 +681,87 @@ cargo run --bin import -- \
 - インポート時間: +20-30%増（標高取得のオーバーヘッド）
 - API応答時間: 変化なし（インデックス使用）
 - ストレージ増加: 約40MB（100万レコードの場合）
+
+---
+
+## 🔧 Phase 8: インポート処理の2段階コミット化（改善提案）
+
+**ゴール**: OSMデータと標高データのインポートを分離し、より堅牢な処理を実装
+
+**現在の問題**:
+- OSMデータ取得 → 標高データ取得 → 一括挿入 → コミット
+- 標高データ取得で失敗すると、OSMデータも全て失われる
+- 標高データは外部依存（GSI XML）で失敗しやすい
+
+**提案する改善**:
+1. **Phase 1: OSMデータのみ先にコミット**
+   - PBFから取得したY字路データ（座標、角度、bearings）を先にINSERT & COMMIT
+   - トランザクション1: OSMデータの永続化
+2. **Phase 2: 標高データをUPDATEで追加**
+   - 保存済みのY字路に対して標高データを取得
+   - トランザクション2: 標高データの更新
+   - 失敗してもOSMデータは残る
+
+**メリット**:
+- OSMデータと標高データが独立
+- 標高取得失敗でもY字路データは保存される
+- 標高データは後から再取得可能
+- より堅牢なインポート処理
+
+**実装方針**:
+```rust
+// Phase 1: OSM data only
+pub async fn import_osm_data(pool: &PgPool, junctions: Vec<JunctionForInsert>) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    // INSERT without elevation fields
+    tx.commit().await?;
+    Ok(())
+}
+
+// Phase 2: Elevation data (optional)
+pub async fn update_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    // UPDATE elevation fields
+    tx.commit().await?;
+    Ok(())
+}
+```
+
+**成果物**:
+- `backend/src/importer/mod.rs` - 2段階インポート処理
+- `backend/src/importer/inserter.rs` - OSMデータのみのINSERT関数追加
+- `backend/src/importer/elevation_updater.rs` - 標高データUPDATE処理（新規）
+- `backend/src/bin/import.rs` - `--elevation-only` オプション追加
+
+**タスク**:
+- [ ] OSMデータのみをINSERTする関数を実装
+  - [ ] `insert_osm_data()` - 標高フィールドを除外したINSERT
+  - [ ] トランザクション1: OSMデータの永続化
+- [ ] 標高データをUPDATEする関数を実装
+  - [ ] `elevation_updater.rs` 新規作成
+  - [ ] `update_elevation_data()` - 既存レコードに標高を追加
+  - [ ] トランザクション2: 標高データの更新
+- [ ] CLIオプション追加
+  - [ ] `--elevation-only` フラグ（標高データのみ更新）
+  - [ ] デフォルトは2段階実行（OSM → 標高）
+- [ ] エラーハンドリング改善
+  - [ ] Phase 1失敗時は即座に終了
+  - [ ] Phase 2失敗時はログ出力して継続
+- [ ] テスト追加
+  - [ ] OSMデータのみのインポートテスト
+  - [ ] 標高データの後付けテスト
+
+**完了条件**:
+- [ ] OSMデータと標高データが独立してインポート可能
+- [ ] 標高取得失敗でもOSMデータは保存される
+- [ ] `--elevation-only` で既存データに標高を追加できる
+- [ ] 全テスト合格
+
+**工数**: 中（1-2日程度）
+
+**依存**: Phase 5完了
+
+**優先度**: 中（現行の実装でも動作するが、より堅牢性を求める場合に実装）
 
 ---
 
