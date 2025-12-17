@@ -111,7 +111,7 @@ backend/data/gsi/
 
 ---
 
-## 🔧 Phase 2: データモデル拡張 ✅
+## 🔧 Phase 2: データモデル拡張
 
 **ゴール**: 標高データを扱うためのデータ構造を拡張
 
@@ -120,7 +120,7 @@ backend/data/gsi/
 - `backend/src/domain/junction.rs` - Junction構造体拡張
 
 **タスク**:
-- [x] `JunctionForInsert`構造体に標高フィールド追加
+- [ ] `JunctionForInsert`構造体に標高フィールド追加
   ```rust
   pub struct JunctionForInsert {
       // 既存フィールド...
@@ -128,15 +128,13 @@ backend/data/gsi/
       pub neighbor_elevations: Option<[f64; 3]>,
       pub elevation_diffs: Option<[f64; 3]>,
       pub min_angle_index: Option<i16>,
-      pub min_elevation_diff: Option<f64>,
-      pub max_elevation_diff: Option<f64>,
   }
   ```
-- [x] ヘルパーメソッド実装
-  - [x] `calculate_min_angle_index(angles: &[i16; 3]) -> i16` - 1-based (1,2,3)を返すよう実装
-  - [x] `calculate_elevation_diffs(base: f64, neighbors: &[f64; 3]) -> [f64; 3]`
-  - [x] `calculate_min_max_diffs(diffs: &[f64; 3]) -> (f64, f64)`
-- [x] `Junction`構造体に標高フィールド追加
+- [ ] ヘルパーメソッド実装
+  - [ ] `calculate_min_angle_index(angles: &[i16; 3]) -> i16`
+  - [ ] `calculate_elevation_diffs(base: f64, neighbors: &[f64; 3]) -> [f64; 3]`
+  - [ ] `calculate_min_max_diffs(diffs: &[f64; 3]) -> (f64, f64)`
+- [ ] `Junction`構造体に標高フィールド追加
   ```rust
   pub struct Junction {
       // 既存フィールド...
@@ -146,102 +144,59 @@ backend/data/gsi/
       pub min_angle_elevation_diff: Option<f64>,
   }
   ```
-- [x] ユニットテスト
-  - [x] 最小角インデックス計算のテスト (1,2,3を期待)
-  - [x] 高低差計算のテスト
-- [x] `to_feature()` メソッド更新（標高データをGeoJSON propertiesに追加）
-- [x] 既存の初期化箇所の修正（None値で初期化）
+- [ ] ユニットテスト
+  - [ ] 最小角インデックス計算のテスト
+  - [ ] 高低差計算のテスト
 
 **完了条件**:
-- ✅ `cargo test` でドメインモデルのテスト合格（26テスト全て成功）
-- ✅ 標高データがOptionalで扱える（XMLファイルがない場合もエラーにならない）
-- ✅ `cargo fmt` と `cargo clippy` チェック成功
-- ✅ Phase 7の検索要件を満たすデータ構造（elevation, min_elevation_diff, min_angle_elevation_diff）
+- [ ] `cargo test` でドメインモデルのテスト合格
+- [ ] 標高データがOptionalで扱える（XMLファイルがない場合もエラーにならない）
 
 **工数**: 小（半日程度）
 
-**実装メモ**:
-- `calculate_min_angle_index` は1-based (1,2,3) を返す（PostgreSQL CHECK制約とCASE文に対応）
-- 全フィールドに `#[allow(dead_code)]` 属性を付与（Phase 3以降で使用）
-- `elevation_diffs` はジャンクションノードと隣接ノードの高低差を計算（junction-to-neighbor）
-- `min_angle_elevation_diff` はPostgreSQLのGenerated Columnで自動計算（neighbor-to-neighbor）
-
 ---
 
-## 🔄 Phase 3: インポート処理統合 ✅
+## 🔄 Phase 3: インポート処理統合
 
 **ゴール**: OSMインポート時に標高データを取得・計算
 
 **成果物**:
-- `backend/src/bin/import.rs` - `--elevation-dir`オプション追加
-- `backend/src/importer/mod.rs` - `elevation_dir`引数追加
-- `backend/src/importer/parser.rs` - 標高取得ロジック実装
+- `backend/src/importer/parser.rs` - parse_pbf関数修正
+- `backend/src/importer/mod.rs` - elevationモジュール公開
 
 **タスク**:
-- [x] `parse_pbf`関数に`elevation_dir`引数追加（`gsi_dir`→`elevation_dir`に変更）
+- [ ] `parse_pbf`関数にgsi_dir引数追加
   ```rust
   pub fn parse_pbf(
       input_path: &str,
-      elevation_dir: Option<&str>,  // 実装詳細を隠蔽
+      gsi_dir: Option<&str>,  // 追加
       min_lon: f64,
       min_lat: f64,
       max_lon: f64,
       max_lat: f64,
   ) -> Result<Vec<JunctionForInsert>>
   ```
-- [x] ElevationProviderの初期化
-- [x] 3rd passで標高取得処理追加
-  - [x] ジャンクションノードの標高取得
-  - [x] 3つの隣接ノードの標高取得
-  - [x] 高低差計算
-  - [x] 最小角インデックス計算
-- [x] ログ出力追加
-  - [x] 標高取得成功/失敗の統計
-  - [x] `ElevationStats`構造体で統計管理
-  - [x] `log_elevation_stats()`関数で詳細ログ出力
-- [x] エラーハンドリング
-  - [x] XMLファイルがない場合は標高なしで続行
-  - [x] 一部のノードで標高が取得できない場合の処理
+- [ ] ElevationProviderの初期化
+- [ ] 3rd passで標高取得処理追加
+  - [ ] ジャンクションノードの標高取得
+  - [ ] 3つの隣接ノードの標高取得
+  - [ ] 高低差計算
+  - [ ] 最小角インデックス計算
+- [ ] ログ出力追加
+  - [ ] 標高取得成功/失敗の統計
+  - [ ] 例: "Elevation data retrieved: 1500/2000 (75%)"
+- [ ] エラーハンドリング
+  - [ ] XMLファイルがない場合は標高なしで続行
+  - [ ] 一部のノードで標高が取得できない場合の処理
 
 **完了条件**:
-- ⚠️ `cargo run --bin import -- --input test.pbf --elevation-dir data/gsi --bbox ...` が成功（実行したが地理的不一致により標高データ0件）
-- ✅ 標高データが取得され、JunctionForInsertに格納される（コード実装完了）
-- ✅ ログに標高取得の統計が表示される（ヘルパー関数実装済み）
-- ✅ `cargo test` 全テスト合格（29個、parser.rsに3個のユニットテストを追加）
-- ✅ `cargo fmt --check` 合格
-- ✅ `cargo clippy -- -D warnings` 合格
+- [ ] `cargo run --bin import -- --input test.pbf --gsi-dir data/gsi --bbox ...` が成功
+- [ ] 標高データが取得され、JunctionForInsertに格納される
+- [ ] ログに標高取得の統計が表示される
 
 **工数**: 中（1日程度）
 
 **依存**: Phase 1, 2完了
-
-**実装メモ**:
-- **命名規則の改善**:
-  - `gsi_dir` → `elevation_dir`（実装詳細を隠蔽）
-  - `ElevationData` → `JunctionElevation`（セマンティックな命名）
-- **エラーハンドリング**:
-  - `elevation_dir = None` → 標高取得をスキップ、後方互換性維持
-  - `get_elevation()` エラー → ログ警告して`None`、処理続行
-  - 一部の隣接ノードのみ標高取得 → 全て`None`（整合性維持）
-- **標高の2つの用途**:
-  1. `elevation_diffs` (junction→neighbor): 道路の傾斜分析用
-  2. `min_angle_elevation_diff` (neighbor↔neighbor): Y字路の左右の高低差（Phase 4でDB Generated Columnとして実装予定）
-- **コード品質**:
-  - Clippy警告なし（type complexity解消、redundant closure削除）
-  - 構造体でセマンティックな意味を表現
-- **ヘルパー関数**:
-  - `ElevationStats`: 統計情報管理
-  - `JunctionElevation`: 標高データ構造
-  - `get_elevation_data()`: 標高取得処理
-  - `log_elevation_stats()`: 統計ログ出力
-- **ユニットテスト**（parser.rs）:
-  - `test_elevation_stats_initialization`: ElevationStats構造体の初期化検証
-  - `test_junction_elevation_structure_none`: JunctionElevation構造体（Noneの場合）の検証
-  - `test_junction_elevation_structure_with_data`: JunctionElevation構造体（データありの場合）の検証
-
-**次のステップ**:
-- Phase 4（データベーススキーマ拡張）へ進む
-- Phase 5（インサート処理更新）で実際にDBへ標高データを保存
 
 **実装ポイント**:
 ```rust
@@ -271,7 +226,7 @@ for junction in &y_junctions {
 
 ---
 
-## 🗄️ Phase 4: データベーススキーマ拡張 ✅
+## 🗄️ Phase 4: データベーススキーマ拡張
 
 **ゴール**: 標高データを保存するためのDBスキーマ変更
 
@@ -279,33 +234,27 @@ for junction in &y_junctions {
 - `backend/migrations/003_add_elevation.sql` - マイグレーションSQL
 
 **タスク**:
-- [x] マイグレーションSQL作成
-  - [x] 標高カラム追加（elevation, neighbor_elevation_1~3）
-  - [x] 高低差カラム追加（elevation_diff_1~3）
-  - [x] 最小角インデックス追加（min_angle_index）
-  - [x] 計算済みカラム追加（min_elevation_diff, max_elevation_diff）
-  - [x] Generated Column追加（min_angle_elevation_diff）
-- [x] インデックス作成
-  - [x] `CREATE INDEX idx_y_junctions_elevation ON y_junctions (elevation)`
-  - [x] `CREATE INDEX idx_y_junctions_min_elevation_diff ON y_junctions (min_elevation_diff)`
-  - [x] `CREATE INDEX idx_y_junctions_min_angle_elevation_diff ON y_junctions (min_angle_elevation_diff)`
-- [x] コメント追加（各カラムの説明）
-- [x] マイグレーション実行テスト
+- [ ] マイグレーションSQL作成
+  - [ ] 標高カラム追加（elevation, neighbor_elevation_1~3）
+  - [ ] 高低差カラム追加（elevation_diff_1~3）
+  - [ ] 最小角インデックス追加（min_angle_index）
+  - [ ] 計算済みカラム追加（min_elevation_diff, max_elevation_diff）
+  - [ ] Generated Column追加（min_angle_elevation_diff）
+- [ ] インデックス作成
+  - [ ] `CREATE INDEX idx_y_junctions_elevation ON y_junctions (elevation)`
+  - [ ] `CREATE INDEX idx_y_junctions_min_elevation_diff ON y_junctions (min_elevation_diff)`
+  - [ ] `CREATE INDEX idx_y_junctions_min_angle_elevation_diff ON y_junctions (min_angle_elevation_diff)`
+- [ ] コメント追加（各カラムの説明）
+- [ ] マイグレーション実行テスト
 
 **完了条件**:
-- ✅ `sqlx migrate run` でマイグレーション成功
-- ✅ `\d y_junctions` で新しいカラムが表示される（11カラム追加）
-- ✅ Generated Columnが正しく動作する（min_angle_elevation_diffの自動計算を確認）
+- [ ] `sqlx migrate run` でマイグレーション成功
+- [ ] `\d y_junctions` で新しいカラムが表示される
+- [ ] Generated Columnが正しく動作する
 
 **工数**: 小（半日程度）
 
 **依存**: Phase 3完了（実装確定後）
-
-**実装メモ**:
-- マイグレーション003_add_elevation.sqlを作成し、全ての標高関連カラムを追加
-- 3つのインデックスを作成（WHERE句でNULL値を除外）
-- 全カラムにコメントを追加（高低差のコメントは「何と何の差」か明示）
-- Generated Column (min_angle_elevation_diff) はmin_angle_indexに基づいて自動計算される
 
 **マイグレーションSQL例**:
 ```sql

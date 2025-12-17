@@ -29,44 +29,6 @@ pub struct JunctionForInsert {
     /// Each bearing is in degrees (0-360), where 0° is North, 90° is East
     /// Order corresponds to angle_1, angle_2, angle_3
     pub bearings: [f64; 3],
-
-    #[allow(dead_code)]
-    pub elevation: Option<f64>,
-    #[allow(dead_code)]
-    pub neighbor_elevations: Option<[f64; 3]>,
-    #[allow(dead_code)]
-    pub elevation_diffs: Option<[f64; 3]>,
-    #[allow(dead_code)]
-    pub min_angle_index: Option<i16>,
-    #[allow(dead_code)]
-    pub min_elevation_diff: Option<f64>,
-    #[allow(dead_code)]
-    pub max_elevation_diff: Option<f64>,
-}
-
-impl JunctionForInsert {
-    pub fn calculate_min_angle_index(angles: &[i16; 3]) -> i16 {
-        let (min_idx, _) = angles
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, &angle)| angle)
-            .unwrap();
-        (min_idx + 1) as i16
-    }
-
-    pub fn calculate_elevation_diffs(base: f64, neighbors: &[f64; 3]) -> [f64; 3] {
-        [
-            (base - neighbors[0]).abs(),
-            (base - neighbors[1]).abs(),
-            (base - neighbors[2]).abs(),
-        ]
-    }
-
-    pub fn calculate_min_max_diffs(diffs: &[f64; 3]) -> (f64, f64) {
-        let min = diffs.iter().copied().fold(f64::INFINITY, f64::min);
-        let max = diffs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        (min, max)
-    }
 }
 
 /// Node connection counter for Y-junction detection
@@ -228,50 +190,5 @@ mod tests {
         assert!(!counter.is_valid_highway_type("footway"));
         assert!(!counter.is_valid_highway_type("cycleway"));
         assert!(!counter.is_valid_highway_type("path"));
-    }
-
-    #[test]
-    fn test_calculate_min_angle_index() {
-        assert_eq!(
-            JunctionForInsert::calculate_min_angle_index(&[30, 150, 180]),
-            1
-        );
-        assert_eq!(
-            JunctionForInsert::calculate_min_angle_index(&[150, 30, 180]),
-            2
-        );
-        assert_eq!(
-            JunctionForInsert::calculate_min_angle_index(&[150, 180, 30]),
-            3
-        );
-        assert_eq!(
-            JunctionForInsert::calculate_min_angle_index(&[120, 120, 120]),
-            1
-        );
-    }
-
-    #[test]
-    fn test_calculate_elevation_diffs() {
-        let base = 100.0;
-        let neighbors = [95.0, 105.0, 100.0];
-        let diffs = JunctionForInsert::calculate_elevation_diffs(base, &neighbors);
-        assert_eq!(diffs, [5.0, 5.0, 0.0]);
-
-        let neighbors2 = [110.0, 90.0, 85.0];
-        let diffs2 = JunctionForInsert::calculate_elevation_diffs(base, &neighbors2);
-        assert_eq!(diffs2, [10.0, 10.0, 15.0]);
-    }
-
-    #[test]
-    fn test_calculate_min_max_diffs() {
-        let diffs = [5.0, 10.0, 15.0];
-        let (min, max) = JunctionForInsert::calculate_min_max_diffs(&diffs);
-        assert_eq!(min, 5.0);
-        assert_eq!(max, 15.0);
-
-        let diffs2 = [0.0, 0.0, 0.0];
-        let (min2, max2) = JunctionForInsert::calculate_min_max_diffs(&diffs2);
-        assert_eq!(min2, 0.0);
-        assert_eq!(max2, 0.0);
     }
 }
