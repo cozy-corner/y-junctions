@@ -271,7 +271,7 @@ for junction in &y_junctions {
 
 ---
 
-## 🗄️ Phase 4: データベーススキーマ拡張
+## 🗄️ Phase 4: データベーススキーマ拡張 ✅
 
 **ゴール**: 標高データを保存するためのDBスキーマ変更
 
@@ -279,27 +279,33 @@ for junction in &y_junctions {
 - `backend/migrations/003_add_elevation.sql` - マイグレーションSQL
 
 **タスク**:
-- [ ] マイグレーションSQL作成
-  - [ ] 標高カラム追加（elevation, neighbor_elevation_1~3）
-  - [ ] 高低差カラム追加（elevation_diff_1~3）
-  - [ ] 最小角インデックス追加（min_angle_index）
-  - [ ] 計算済みカラム追加（min_elevation_diff, max_elevation_diff）
-  - [ ] Generated Column追加（min_angle_elevation_diff）
-- [ ] インデックス作成
-  - [ ] `CREATE INDEX idx_y_junctions_elevation ON y_junctions (elevation)`
-  - [ ] `CREATE INDEX idx_y_junctions_min_elevation_diff ON y_junctions (min_elevation_diff)`
-  - [ ] `CREATE INDEX idx_y_junctions_min_angle_elevation_diff ON y_junctions (min_angle_elevation_diff)`
-- [ ] コメント追加（各カラムの説明）
-- [ ] マイグレーション実行テスト
+- [x] マイグレーションSQL作成
+  - [x] 標高カラム追加（elevation, neighbor_elevation_1~3）
+  - [x] 高低差カラム追加（elevation_diff_1~3）
+  - [x] 最小角インデックス追加（min_angle_index）
+  - [x] 計算済みカラム追加（min_elevation_diff, max_elevation_diff）
+  - [x] Generated Column追加（min_angle_elevation_diff）
+- [x] インデックス作成
+  - [x] `CREATE INDEX idx_y_junctions_elevation ON y_junctions (elevation)`
+  - [x] `CREATE INDEX idx_y_junctions_min_elevation_diff ON y_junctions (min_elevation_diff)`
+  - [x] `CREATE INDEX idx_y_junctions_min_angle_elevation_diff ON y_junctions (min_angle_elevation_diff)`
+- [x] コメント追加（各カラムの説明）
+- [x] マイグレーション実行テスト
 
 **完了条件**:
-- [ ] `sqlx migrate run` でマイグレーション成功
-- [ ] `\d y_junctions` で新しいカラムが表示される
-- [ ] Generated Columnが正しく動作する
+- ✅ `sqlx migrate run` でマイグレーション成功
+- ✅ `\d y_junctions` で新しいカラムが表示される（11カラム追加）
+- ✅ Generated Columnが正しく動作する（min_angle_elevation_diffの自動計算を確認）
 
 **工数**: 小（半日程度）
 
 **依存**: Phase 3完了（実装確定後）
+
+**実装メモ**:
+- マイグレーション003_add_elevation.sqlを作成し、全ての標高関連カラムを追加
+- 3つのインデックスを作成（WHERE句でNULL値を除外）
+- 全カラムにコメントを追加（高低差のコメントは「何と何の差」か明示）
+- Generated Column (min_angle_elevation_diff) はmin_angle_indexに基づいて自動計算される
 
 **マイグレーションSQL例**:
 ```sql
