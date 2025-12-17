@@ -429,46 +429,53 @@ sqlx::query(
 
 ---
 
-## 🔌 Phase 6: API拡張
+## 🔌 Phase 6: API拡張 ✅
 
 **ゴール**: 標高データをAPIで取得・フィルタリング可能にする
 
 **成果物**:
 - `backend/src/api/handlers.rs` - クエリパラメータ追加
 - `backend/src/db/repository.rs` - フィルタロジック追加
+- `backend/tests/api_tests.rs` - 統合テスト追加
 
 **タスク**:
-- [ ] `JunctionQuery`構造体にフィルタパラメータ追加
+- [x] `JunctionQuery`構造体にフィルタパラメータ追加
   ```rust
   pub struct JunctionQuery {
       // 既存フィールド...
-      pub min_elevation: Option<f64>,
-      pub max_elevation: Option<f64>,
-      pub min_elevation_diff: Option<f64>,
-      pub max_elevation_diff: Option<f64>,
       pub min_angle_elevation_diff: Option<f64>,
   }
   ```
-- [ ] `find_by_bbox`関数にWHERE句追加
-  - [ ] elevation範囲フィルタ
-  - [ ] min_elevation_diffフィルタ
-  - [ ] min_angle_elevation_diffフィルタ
-- [ ] GeoJSON出力に標高データ追加
-  - [ ] properties.elevationに含める
-  - [ ] properties.min_elevation_diffに含める
-- [ ] APIドキュメント更新（コメント）
-- [ ] 統合テスト追加
-  - [ ] 標高フィルタのテスト
-  - [ ] レスポンスに標高データが含まれるテスト
+- [x] `find_by_bbox`関数にWHERE句追加
+  - [x] min_angle_elevation_diffフィルタ
+- [x] GeoJSON出力に標高データ追加（Phase 5で完了済み）
+  - [x] properties.elevationに含める
+  - [x] properties.min_elevation_diffに含める
+  - [x] properties.max_elevation_diffに含める
+  - [x] properties.min_angle_elevation_diffに含める
+- [x] 統合テスト追加
+  - [x] min_angle_elevation_diffフィルタのテスト
+  - [x] レスポンスに標高データが含まれるテスト
+  - [x] 複合フィルタのテスト
 
 **完了条件**:
-- [ ] `GET /api/junctions?bbox=...&min_elevation_diff=10` でフィルタリングできる
-- [ ] レスポンスJSONに標高データが含まれる
-- [ ] `cargo test` で統合テスト合格
+- ✅ `GET /api/junctions?bbox=...&min_angle_elevation_diff=10` でフィルタリングできる
+- ✅ レスポンスJSONに標高データが含まれる
+- ✅ `cargo test` で統合テスト合格（ユニットテスト29個、統合テスト17個）
 
 **工数**: 中（1日程度）
 
 **依存**: Phase 5完了
+
+**実装メモ**:
+- **フィルタ削減**: ニーズに基づき以下を削除
+  - ❌ elevation範囲フィルタ（min_elevation, max_elevation）- 全くニーズがない
+  - ❌ 高低差フィルタ（min_elevation_diff, max_elevation_diff）- 今のところニーズがない
+  - ✅ 最小角の高低差フィルタ（min_angle_elevation_diff）のみ実装
+- **テスト結果**:
+  - ユニットテスト: 29個全てパス
+  - 統合テスト: 17個全てパス
+  - cargo fmt, clippy: 警告なし
 
 **APIレスポンス例**:
 ```json

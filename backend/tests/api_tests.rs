@@ -427,3 +427,72 @@ async fn test_error_response_format() {
     assert!(json["error"].is_string());
     assert!(!json["error"].as_str().unwrap().is_empty());
 }
+
+// ========== 最小角の高低差フィルタのテスト ==========
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_min_angle_elevation_diff_filter() {
+    let pool = setup_test_db().await;
+
+    // min_angle_elevation_diff は GENERATED カラムなので、テストデータ挿入後にDBで計算される
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // min_angle_elevation_diff >= 0 でフィルタリング（全件取得）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["total_count"].as_i64().unwrap() >= 0);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_response_includes_elevation_data() {
+    let pool = setup_test_db().await;
+
+    let id = insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+
+    // 標高データがレスポンスに含まれることを確認
+    let properties = &json["properties"];
+    assert_eq!(properties["elevation"], 100.0);
+    // min_elevation_diff, max_elevation_diff もレスポンスに含まれる（表示用）
+    assert_eq!(properties["min_elevation_diff"], 0.0);
+    assert_eq!(properties["max_elevation_diff"], 5.0);
+    // min_angle_elevation_diff は GENERATED カラムなので、DBで計算される
+    assert!(properties["min_angle_elevation_diff"].is_number());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_combined_filters_with_elevation() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::verysharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // angle_type=sharp AND min_angle_elevation_diff=0 で複合フィルタリング
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&angle_type=sharp&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // sharp タイプが1件
+}

@@ -9,6 +9,8 @@ pub struct FilterParams {
     pub min_angle_lt: Option<i16>,
     pub min_angle_gt: Option<i16>,
     pub limit: Option<i64>,
+    // 最小角の高低差フィルタ
+    pub min_angle_elevation_diff: Option<f64>,
 }
 
 #[derive(Debug, FromRow)]
@@ -142,6 +144,14 @@ fn add_min_angle_filters(
     }
 }
 
+// ヘルパー関数: 最小角の高低差フィルタを追加
+fn add_elevation_filters(builder: &mut QueryBuilder<sqlx::Postgres>, filters: &FilterParams) {
+    if let Some(min) = filters.min_angle_elevation_diff {
+        builder.push(" AND min_angle_elevation_diff >= ");
+        builder.push_bind(min);
+    }
+}
+
 pub async fn find_by_bbox(
     pool: &PgPool,
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
@@ -172,6 +182,9 @@ pub async fn find_by_bbox(
         filters.min_angle_lt,
         filters.min_angle_gt,
     );
+
+    // 最小角の高低差フィルタ
+    add_elevation_filters(&mut query_builder, &filters);
 
     // LIMIT
     query_builder.push(" LIMIT ");
