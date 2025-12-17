@@ -22,6 +22,10 @@ struct JunctionRow {
     angle_3: i16,
     bearings: Vec<f32>,
     created_at: DateTime<Utc>,
+    elevation: Option<f32>,
+    min_elevation_diff: Option<f32>,
+    max_elevation_diff: Option<f32>,
+    min_angle_elevation_diff: Option<f32>,
 }
 
 #[derive(Debug, FromRow)]
@@ -35,6 +39,10 @@ struct JunctionRowWithCount {
     angle_3: i16,
     bearings: Vec<f32>,
     created_at: DateTime<Utc>,
+    elevation: Option<f32>,
+    min_elevation_diff: Option<f32>,
+    max_elevation_diff: Option<f32>,
+    min_angle_elevation_diff: Option<f32>,
     total_count: i64,
 }
 
@@ -50,10 +58,10 @@ impl From<JunctionRow> for Junction {
             angle_3: row.angle_3,
             bearings: row.bearings,
             created_at: row.created_at,
-            elevation: None,
-            min_elevation_diff: None,
-            max_elevation_diff: None,
-            min_angle_elevation_diff: None,
+            elevation: row.elevation.map(|e| e as f64),
+            min_elevation_diff: row.min_elevation_diff.map(|e| e as f64),
+            max_elevation_diff: row.max_elevation_diff.map(|e| e as f64),
+            min_angle_elevation_diff: row.min_angle_elevation_diff.map(|e| e as f64),
         }
     }
 }
@@ -70,10 +78,10 @@ impl From<JunctionRowWithCount> for Junction {
             angle_3: row.angle_3,
             bearings: row.bearings,
             created_at: row.created_at,
-            elevation: None,
-            min_elevation_diff: None,
-            max_elevation_diff: None,
-            min_angle_elevation_diff: None,
+            elevation: row.elevation.map(|e| e as f64),
+            min_elevation_diff: row.min_elevation_diff.map(|e| e as f64),
+            max_elevation_diff: row.max_elevation_diff.map(|e| e as f64),
+            min_angle_elevation_diff: row.min_angle_elevation_diff.map(|e| e as f64),
         }
     }
 }
@@ -145,6 +153,7 @@ pub async fn find_by_bbox(
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          COUNT(*) OVER() as total_count \
          FROM y_junctions ",
     );
@@ -182,7 +191,8 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx
     let row: Option<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
-         angle_1, angle_2, angle_3, bearings, created_at \
+         angle_1, angle_2, angle_3, bearings, created_at, \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
          FROM y_junctions \
          WHERE id = $1",
     )
