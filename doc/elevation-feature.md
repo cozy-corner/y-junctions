@@ -102,21 +102,15 @@ impl ElevationProvider {
 
 **データ配置**:
 ```
-# worktree環境を考慮した共有ディレクトリ構成（推奨）
-/Users/username/code/y-junctions-worktrees/
-├── shared-data/                    # 全worktreeで共有
-│   └── gsi/
-│       └── xml/
-│           ├── FG-GML-5338-05-00-DEM5A-*.xml
-│           ├── FG-GML-5338-05-01-DEM5A-*.xml
-│           └── ... (解凍済みXMLファイル)
-├── develop-elevation-worktrees/
-│   ├── elevation-phase3/
-│   ├── elevation-phase5/
-│   └── elevation-phase7/           # 各worktreeはデータを含まない
+# リポジトリ外の任意の場所に配置（推奨）
+~/gsi-elevation-data/
+└── xml/
+    ├── FG-GML-5338-05-00-DEM5A-*.xml
+    ├── FG-GML-5338-05-01-DEM5A-*.xml
+    └── ... (解凍済みXMLファイル)
 ```
 
-**注意**: リポジトリ内にデータを置かない。worktreeごとに同じ数GBのデータをコピーすることになる。
+**注意**: リポジトリ内にデータを置かない（数GB～数十GBになるため）。
 
 ---
 
@@ -570,31 +564,21 @@ sqlx::query(
      3. 「ダウンロードファイル確認へ」をクリック
      4. ZIPファイルをダウンロード
 
-2. **データの解凍と配置（worktree環境）**
+2. **データの解凍と配置**
    ```bash
-   # worktreeの親ディレクトリに共有データディレクトリを作成
-   cd /Users/username/code/y-junctions-worktrees
-   mkdir -p shared-data/gsi/xml
+   # リポジトリ外の任意の場所にデータディレクトリを作成
+   mkdir -p ~/gsi-elevation-data/xml
 
    # ダウンロードしたZIPファイルを解凍
-   unzip -j ~/Downloads/'FG-GML-*.zip' -d shared-data/gsi/xml/
+   unzip -j ~/Downloads/'FG-GML-*.zip' -d ~/gsi-elevation-data/xml/
    ```
 
 3. **インポート時のパス指定**
    ```bash
-   # worktreeディレクトリから実行する場合
-   cd elevation-phase7
-
-   # 絶対パス指定（推奨）
+   # --elevation-dirで任意のパスを指定
    cargo run --bin import -- \
      --input data.pbf \
-     --elevation-dir /Users/username/code/y-junctions-worktrees/shared-data/gsi \
-     --bbox 132,33,135,35
-
-   # または相対パス（worktreeから2階層上）
-   cargo run --bin import -- \
-     --input data.pbf \
-     --elevation-dir ../../shared-data/gsi \
+     --elevation-dir ~/gsi-elevation-data \
      --bbox 132,33,135,35
    ```
 
@@ -603,14 +587,9 @@ sqlx::query(
 - 例: 東京都全域の場合、約100-150タイル
 - 合計サイズ: 数百MB〜数GB（対象範囲による）
 
-**worktree環境での利点**:
-- 全worktreeで同じデータを共有（ディスク容量の節約）
-- データは1回だけダウンロード・解凍すればよい
-- 各worktreeにデータをコピーする必要なし
-
 **注意**:
-- リポジトリ内（worktree内）にデータを置かない
-- .gitignoreへの追加は不要（リポジトリ外に配置するため）
+- リポジトリ内にデータを置かない（数GB～数十GBになるため）
+- データは1回ダウンロードすれば使い回せる
 - CI/本番環境では別途データ配置が必要
 
 ---
