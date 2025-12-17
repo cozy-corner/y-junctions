@@ -449,7 +449,8 @@ async fn test_get_junctions_with_min_angle_elevation_diff_filter() {
     .await;
 
     assert_eq!(status, StatusCode::OK);
-    assert!(json["total_count"].as_i64().unwrap() >= 0);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]
