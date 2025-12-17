@@ -4,8 +4,10 @@ import type { AngleType } from '../types';
 interface FilterPanelProps {
   angleTypes: AngleType[];
   minAngleRange: [number, number];
+  minAngleElevationDiff: number | null;
   onToggleAngleType: (type: AngleType) => void;
   onMinAngleRangeChange: (range: [number, number]) => void;
+  onMinAngleElevationDiffChange: (value: number | null) => void;
   onReset: () => void;
 }
 
@@ -24,8 +26,10 @@ const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
 export const FilterPanel = memo(function FilterPanel({
   angleTypes,
   minAngleRange,
+  minAngleElevationDiff,
   onToggleAngleType,
   onMinAngleRangeChange,
+  onMinAngleElevationDiffChange,
   onReset,
 }: FilterPanelProps) {
   const [minValue, maxValue] = minAngleRange;
@@ -109,6 +113,40 @@ export const FilterPanel = memo(function FilterPanel({
 
           <button
             onClick={() => onMinAngleRangeChange([0, 60])}
+            className="angle-range-clear-button"
+          >
+            リセット
+          </button>
+        </div>
+      </div>
+
+      {/* 標高差フィルタ */}
+      <div className="filter-section">
+        <h3>最小角度の標高差</h3>
+        <div className="angle-range-control">
+          <div className="angle-range-header">
+            <span>
+              {minAngleElevationDiff !== null ? `${minAngleElevationDiff}m以上` : '指定なし'}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <input
+              type="range"
+              min="0"
+              max="50"
+              step="1"
+              value={minAngleElevationDiff ?? 0}
+              onChange={e => {
+                const value = Number(e.target.value);
+                onMinAngleElevationDiffChange(value > 0 ? value : null);
+              }}
+              className="angle-range-slider"
+            />
+          </div>
+
+          <button
+            onClick={() => onMinAngleElevationDiffChange(null)}
             className="angle-range-clear-button"
           >
             リセット

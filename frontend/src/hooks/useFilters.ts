@@ -4,16 +4,19 @@ import type { AngleType, FilterParams } from '../types';
 export interface FilterState {
   angleTypes: AngleType[];
   minAngleRange: [number, number];
+  minAngleElevationDiff: number | null;
 }
 
 export function useFilters() {
   const [angleTypes, setAngleTypes] = useState<AngleType[]>(['verysharp', 'sharp', 'normal']);
   const [minAngleRange, setMinAngleRange] = useState<[number, number]>([0, 60]);
+  const [minAngleElevationDiff, setMinAngleElevationDiff] = useState<number | null>(null);
 
   // フィルタをリセット
   const resetFilters = useCallback(() => {
     setAngleTypes(['verysharp', 'sharp', 'normal']);
     setMinAngleRange([0, 60]);
+    setMinAngleElevationDiff(null);
   }, []);
 
   // angle_typeの切り替え
@@ -45,17 +48,24 @@ export function useFilters() {
       params.min_angle_lt = minAngleRange[1];
     }
 
+    // 標高差フィルタ
+    if (minAngleElevationDiff !== null) {
+      params.min_angle_elevation_diff = minAngleElevationDiff;
+    }
+
     return params;
-  }, [angleTypes, minAngleRange]);
+  }, [angleTypes, minAngleRange, minAngleElevationDiff]);
 
   return {
     // 状態
     angleTypes,
     minAngleRange,
+    minAngleElevationDiff,
 
     // セッター
     setAngleTypes,
     setMinAngleRange,
+    setMinAngleElevationDiff,
     toggleAngleType,
 
     // アクション
