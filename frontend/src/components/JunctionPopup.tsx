@@ -11,7 +11,7 @@ const ANGLE_TYPE_LABELS: Record<string, string> = {
 };
 
 export function JunctionPopup({ properties }: JunctionPopupProps) {
-  const { angles, angle_type, streetview_url } = properties;
+  const { angles, angle_type, streetview_url, min_angle_elevation_diff } = properties;
 
   return (
     <div style={{ minWidth: 200 }}>
@@ -22,9 +22,14 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
           <div style={{ marginBottom: 4 }}>
             <strong>タイプ:</strong> {ANGLE_TYPE_LABELS[angle_type]}
           </div>
-          <div>
+          <div style={{ marginBottom: 4 }}>
             <strong>角度:</strong> {angles[0]}°, {angles[1]}°, {angles[2]}°
           </div>
+          {min_angle_elevation_diff !== undefined && (
+            <div>
+              <strong>標高差:</strong> {min_angle_elevation_diff.toFixed(1)}m
+            </div>
+          )}
         </div>
       </div>
 
