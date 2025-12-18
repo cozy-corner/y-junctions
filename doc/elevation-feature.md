@@ -103,14 +103,17 @@ impl ElevationProvider {
 **データ配置**:
 ```
 # リポジトリ外の任意の場所に配置（推奨）
-~/gsi-elevation-data/
-└── xml/
-    ├── FG-GML-5338-05-00-DEM5A-*.xml
-    ├── FG-GML-5338-05-01-DEM5A-*.xml
-    └── ... (解凍済みXMLファイル)
+~/y-junctions-data/
+├── osm/
+│   └── japan-latest.osm.pbf
+└── gsi/
+    └── xml/
+        ├── FG-GML-5338-05-00-DEM5A-*.xml
+        ├── FG-GML-5338-05-01-DEM5A-*.xml
+        └── ... (解凍済みXMLファイル)
 ```
 
-**注意**: リポジトリ内にデータを置かない（数GB～数十GBになるため）。
+**注意**: リポジトリ内にデータを置かない（OSM PBFとGSI XMLで数GB～数十GBになるため）。
 
 ---
 
@@ -567,18 +570,18 @@ sqlx::query(
 2. **データの解凍と配置**
    ```bash
    # リポジトリ外の任意の場所にデータディレクトリを作成
-   mkdir -p ~/gsi-elevation-data/xml
+   mkdir -p ~/y-junctions-data/gsi/xml
 
    # ダウンロードしたZIPファイルを解凍
-   unzip -j ~/Downloads/'FG-GML-*.zip' -d ~/gsi-elevation-data/xml/
+   unzip -j ~/Downloads/'FG-GML-*.zip' -d ~/y-junctions-data/gsi/xml/
    ```
 
 3. **インポート時のパス指定**
    ```bash
-   # --elevation-dirで任意のパスを指定
+   # OSM PBFファイルとGSI標高データを指定
    cargo run --bin import -- \
-     --input data.pbf \
-     --elevation-dir ~/gsi-elevation-data \
+     --input ~/y-junctions-data/osm/japan-latest.osm.pbf \
+     --elevation-dir ~/y-junctions-data/gsi \
      --bbox 132,33,135,35
    ```
 
@@ -637,22 +640,27 @@ sqlx::query(
 ### 本番環境での実行
 
 ```bash
-# 1. GSIデータのダウンロードと配置（本番サーバーで実行）
-mkdir -p /var/lib/gsi-elevation-data/xml
+# 1. データディレクトリの作成と配置（本番サーバーで実行）
+mkdir -p /var/lib/y-junctions-data/osm
+mkdir -p /var/lib/y-junctions-data/gsi/xml
+
+# OSM PBFファイルを配置
+cp japan-latest.osm.pbf /var/lib/y-junctions-data/osm/
+
 # GSI基盤地図情報からダウンロードしたZIPファイルを解凍
-unzip -j 'FG-GML-*.zip' -d /var/lib/gsi-elevation-data/xml/
+unzip -j 'FG-GML-*.zip' -d /var/lib/y-junctions-data/gsi/xml/
 
 # 2. マイグレーション実行
 sqlx migrate run
 
 # 3. データの再インポート
 cargo run --bin import -- \
-  --input data/japan-latest.osm.pbf \
-  --elevation-dir /var/lib/gsi-elevation-data \
+  --input /var/lib/y-junctions-data/osm/japan-latest.osm.pbf \
+  --elevation-dir /var/lib/y-junctions-data/gsi \
   --bbox 123.0,24.0,146.0,46.0
 
 # 4. インポート後、XMLファイルは削除可能（任意）
-# rm -rf /var/lib/gsi-elevation-data
+# rm -rf /var/lib/y-junctions-data/gsi/xml
 ```
 
 ### パフォーマンス目標
