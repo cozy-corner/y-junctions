@@ -134,8 +134,8 @@ export const FilterPanel = memo(function FilterPanel({
             <input
               type="range"
               min="0"
-              max="50"
-              step="1"
+              max="5"
+              step="0.5"
               value={minAngleElevationDiff ?? 0}
               onChange={e => {
                 const value = Number(e.target.value);
