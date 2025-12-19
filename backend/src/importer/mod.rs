@@ -87,7 +87,15 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
         // Get neighbor elevations
         let neighbor_elevs: Vec<Option<f64>> = neighbor_coords
             .iter()
-            .map(|(lat, lon)| elevation_provider.get_elevation(*lat, *lon).ok().flatten())
+            .map(
+                |(lat, lon)| match elevation_provider.get_elevation(*lat, *lon) {
+                    Ok(elev) => elev,
+                    Err(e) => {
+                        tracing::warn!("Failed to get elevation at ({}, {}): {}", lat, lon, e);
+                        None
+                    }
+                },
+            )
             .collect();
 
         // Only update if all neighbor elevations are available
