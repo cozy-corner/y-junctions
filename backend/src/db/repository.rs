@@ -3,6 +3,12 @@ use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool, QueryBuilder};
 use std::collections::HashMap;
 
+/// Elevation data for bulk updates
+///
+/// Note: `min_angle_elevation_diff` is NOT included here because it's a GENERATED ALWAYS column
+/// in PostgreSQL (defined in migration 003_add_elevation.sql). The database automatically
+/// calculates this value based on `min_angle_index` and `neighbor_elevation_*` columns.
+/// Attempting to explicitly set it in an UPDATE statement would cause an error.
 #[derive(Debug, Clone)]
 pub struct ElevationUpdate {
     pub id: i64,
