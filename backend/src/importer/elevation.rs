@@ -4,6 +4,36 @@ use roxmltree::Document;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+fn calculate_mesh_code(lat: f64, lon: f64) -> String {
+    // 基盤地図情報の標準メッシュコード計算式
+    //
+    // 計算方法の出典:
+    // https://qiita.com/jp-96/items/528ff81814b21c6c21e4
+    // 【( ..)φメモメモ】基盤地図情報数値標高モデルのファイル名について
+    //
+    // 緯度メッシュ番号 = INT(緯度 × 120)
+    // 経度メッシュ番号 = INT((経度 - 100) × 80)
+    let lat_mesh = (lat * 120.0).floor() as i32;
+    let lon_mesh = ((lon - 100.0) * 80.0).floor() as i32;
+
+    // 1次メッシュ番号 (pppp)
+    let lat_1 = lat_mesh / 80;
+    let lon_1 = lon_mesh / 80;
+    let first_mesh = format!("{}{}", lat_1, lon_1);
+
+    // 2次メッシュ番号 (qq)
+    let lat_2 = (lat_mesh / 10) % 8;
+    let lon_2 = (lon_mesh / 10) % 8;
+    let second_mesh = format!("{}{}", lat_2, lon_2);
+
+    // 3次メッシュ番号 (rr)
+    let lat_3 = lat_mesh % 10;
+    let lon_3 = lon_mesh % 10;
+    let third_mesh = format!("{}{}", lat_3, lon_3);
+
+    format!("{}-{}-{}", first_mesh, second_mesh, third_mesh)
+}
+
 /// GSI DEM tile (one XML file)
 #[derive(Debug, Clone)]
 struct GsiTile {
@@ -53,10 +83,10 @@ impl GsiTile {
 
 /// Provides elevation data from GSI JPGIS XML files
 pub struct ElevationProvider {
-    /// Cache of loaded tiles, keyed by XML file path
-    cache: HashMap<PathBuf, GsiTile>,
-    /// List of XML file paths (cached at initialization)
-    xml_files: Vec<PathBuf>,
+    /// Cache of loaded tiles, keyed by mesh code
+    cache: HashMap<String, GsiTile>,
+    /// Map from mesh code to XML file path
+    mesh_to_file: HashMap<String, PathBuf>,
 }
 
 impl ElevationProvider {
@@ -64,23 +94,51 @@ impl ElevationProvider {
     ///
     /// # Arguments
     /// * `data_dir` - Path to directory containing GSI .xml files (e.g., "data/gsi")
-    pub fn new(data_dir: &str) -> Self {
-        // Scan for XML files once at initialization
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Successfully initialized with elevation data files
+    /// * `Err(...)` - No XML files found in the specified directory
+    pub fn new(data_dir: &str) -> Result<Self> {
         let pattern = format!("{}/xml/*.xml", data_dir);
         let xml_files: Vec<PathBuf> = glob(&pattern)
             .map(|paths| paths.filter_map(|p| p.ok()).collect())
             .unwrap_or_default();
 
-        tracing::info!(
-            "Initialized ElevationProvider with data directory: {} ({} XML files found)",
-            data_dir,
-            xml_files.len()
+        anyhow::ensure!(
+            !xml_files.is_empty(),
+            "No XML files found in {}. Cannot proceed with elevation import.",
+            pattern
         );
 
-        Self {
-            cache: HashMap::new(),
-            xml_files,
+        let mut mesh_to_file = HashMap::new();
+        for path in xml_files {
+            if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+                if let Some(mesh_code) = Self::extract_mesh_code(filename) {
+                    mesh_to_file.insert(mesh_code, path);
+                }
+            }
         }
+
+        tracing::info!(
+            "Initialized ElevationProvider: {} mesh codes indexed",
+            mesh_to_file.len()
+        );
+
+        Ok(Self {
+            cache: HashMap::new(),
+            mesh_to_file,
+        })
+    }
+
+    fn extract_mesh_code(filename: &str) -> Option<String> {
+        if let Some(start) = filename.find("FG-GML-") {
+            let after_prefix = &filename[start + 7..];
+            let parts: Vec<&str> = after_prefix.split('-').collect();
+            if parts.len() >= 3 {
+                return Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]));
+            }
+        }
+        None
     }
 
     /// Gets elevation at a specific coordinate
@@ -94,36 +152,26 @@ impl ElevationProvider {
     /// * `Ok(None)` - Valid coordinate but no data available (XML parse errors are logged and skipped)
     /// * `Err(...)` - File read error
     pub fn get_elevation(&mut self, lat: f64, lon: f64) -> Result<Option<f64>> {
-        // Try each XML file (using cached file list)
-        for xml_path in &self.xml_files {
-            // Check cache first
-            if let Some(tile) = self.cache.get(xml_path) {
-                if let Some(elevation) = tile.get_elevation(lat, lon) {
-                    return Ok(Some(elevation));
-                }
-                // This tile doesn't contain the coordinate, try next
-                continue;
-            }
+        let mesh_code = calculate_mesh_code(lat, lon);
 
-            // Load and parse XML file
+        if let Some(tile) = self.cache.get(&mesh_code) {
+            return Ok(tile.get_elevation(lat, lon));
+        }
+
+        if let Some(xml_path) = self.mesh_to_file.get(&mesh_code) {
             match Self::parse_xml_file(xml_path) {
                 Ok(tile) => {
-                    // Check if this tile contains the coordinate
-                    if let Some(elevation) = tile.get_elevation(lat, lon) {
-                        // Cache and return
-                        self.cache.insert(xml_path.clone(), tile);
-                        return Ok(Some(elevation));
-                    }
-                    // Cache even if not found (to skip next time)
-                    self.cache.insert(xml_path.clone(), tile);
+                    let elevation = tile.get_elevation(lat, lon);
+                    self.cache.insert(mesh_code, tile);
+                    return Ok(elevation);
                 }
                 Err(e) => {
                     tracing::warn!("Failed to parse XML {:?}: {}", xml_path, e);
+                    return Ok(None);
                 }
             }
         }
 
-        // No tile found containing this coordinate
         Ok(None)
     }
 
@@ -211,12 +259,15 @@ impl ElevationProvider {
             })
             .collect();
 
-        anyhow::ensure!(
-            elevations.len() == grid_width * grid_height,
-            "Elevation count mismatch: expected {}, got {}",
-            grid_width * grid_height,
-            elevations.len()
-        );
+        // Allow partial data for boundary tiles (海や国境でデータが欠損している場合)
+        if elevations.len() != grid_width * grid_height {
+            tracing::debug!(
+                "Partial elevation data in {:?}: expected {}, got {} (boundary tile)",
+                xml_path,
+                grid_width * grid_height,
+                elevations.len()
+            );
+        }
 
         Ok(GsiTile {
             lower_corner,
@@ -267,10 +318,10 @@ mod tests {
 
     #[test]
     fn test_new_provider() {
-        let provider = ElevationProvider::new("tests/fixtures/gsi");
+        let provider = ElevationProvider::new("tests/fixtures/gsi").unwrap();
         assert_eq!(provider.cache.len(), 0);
         assert!(
-            !provider.xml_files.is_empty(),
+            !provider.mesh_to_file.is_empty(),
             "Should find at least one XML file in fixtures"
         );
     }
@@ -278,7 +329,7 @@ mod tests {
     #[test]
     fn test_fixture_data() {
         // Deterministic test using fixture (always runs in CI)
-        let mut provider = ElevationProvider::new(&get_fixture_dir());
+        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
 
         // Test coordinates within fixture bounds (35.0-35.01, 138.0-138.01)
         let result = provider.get_elevation(35.005, 138.005);
@@ -304,7 +355,7 @@ mod tests {
             return;
         };
 
-        let mut provider = ElevationProvider::new(&data_dir);
+        let mut provider = ElevationProvider::new(&data_dir).unwrap();
         let result = provider.get_elevation(TEST_LAT_FUJI, TEST_LON_FUJI);
 
         assert!(result.is_ok());
@@ -326,7 +377,7 @@ mod tests {
             return;
         };
 
-        let mut provider = ElevationProvider::new(&data_dir);
+        let mut provider = ElevationProvider::new(&data_dir).unwrap();
         let result = provider.get_elevation(TEST_LAT_TOKYO, TEST_LON_TOKYO);
 
         assert!(result.is_ok());
@@ -342,17 +393,15 @@ mod tests {
 
     #[test]
     fn test_missing_data() {
-        let mut provider = ElevationProvider::new("/tmp/nonexistent_gsi");
-        let result = provider.get_elevation(35.0, 139.0);
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), None);
+        // Should error when no XML files are found
+        let result = ElevationProvider::new("/tmp/nonexistent_gsi");
+        assert!(result.is_err(), "Should error when no XML files found");
     }
 
     #[test]
     fn test_caching_behavior() {
         // Deterministic test using fixture (always runs in CI)
-        let mut provider = ElevationProvider::new(&get_fixture_dir());
+        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
 
         // First query - should parse XML and cache
         let _ = provider.get_elevation(35.005, 138.005);

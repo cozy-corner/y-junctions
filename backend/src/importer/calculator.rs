@@ -1,4 +1,25 @@
-use geo::{HaversineBearing, Point};
+use geo::{HaversineBearing, HaversineDestination, Point};
+
+/// Calculate a coordinate at a given bearing and distance from a starting point
+///
+/// # Arguments
+/// * `lat` - Latitude of starting point in degrees
+/// * `lon` - Longitude of starting point in degrees
+/// * `bearing` - Bearing in degrees (0-360), where 0° is North, 90° is East
+/// * `distance_meters` - Distance in meters
+///
+/// # Returns
+/// * `(lat, lon)` - Coordinates of destination point
+pub fn calculate_neighbor_coord(
+    lat: f64,
+    lon: f64,
+    bearing: f64,
+    distance_meters: f64,
+) -> (f64, f64) {
+    let point: Point<f64> = Point::new(lon, lat);
+    let destination = point.haversine_destination(bearing, distance_meters);
+    (destination.y(), destination.x()) // (lat, lon)
+}
 
 /// Calculate the bearing (azimuth) from point1 to point2
 /// Returns bearing in degrees (0-360), where 0° is North, 90° is East

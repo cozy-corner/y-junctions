@@ -13,10 +13,6 @@ struct Args {
     /// Bounding box: min_lon,min_lat,max_lon,max_lat
     #[arg(short, long)]
     bbox: String,
-
-    /// Directory containing elevation data (e.g., GSI XML files)
-    #[arg(long)]
-    elevation_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -63,11 +59,10 @@ async fn main() -> Result<()> {
 
     tracing::info!("Database connection established");
 
-    // Import from PBF
-    y_junction_backend::importer::import_from_pbf(
+    // Import OSM data from PBF
+    let count = y_junction_backend::importer::import_osm_data(
         &pool,
         &args.input,
-        args.elevation_dir.as_deref(),
         min_lon,
         min_lat,
         max_lon,
@@ -75,7 +70,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    tracing::info!("Import process completed");
+    tracing::info!("Import process completed: {} junctions imported", count);
 
     Ok(())
 }

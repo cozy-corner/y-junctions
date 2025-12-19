@@ -13,10 +13,22 @@ use tower::util::ServiceExt;
 // テスト用のosm_node_id自動生成
 static TEST_OSM_NODE_ID_COUNTER: AtomicI64 = AtomicI64::new(1);
 
-// テストヘルパー: テスト用DBセットアップ
 async fn setup_test_db() -> PgPool {
     dotenvy::dotenv().ok();
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
+        let prod_url =
+            std::env::var("DATABASE_URL").expect("DATABASE_URL or TEST_DATABASE_URL must be set");
+
+        if !prod_url.ends_with("_test") && !prod_url.contains("test") {
+            panic!(
+                "CRITICAL: Tests are attempting to use production database!\n\
+                     Set TEST_DATABASE_URL to a separate test database."
+            );
+        }
+
+        prod_url
+    });
 
     let pool = PgPoolOptions::new()
         .max_connections(1)
