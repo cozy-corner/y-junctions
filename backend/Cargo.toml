@@ -11,6 +11,10 @@ path = "src/main.rs"
 name = "import"
 path = "src/bin/import.rs"
 
+[[bin]]
+name = "import-elevation"
+path = "src/bin/import_elevation.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.7"
