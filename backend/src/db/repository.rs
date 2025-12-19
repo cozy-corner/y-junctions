@@ -3,6 +3,23 @@ use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool, QueryBuilder};
 use std::collections::HashMap;
 
+/// Elevation data for bulk updates
+///
+/// Note: `min_angle_elevation_diff` is NOT included here because it's a GENERATED ALWAYS column
+/// in PostgreSQL (defined in migration 003_add_elevation.sql). The database automatically
+/// calculates this value based on `min_angle_index` and `neighbor_elevation_*` columns.
+/// Attempting to explicitly set it in an UPDATE statement would cause an error.
+#[derive(Debug, Clone)]
+pub struct ElevationUpdate {
+    pub id: i64,
+    pub elevation: f32,
+    pub neighbor_elevations: [f32; 3],
+    pub elevation_diffs: [f32; 3],
+    pub min_angle_index: i16,
+    pub min_elevation_diff: f32,
+    pub max_elevation_diff: f32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FilterParams {
     pub angle_type: Option<Vec<AngleType>>,
@@ -245,4 +262,93 @@ pub async fn count_total(pool: &PgPool) -> Result<i64, sqlx::Error> {
         .await?;
 
     Ok(row.0)
+}
+
+pub async fn find_all(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
+    let rows: Vec<JunctionRow> = sqlx::query_as(
+        "SELECT id, osm_node_id, \
+         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         angle_1, angle_2, angle_3, bearings, created_at, \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
+         FROM y_junctions",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(Junction::from).collect())
+}
+
+pub async fn bulk_update_elevations(
+    pool: &PgPool,
+    updates: &[ElevationUpdate],
+) -> Result<usize, sqlx::Error> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+
+    // Use transaction for atomicity
+    let mut tx = pool.begin().await?;
+
+    // Batch updates in chunks of 1000 to avoid exceeding PostgreSQL parameter limits
+    const BATCH_SIZE: usize = 1000;
+    let mut total_updated = 0;
+
+    for chunk in updates.chunks(BATCH_SIZE) {
+        let mut query_builder = QueryBuilder::new(
+            "UPDATE y_junctions SET \
+             elevation = updates.elevation, \
+             neighbor_elevation_1 = updates.neighbor_elevation_1, \
+             neighbor_elevation_2 = updates.neighbor_elevation_2, \
+             neighbor_elevation_3 = updates.neighbor_elevation_3, \
+             elevation_diff_1 = updates.elevation_diff_1, \
+             elevation_diff_2 = updates.elevation_diff_2, \
+             elevation_diff_3 = updates.elevation_diff_3, \
+             min_angle_index = updates.min_angle_index, \
+             min_elevation_diff = updates.min_elevation_diff, \
+             max_elevation_diff = updates.max_elevation_diff \
+             FROM (VALUES ",
+        );
+
+        for (i, update) in chunk.iter().enumerate() {
+            if i > 0 {
+                query_builder.push(", ");
+            }
+            query_builder.push("(");
+            query_builder.push_bind(update.id);
+            query_builder.push(", ");
+            query_builder.push_bind(update.elevation);
+            query_builder.push(", ");
+            query_builder.push_bind(update.neighbor_elevations[0]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.neighbor_elevations[1]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.neighbor_elevations[2]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.elevation_diffs[0]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.elevation_diffs[1]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.elevation_diffs[2]);
+            query_builder.push(", ");
+            query_builder.push_bind(update.min_angle_index);
+            query_builder.push(", ");
+            query_builder.push_bind(update.min_elevation_diff);
+            query_builder.push(", ");
+            query_builder.push_bind(update.max_elevation_diff);
+            query_builder.push(")");
+        }
+
+        query_builder.push(
+            ") AS updates(id, elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, \
+             elevation_diff_1, elevation_diff_2, elevation_diff_3, min_angle_index, \
+             min_elevation_diff, max_elevation_diff) \
+             WHERE y_junctions.id = updates.id"
+        );
+
+        let result = query_builder.build().execute(&mut *tx).await?;
+        total_updated += result.rows_affected() as usize;
+    }
+
+    tx.commit().await?;
+    Ok(total_updated)
 }

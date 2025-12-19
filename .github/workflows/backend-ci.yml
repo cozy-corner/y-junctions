@@ -67,6 +67,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://y_junction:y_junction@localhost:5432/y_junction
+      TEST_DATABASE_URL: postgres://y_junction:y_junction@localhost:5432/y_junction
 
     steps:
       - name: Checkout code
