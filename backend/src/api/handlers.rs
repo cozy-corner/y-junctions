@@ -111,11 +111,11 @@ impl JunctionsQuery {
             }
         }
 
-        // max_angle_elevation_diff のバリデーション
+        // max_angle_elevation_diff のバリデーション（下限のみ、上限なし）
         if let Some(v) = self.max_angle_elevation_diff {
-            if !(0.0..=10.0).contains(&v) {
+            if v < 0.0 {
                 return Err(AppError::BadRequest(
-                    "max_angle_elevation_diff must be between 0 and 10",
+                    "max_angle_elevation_diff must be >= 0",
                 ));
             }
         }
