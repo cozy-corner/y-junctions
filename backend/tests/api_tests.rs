@@ -509,3 +509,89 @@ async fn test_get_junctions_combined_filters_with_elevation() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["total_count"], 1); // sharp タイプが1件
 }
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_angle_elevation_diff_filter() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // max_angle_elevation_diff <= 100 でフィルタリング（全件取得）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // 範囲指定: 0 <= min_angle_elevation_diff <= 100
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_invalid_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // min > max エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=10&max_angle_elevation_diff=5",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("min_angle_elevation_diff must be <= max_angle_elevation_diff"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_elevation_diff_out_of_range() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // max > 10 エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=15",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("max_angle_elevation_diff must be between 0 and 10"));
+}
