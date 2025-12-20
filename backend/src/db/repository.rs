@@ -28,6 +28,8 @@ pub struct FilterParams {
     pub limit: Option<i64>,
     // 最小角の高低差フィルタ
     pub min_angle_elevation_diff: Option<f64>,
+    // 最大角の高低差フィルタ（範囲検索用）
+    pub max_angle_elevation_diff: Option<f64>,
 }
 
 #[derive(Debug, FromRow)]
@@ -166,6 +168,11 @@ fn add_elevation_filters(builder: &mut QueryBuilder<sqlx::Postgres>, filters: &F
     if let Some(min) = filters.min_angle_elevation_diff {
         builder.push(" AND min_angle_elevation_diff >= ");
         builder.push_bind(min);
+    }
+
+    if let Some(max) = filters.max_angle_elevation_diff {
+        builder.push(" AND min_angle_elevation_diff <= ");
+        builder.push_bind(max);
     }
 }
 

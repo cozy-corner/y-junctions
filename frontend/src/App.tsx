@@ -15,10 +15,10 @@ function App() {
   const {
     angleTypes,
     minAngleRange,
-    minAngleElevationDiff,
+    elevationDiffRange,
     toggleAngleType,
     setMinAngleRange,
-    setMinAngleElevationDiff,
+    setElevationDiffRange,
     resetFilters,
     toFilterParams,
   } = useFilters();
@@ -64,10 +64,10 @@ function App() {
             <FilterPanel
               angleTypes={angleTypes}
               minAngleRange={minAngleRange}
-              minAngleElevationDiff={minAngleElevationDiff}
+              elevationDiffRange={elevationDiffRange}
               onToggleAngleType={toggleAngleType}
               onMinAngleRangeChange={setMinAngleRange}
-              onMinAngleElevationDiffChange={setMinAngleElevationDiff}
+              onElevationDiffRangeChange={setElevationDiffRange}
               onReset={resetFilters}
             />
           </div>
