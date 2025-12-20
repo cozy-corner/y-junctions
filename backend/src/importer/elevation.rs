@@ -155,7 +155,8 @@ impl ElevationProvider {
         let mesh_code = calculate_mesh_code(lat, lon);
 
         if let Some(tile) = self.cache.get(&mesh_code) {
-            return Ok(tile.get_elevation(lat, lon));
+            // -9999（データ欠損を示す特殊値）をNULLとして扱う
+            return Ok(tile.get_elevation(lat, lon).filter(|&e| e != -9999.0));
         }
 
         if let Some(xml_path) = self.mesh_to_file.get(&mesh_code) {
@@ -163,7 +164,8 @@ impl ElevationProvider {
                 Ok(tile) => {
                     let elevation = tile.get_elevation(lat, lon);
                     self.cache.insert(mesh_code, tile);
-                    return Ok(elevation);
+                    // -9999（データ欠損を示す特殊値）をNULLとして扱う
+                    return Ok(elevation.filter(|&e| e != -9999.0));
                 }
                 Err(e) => {
                     tracing::warn!("Failed to parse XML {:?}: {}", xml_path, e);
@@ -413,5 +415,30 @@ mod tests {
 
         assert_eq!(files_1, files_2, "Cache size should not increase");
         assert!(files_1 > 0, "At least one file should be cached");
+    }
+
+    #[test]
+    fn test_filter_invalid_elevation_value() {
+        // Test that -9999 (data absence marker) is filtered to None
+        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
+
+        // Get elevation from fixture
+        let result = provider.get_elevation(35.005, 138.005);
+        assert!(result.is_ok(), "Should successfully query fixture data");
+
+        // If the result is Some, it should NOT be -9999
+        if let Ok(Some(elevation)) = result {
+            assert_ne!(
+                elevation, -9999.0,
+                "Elevation -9999 should be filtered to None"
+            );
+            // Fixture elevations should be in valid range
+            assert!(
+                (-500.0..=10000.0).contains(&elevation),
+                "Valid elevation should be in reasonable range, got {}m",
+                elevation
+            );
+        }
+        // If result is None, that's also acceptable (no data or filtered -9999)
     }
 }
