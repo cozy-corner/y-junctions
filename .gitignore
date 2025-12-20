@@ -24,6 +24,9 @@ package-lock.json
 .idea/
 *.iml
 
+# MCP
+.serena/
+
 # Data
 data/*.pbf
 data/*.osm
