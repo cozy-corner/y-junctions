@@ -59,7 +59,7 @@ jobs:
           - 5432:5432
 
     env:
-      DATABASE_URL: postgres://y_junction:y_junction@localhost:5432/y_junction
+      TEST_DATABASE_URL: postgres://y_junction:y_junction@localhost:5432/y_junction_test
 
     steps:
       - name: Checkout code
@@ -88,18 +88,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/sqlx
             ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-tools-sqlx-0.8.6-audit-0.21.0
+          key: ${{ runner.os }}-tools-audit-0.21.0
 
       - name: Install tools
         if: steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          cargo install sqlx-cli --version 0.8.6 --no-default-features --features postgres,rustls
           cargo install cargo-audit --version 0.21.0 --locked
 
-      - name: Run database migrations
-        run: sqlx migrate run
+      - name: Create test database
+        run: psql -h localhost -U y_junction -d y_junction -c "CREATE DATABASE y_junction_test;"
+        env:
+          PGPASSWORD: y_junction
 
       - name: Run tests
         run: cargo test --all-features

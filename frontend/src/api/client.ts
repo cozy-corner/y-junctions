@@ -38,6 +38,9 @@ export async function fetchJunctions(
     if (filters?.min_angle_elevation_diff !== undefined) {
       params.append('min_angle_elevation_diff', filters.min_angle_elevation_diff.toString());
     }
+    if (filters?.max_angle_elevation_diff !== undefined) {
+      params.append('max_angle_elevation_diff', filters.max_angle_elevation_diff.toString());
+    }
 
     const url = `${BASE_URL}/junctions?${params.toString()}`;
     const response = await fetch(url);

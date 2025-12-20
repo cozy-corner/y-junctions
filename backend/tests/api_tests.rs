@@ -16,6 +16,28 @@ static TEST_OSM_NODE_ID_COUNTER: AtomicI64 = AtomicI64::new(1);
 async fn setup_test_db() -> PgPool {
     dotenvy::dotenv().ok();
 
+    // TEST_DATABASE_URLとDATABASE_URLが両方設定されている場合、同じデータベースを使っていないかチェック
+    if let (Ok(test_url), Ok(prod_url)) = (
+        std::env::var("TEST_DATABASE_URL"),
+        std::env::var("DATABASE_URL"),
+    ) {
+        // URLからデータベース名を抽出（最後の/以降）
+        let test_db_name = test_url.split('/').next_back().unwrap_or("");
+        let prod_db_name = prod_url.split('/').next_back().unwrap_or("");
+
+        if !test_db_name.is_empty() && test_db_name == prod_db_name {
+            panic!(
+                "CRITICAL: TEST_DATABASE_URL and DATABASE_URL use the same database!\n\
+                     Test database name: {}\n\
+                     Production database name: {}\n\
+                     Test URL: {}\n\
+                     Production URL: {}\n\
+                     These must use different database names to prevent data loss.",
+                test_db_name, prod_db_name, test_url, prod_url
+            );
+        }
+    }
+
     let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
         let prod_url =
             std::env::var("DATABASE_URL").expect("DATABASE_URL or TEST_DATABASE_URL must be set");
@@ -35,6 +57,12 @@ async fn setup_test_db() -> PgPool {
         .connect(&database_url)
         .await
         .expect("Failed to connect to test database");
+
+    // マイグレーション実行（テストDB初回実行時にスキーマを作成）
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     sqlx::query("TRUNCATE TABLE y_junctions RESTART IDENTITY CASCADE")
         .execute(&pool)
@@ -508,4 +536,90 @@ async fn test_get_junctions_combined_filters_with_elevation() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["total_count"], 1); // sharp タイプが1件
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_angle_elevation_diff_filter() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // max_angle_elevation_diff <= 100 でフィルタリング（全件取得）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // 範囲指定: 0 <= min_angle_elevation_diff <= 100
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_invalid_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // min > max エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=10&max_angle_elevation_diff=5",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("min_angle_elevation_diff must be <= max_angle_elevation_diff"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_elevation_diff_negative() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // max < 0 エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=-1",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("max_angle_elevation_diff must be >= 0"));
 }
