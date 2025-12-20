@@ -56,6 +56,8 @@ pub struct JunctionsQuery {
     pub limit: Option<i64>,
     // 最小角の高低差フィルタ
     pub min_angle_elevation_diff: Option<f64>,
+    // 最大角の高低差フィルタ（範囲検索用）
+    pub max_angle_elevation_diff: Option<f64>,
 }
 
 impl JunctionsQuery {
@@ -109,12 +111,33 @@ impl JunctionsQuery {
             }
         }
 
+        // max_angle_elevation_diff のバリデーション
+        if let Some(v) = self.max_angle_elevation_diff {
+            if !(0.0..=10.0).contains(&v) {
+                return Err(AppError::BadRequest(
+                    "max_angle_elevation_diff must be between 0 and 10",
+                ));
+            }
+        }
+
+        // 範囲チェック: min <= max
+        if let (Some(min), Some(max)) =
+            (self.min_angle_elevation_diff, self.max_angle_elevation_diff)
+        {
+            if min > max {
+                return Err(AppError::BadRequest(
+                    "min_angle_elevation_diff must be <= max_angle_elevation_diff",
+                ));
+            }
+        }
+
         Ok(FilterParams {
             angle_type: self.parse_angle_types()?,
             min_angle_lt: self.min_angle_lt,
             min_angle_gt: self.min_angle_gt,
             limit: self.limit,
             min_angle_elevation_diff: self.min_angle_elevation_diff,
+            max_angle_elevation_diff: self.max_angle_elevation_diff,
         })
     }
 }

@@ -752,6 +752,105 @@ pub async fn update_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
 
 ---
 
+## 🔍 Phase 9: 高低差フィルタの範囲検索対応 ✅
+
+**ゴール**: 最小角標高差フィルタを「最小値のみ」から「最小値と最大値の両方を指定可能」な範囲検索に変更
+
+**背景**:
+Phase 6で実装した`min_angle_elevation_diff`フィルタは下限値のみの指定だったが、範囲指定（「1.0m以上3.0m以下」のような条件）のニーズがあった。既存の角度範囲フィルタと同じUIパターンを採用し、統一感のあるUXを実現する。
+
+**成果物**:
+- ✅ `backend/src/api/handlers.rs` - max_angle_elevation_diffパラメータ追加
+- ✅ `backend/src/db/repository.rs` - SQL WHERE句にmax条件追加
+- ✅ `backend/tests/api_tests.rs` - テストケース4個追加
+- ✅ `frontend/src/types/index.ts` - 型定義更新
+- ✅ `frontend/src/hooks/useFilters.ts` - 状態管理を配列に変更
+- ✅ `frontend/src/components/FilterPanel.tsx` - 2つのスライダーUI実装
+- ✅ `frontend/src/App.tsx` - 統合
+- ✅ `frontend/src/api/client.ts` - APIクライアント更新
+
+**タスク**:
+- [ ] Backend: `JunctionsQuery`構造体に`max_angle_elevation_diff`フィールド追加
+- [ ] Backend: バリデーション実装
+  - [ ] max_angle_elevation_diff: 0-10の範囲チェック
+  - [ ] 両方指定時: min <= max をチェック
+- [ ] Backend: `FilterParams`構造体に`max_angle_elevation_diff`追加
+- [ ] Backend: `add_elevation_filters()`関数にSQL条件追加
+  - [ ] `WHERE min_angle_elevation_diff <= ?`
+- [ ] Backend: 統合テスト4個追加
+  - [ ] 最大値のみ指定（正常系）
+  - [ ] 範囲指定（両方指定）（正常系）
+  - [ ] min > max エラー（異常系）
+  - [ ] max > 10 エラー（異常系）
+- [ ] Frontend: 型定義更新
+  - [ ] `FilterParams.max_angle_elevation_diff?: number`
+- [ ] Frontend: `useFilters`フックの状態管理変更
+  - [ ] `minAngleElevationDiff: number | null` → `elevationDiffRange: [number, number]`
+  - [ ] デフォルト値: `[0, 10]`
+  - [ ] `toFilterParams()`で2つのパラメータに分割して送信
+- [ ] Frontend: FilterPanelコンポーネントUI変更
+  - [ ] 1つのスライダー → 2つの独立したスライダー（角度範囲フィルタと同じパターン）
+  - [ ] 最小値スライダー: 0-10m（ステップ0.5m）
+  - [ ] 最大値スライダー: 0-10m（ステップ0.5m）
+  - [ ] 値の衝突防止ロジック（最小間隔0.5m）
+  - [ ] リセットボタン
+- [ ] Frontend: App.tsx統合
+- [ ] Frontend: APIクライアント更新
+  - [ ] max_angle_elevation_diffパラメータ送信
+
+**完了条件**:
+- ✅ API: `GET /api/junctions?bbox=...&min_angle_elevation_diff=2&max_angle_elevation_diff=5` で範囲検索可能
+- ✅ API: 最小値のみ、最大値のみ、両方のいずれも指定可能（完全な下位互換性）
+- ✅ UI: 0-10mの範囲を2つのスライダーで直感的に指定可能
+- ✅ UI: 最大値10を選択した場合「10m以上」と表示され、上限なしでフィルタリング
+- ✅ UI: 角度範囲フィルタと統一されたデザイン
+- ✅ Backend: 全テスト合格（ユニットテスト29個 + 統合テスト18個 = 47個）
+- ✅ Backend: cargo fmt, cargo clippy 合格
+- ✅ Frontend: npm run typecheck, lint, build 合格
+- ✅ 下位互換性維持（既存のmin_angle_elevation_diffパラメータは変更なし）
+
+**工数**: 中（4-6時間）
+
+**依存**: Phase 6, 7完了
+
+**実装メモ**:
+- **下位互換性の保証**:
+  - 既存パラメータ`min_angle_elevation_diff`は変更なし
+  - 新規パラメータ`max_angle_elevation_diff`はオプショナル
+  - 既存のAPIユーザーは影響を受けない
+- **UIパターンの統一**:
+  - 角度範囲フィルタ（FilterPanel.tsx 76-121行目）と同じ実装パターン
+  - 2つの独立したスライダー
+  - handleMinChange/handleMaxChangeで値の衝突を防ぐ
+- **最大範囲の拡張**: 5m → 10m（ユーザー要求による）
+- **「10m以上」の実装**:
+  - スライダーの最大値を10に設定
+  - 10を選択した場合、UIに「10m以上」と表示
+  - バックエンドにはmax_angle_elevation_diffを送信しない（上限なし）
+  - これにより10m以上のすべてのY字路が表示される
+- **デフォルト値の扱い**:
+  - Frontend: `[0, 10]` = 「全範囲（0m 〜 10m以上）」
+  - Backend: 初期値の場合はパラメータを送信しない
+  - `toFilterParams()`で判定: `[0] > 0` または `[1] < 10` の場合のみ送信
+  - デフォルト状態では全データを表示（フィルタなし）
+
+**テスト実行コマンド**:
+```bash
+# Backend
+cargo test --manifest-path backend/Cargo.toml
+cargo fmt --manifest-path backend/Cargo.toml --check
+cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
+
+# Frontend
+cd frontend
+npm run typecheck
+npm run format:check
+npm run lint
+npm run build
+```
+
+---
+
 ## 🔗 関連ドキュメント
 
 - [国土地理院 基盤地図情報](https://fgd.gsi.go.jp/)

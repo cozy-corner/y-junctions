@@ -60,6 +60,7 @@ export interface FilterParams {
   min_angle_lt?: number;
   min_angle_gt?: number;
   min_angle_elevation_diff?: number;
+  max_angle_elevation_diff?: number; // 範囲検索用
   limit?: number;
 }
 
