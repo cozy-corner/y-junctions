@@ -43,8 +43,12 @@ pub fn parse_pbf(
                     // Collect node IDs from this way
                     let node_ids: Vec<i64> = way.refs().collect();
 
+                    // Extract bridge and tunnel tags
+                    let bridge = way.tags().any(|(k, v)| k == "bridge" && v == "yes");
+                    let tunnel = way.tags().any(|(k, v)| k == "tunnel" && v == "yes");
+
                     // Add this way and its nodes to the counter
-                    counter.add_way(way.id(), &node_ids, highway_type);
+                    counter.add_way(way.id(), &node_ids, highway_type, bridge, tunnel);
                 }
             }
         }
@@ -237,6 +241,21 @@ pub fn parse_pbf(
 
             successful_calculations += 1;
 
+            // Get way tags for the connected ways
+            let way_tags = counter.get_connected_way_tags(junction.node_id);
+            let (way_1_bridge, way_1_tunnel) = way_tags
+                .first()
+                .map(|t| (t.bridge, t.tunnel))
+                .unwrap_or((false, false));
+            let (way_2_bridge, way_2_tunnel) = way_tags
+                .get(1)
+                .map(|t| (t.bridge, t.tunnel))
+                .unwrap_or((false, false));
+            let (way_3_bridge, way_3_tunnel) = way_tags
+                .get(2)
+                .map(|t| (t.bridge, t.tunnel))
+                .unwrap_or((false, false));
+
             // Create JunctionForInsert (without elevation data)
             junctions_for_insert.push(JunctionForInsert {
                 osm_node_id: junction.node_id,
@@ -252,6 +271,12 @@ pub fn parse_pbf(
                 min_angle_index: None,
                 min_elevation_diff: None,
                 max_elevation_diff: None,
+                way_1_bridge,
+                way_1_tunnel,
+                way_2_bridge,
+                way_2_tunnel,
+                way_3_bridge,
+                way_3_tunnel,
             });
         } else {
             failed_calculations += 1;
