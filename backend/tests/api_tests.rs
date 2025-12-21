@@ -87,6 +87,12 @@ struct TestJunctionData {
     min_angle_index: Option<i16>,
     min_elevation_diff: Option<f64>,
     max_elevation_diff: Option<f64>,
+    way_1_bridge: bool,
+    way_1_tunnel: bool,
+    way_2_bridge: bool,
+    way_2_tunnel: bool,
+    way_3_bridge: bool,
+    way_3_tunnel: bool,
 }
 
 impl TestJunctionData {
@@ -105,6 +111,12 @@ impl TestJunctionData {
             min_angle_index: Some(1),
             min_elevation_diff: Some(0.0),
             max_elevation_diff: Some(5.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
@@ -123,6 +135,12 @@ impl TestJunctionData {
             min_angle_index: Some(1),
             min_elevation_diff: Some(0.0),
             max_elevation_diff: Some(5.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
@@ -141,12 +159,36 @@ impl TestJunctionData {
             min_angle_index: Some(1),
             min_elevation_diff: Some(0.0),
             max_elevation_diff: Some(10.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
     fn with_location(mut self, lat: f64, lon: f64) -> Self {
         self.lat = lat;
         self.lon = lon;
+        self
+    }
+
+    fn with_bridge_tunnel(
+        mut self,
+        way_1_bridge: bool,
+        way_1_tunnel: bool,
+        way_2_bridge: bool,
+        way_2_tunnel: bool,
+        way_3_bridge: bool,
+        way_3_tunnel: bool,
+    ) -> Self {
+        self.way_1_bridge = way_1_bridge;
+        self.way_1_tunnel = way_1_tunnel;
+        self.way_2_bridge = way_2_bridge;
+        self.way_2_tunnel = way_2_tunnel;
+        self.way_3_bridge = way_3_bridge;
+        self.way_3_tunnel = way_3_tunnel;
         self
     }
 }
@@ -160,6 +202,7 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
             elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
             elevation_diff_1, elevation_diff_2, elevation_diff_3,
             min_angle_index, min_elevation_diff, max_elevation_diff,
+            way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
             created_at
         )
         VALUES (
@@ -167,6 +210,7 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
             $10, $11, $12, $13,
             $14, $15, $16,
             $17, $18, $19,
+            $20, $21, $22, $23, $24, $25,
             NOW()
         )
         RETURNING id
@@ -191,6 +235,12 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     .bind(data.min_angle_index)
     .bind(data.min_elevation_diff)
     .bind(data.max_elevation_diff)
+    .bind(data.way_1_bridge)
+    .bind(data.way_1_tunnel)
+    .bind(data.way_2_bridge)
+    .bind(data.way_2_tunnel)
+    .bind(data.way_3_bridge)
+    .bind(data.way_3_tunnel)
     .fetch_one(pool)
     .await
     .expect("Failed to insert test junction");
@@ -622,4 +672,74 @@ async fn test_get_junctions_with_max_elevation_diff_negative() {
         .as_str()
         .unwrap()
         .contains("max_angle_elevation_diff must be >= 0"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_bridge_tunnel_excluded_with_elevation_filter() {
+    let pool = setup_test_db().await;
+
+    // Insert normal junction
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    // Insert junction with bridge (should be excluded when using elevation filter)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(true, false, false, false, false, false),
+    )
+    .await;
+
+    // Insert junction with tunnel (should be excluded when using elevation filter)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(false, true, false, false, false, false),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // With elevation filter: bridges and tunnels should be excluded
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let features = json["features"].as_array().unwrap();
+    // Only 1 junction should be returned (the normal one)
+    assert_eq!(features.len(), 1);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_bridge_tunnel_included_without_elevation_filter() {
+    let pool = setup_test_db().await;
+
+    // Insert normal junction
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    // Insert junction with bridge
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(true, false, false, false, false, false),
+    )
+    .await;
+
+    // Insert junction with tunnel
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(false, true, false, false, false, false),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // Without elevation filter: all junctions should be included
+    let (status, json) = send_request(app, "/api/junctions?bbox=138.0,34.0,140.0,36.0").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let features = json["features"].as_array().unwrap();
+    // All 3 junctions should be returned
+    assert_eq!(features.len(), 3);
 }

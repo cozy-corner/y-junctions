@@ -176,6 +176,15 @@ fn add_elevation_filters(builder: &mut QueryBuilder<sqlx::Postgres>, filters: &F
     }
 }
 
+// ヘルパー関数: 橋・トンネル除外フィルタを追加（常に除外）
+fn add_bridge_tunnel_filter(builder: &mut QueryBuilder<sqlx::Postgres>) {
+    builder.push(
+        " AND NOT (way_1_bridge OR way_1_tunnel \
+                OR way_2_bridge OR way_2_tunnel \
+                OR way_3_bridge OR way_3_tunnel)",
+    );
+}
+
 pub async fn find_by_bbox(
     pool: &PgPool,
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
@@ -209,6 +218,11 @@ pub async fn find_by_bbox(
 
     // 最小角の高低差フィルタ
     add_elevation_filters(&mut query_builder, &filters);
+
+    // 橋・トンネル除外フィルタ（高低差検索時のみ適用）
+    if filters.min_angle_elevation_diff.is_some() || filters.max_angle_elevation_diff.is_some() {
+        add_bridge_tunnel_filter(&mut query_builder);
+    }
 
     // LIMIT
     query_builder.push(" LIMIT ");

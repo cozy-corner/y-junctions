@@ -1,5 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+/// Way tag information (bridge, tunnel, etc.)
+#[derive(Debug, Clone, Default)]
+pub struct WayTagInfo {
+    pub bridge: bool,
+    pub tunnel: bool,
+}
+
 /// Y-junction candidate information
 #[derive(Debug, Clone)]
 pub struct YJunctionCandidate {
@@ -42,6 +49,14 @@ pub struct JunctionForInsert {
     pub min_elevation_diff: Option<f64>,
     #[allow(dead_code)]
     pub max_elevation_diff: Option<f64>,
+
+    // Way tag information for filtering
+    pub way_1_bridge: bool,
+    pub way_1_tunnel: bool,
+    pub way_2_bridge: bool,
+    pub way_2_tunnel: bool,
+    pub way_3_bridge: bool,
+    pub way_3_tunnel: bool,
 }
 
 impl JunctionForInsert {
@@ -76,6 +91,8 @@ pub struct NodeConnectionCounter {
     node_to_ways: HashMap<i64, HashSet<i64>>,
     /// Maps way_id to list of node_ids in that way
     way_nodes: HashMap<i64, Vec<i64>>,
+    /// Maps way_id to tag information (bridge, tunnel, etc.)
+    way_tags: HashMap<i64, WayTagInfo>,
     /// Valid highway types for Y-junction detection
     valid_highway_types: HashSet<String>,
 }
@@ -107,6 +124,7 @@ impl NodeConnectionCounter {
         Self {
             node_to_ways: HashMap::new(),
             way_nodes: HashMap::new(),
+            way_tags: HashMap::new(),
             valid_highway_types,
         }
     }
@@ -117,9 +135,19 @@ impl NodeConnectionCounter {
     }
 
     /// Add a way and its nodes to the connection counter
-    pub fn add_way(&mut self, way_id: i64, node_ids: &[i64], _highway_type: &str) {
+    pub fn add_way(
+        &mut self,
+        way_id: i64,
+        node_ids: &[i64],
+        _highway_type: &str,
+        bridge: bool,
+        tunnel: bool,
+    ) {
         // Store way nodes
         self.way_nodes.insert(way_id, node_ids.to_vec());
+
+        // Store way tags
+        self.way_tags.insert(way_id, WayTagInfo { bridge, tunnel });
 
         for &node_id in node_ids {
             self.node_to_ways.entry(node_id).or_default().insert(way_id);
@@ -179,6 +207,19 @@ impl NodeConnectionCounter {
             .map(|ways| ways.len())
             .unwrap_or(0)
     }
+
+    /// Get tag information for connected ways of a junction node
+    /// Returns a vector of WayTagInfo for each connected way (should be 3 for Y-junctions)
+    pub fn get_connected_way_tags(&self, junction_node_id: i64) -> Vec<WayTagInfo> {
+        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
+            way_ids
+                .iter()
+                .filter_map(|way_id| self.way_tags.get(way_id).cloned())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 impl Default for NodeConnectionCounter {
@@ -196,13 +237,13 @@ mod tests {
         let mut counter = NodeConnectionCounter::new();
 
         // Way 1: nodes [1, 2, 3]
-        counter.add_way(1, &[1, 2, 3], "residential");
+        counter.add_way(1, &[1, 2, 3], "residential", false, false);
 
         // Way 2: nodes [2, 4]
-        counter.add_way(2, &[2, 4], "tertiary");
+        counter.add_way(2, &[2, 4], "tertiary", false, false);
 
         // Way 3: nodes [2, 5]
-        counter.add_way(3, &[2, 5], "primary");
+        counter.add_way(3, &[2, 5], "primary", false, false);
 
         assert_eq!(counter.get_connection_count(1), 1); // Node 1: 1 way
         assert_eq!(counter.get_connection_count(2), 3); // Node 2: 3 ways (Y-junction)
@@ -273,5 +314,49 @@ mod tests {
         let (min2, max2) = JunctionForInsert::calculate_min_max_diffs(&diffs2);
         assert_eq!(min2, 0.0);
         assert_eq!(max2, 0.0);
+    }
+
+    #[test]
+    fn test_way_tags_storage() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Add ways with different bridge/tunnel tags
+        counter.add_way(1, &[1, 2], "primary", true, false); // bridge
+        counter.add_way(2, &[2, 3], "secondary", false, true); // tunnel
+        counter.add_way(3, &[3, 4], "tertiary", false, false); // neither
+
+        // Verify tags are stored correctly
+        assert!(counter.way_tags.get(&1).unwrap().bridge);
+        assert!(!counter.way_tags.get(&1).unwrap().tunnel);
+
+        assert!(!counter.way_tags.get(&2).unwrap().bridge);
+        assert!(counter.way_tags.get(&2).unwrap().tunnel);
+
+        assert!(!counter.way_tags.get(&3).unwrap().bridge);
+        assert!(!counter.way_tags.get(&3).unwrap().tunnel);
+    }
+
+    #[test]
+    fn test_get_connected_way_tags() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Create a Y-junction at node 2
+        counter.add_way(1, &[1, 2], "primary", true, false); // bridge
+        counter.add_way(2, &[2, 3], "secondary", false, true); // tunnel
+        counter.add_way(3, &[2, 4], "tertiary", false, false); // neither
+
+        let tags = counter.get_connected_way_tags(2);
+
+        // Should return 3 tags (order may vary)
+        assert_eq!(tags.len(), 3);
+
+        // Check that all tags are present
+        let has_bridge = tags.iter().any(|t| t.bridge && !t.tunnel);
+        let has_tunnel = tags.iter().any(|t| !t.bridge && t.tunnel);
+        let has_neither = tags.iter().any(|t| !t.bridge && !t.tunnel);
+
+        assert!(has_bridge, "Should have a bridge way");
+        assert!(has_tunnel, "Should have a tunnel way");
+        assert!(has_neither, "Should have a normal way");
     }
 }
