@@ -190,12 +190,17 @@ pub fn parse_pbf(
     let mut failed_calculations = 0;
 
     for junction in &y_junctions {
-        let neighbor_ids = counter.get_neighboring_nodes(junction.node_id);
+        // Get neighboring nodes with their way tags in consistent order
+        let neighbor_data = counter.get_neighbors_with_tags(junction.node_id);
 
-        if neighbor_ids.len() != 3 {
+        if neighbor_data.len() != 3 {
             failed_calculations += 1;
             continue;
         }
+
+        // Extract neighbor IDs and way tags from the paired data
+        let neighbor_ids: Vec<i64> = neighbor_data.iter().map(|(id, _)| *id).collect();
+        let way_tags: Vec<_> = neighbor_data.iter().map(|(_, tag)| tag).collect();
 
         // Get coordinates for all 3 neighboring nodes
         let neighbor_points: Vec<(f64, f64)> = neighbor_ids
@@ -241,20 +246,10 @@ pub fn parse_pbf(
 
             successful_calculations += 1;
 
-            // Get way tags for the connected ways
-            let way_tags = counter.get_connected_way_tags(junction.node_id);
-            let (way_1_bridge, way_1_tunnel) = way_tags
-                .first()
-                .map(|t| (t.bridge, t.tunnel))
-                .unwrap_or((false, false));
-            let (way_2_bridge, way_2_tunnel) = way_tags
-                .get(1)
-                .map(|t| (t.bridge, t.tunnel))
-                .unwrap_or((false, false));
-            let (way_3_bridge, way_3_tunnel) = way_tags
-                .get(2)
-                .map(|t| (t.bridge, t.tunnel))
-                .unwrap_or((false, false));
+            // Extract bridge/tunnel flags from way tags (now guaranteed to be in same order as angles)
+            let (way_1_bridge, way_1_tunnel) = (way_tags[0].bridge, way_tags[0].tunnel);
+            let (way_2_bridge, way_2_tunnel) = (way_tags[1].bridge, way_tags[1].tunnel);
+            let (way_3_bridge, way_3_tunnel) = (way_tags[2].bridge, way_tags[2].tunnel);
 
             // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {

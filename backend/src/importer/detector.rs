@@ -178,6 +178,38 @@ impl NodeConnectionCounter {
         neighbors
     }
 
+    /// Get neighboring nodes with their way tags in consistent order
+    /// Returns a vector of (neighbor_node_id, way_tag_info) tuples
+    /// This ensures that the neighbor node and its corresponding way tag are paired correctly
+    pub fn get_neighbors_with_tags(&self, junction_node_id: i64) -> Vec<(i64, WayTagInfo)> {
+        let mut result = Vec::new();
+
+        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
+            for &way_id in way_ids {
+                if let Some(nodes) = self.way_nodes.get(&way_id) {
+                    // Find the junction node in the way's node list
+                    if let Some(pos) = nodes.iter().position(|&id| id == junction_node_id) {
+                        // Get the neighboring node (prefer next, fallback to previous)
+                        let neighbor_id = if pos + 1 < nodes.len() {
+                            nodes[pos + 1]
+                        } else if pos > 0 {
+                            nodes[pos - 1]
+                        } else {
+                            continue;
+                        };
+
+                        // Get way tags
+                        let tags = self.way_tags.get(&way_id).cloned().unwrap_or_default();
+
+                        result.push((neighbor_id, tags));
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     /// Find all nodes that have exactly 3 way connections (Y-junction candidates)
     pub fn find_y_junction_candidates(&self) -> Vec<YJunctionCandidate> {
         self.node_to_ways
@@ -358,5 +390,54 @@ mod tests {
         assert!(has_bridge, "Should have a bridge way");
         assert!(has_tunnel, "Should have a tunnel way");
         assert!(has_neither, "Should have a normal way");
+    }
+
+    #[test]
+    fn test_get_neighbors_with_tags() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Create a Y-junction at node 2 with specific neighbor nodes
+        counter.add_way(1, &[10, 2], "primary", true, false); // way 1: bridge, neighbor 10
+        counter.add_way(2, &[2, 3], "secondary", false, true); // way 2: tunnel, neighbor 3
+        counter.add_way(3, &[2, 30], "tertiary", false, false); // way 3: neither, neighbor 30
+
+        let data = counter.get_neighbors_with_tags(2);
+
+        // Should return 3 (neighbor_id, tag) pairs
+        assert_eq!(data.len(), 3, "Should have 3 neighbor-tag pairs");
+
+        // Verify that neighbor IDs are present
+        let neighbor_ids: Vec<i64> = data.iter().map(|(id, _)| *id).collect();
+        assert!(
+            neighbor_ids.contains(&10),
+            "Should contain neighbor node 10"
+        );
+        assert!(neighbor_ids.contains(&3), "Should contain neighbor node 3");
+        assert!(
+            neighbor_ids.contains(&30),
+            "Should contain neighbor node 30"
+        );
+
+        // Verify that neighbor and tag are correctly paired
+        // Find the pair with neighbor 10 (from way 1 with bridge)
+        let pair_10 = data.iter().find(|(id, _)| *id == 10).unwrap();
+        assert!(
+            pair_10.1.bridge && !pair_10.1.tunnel,
+            "Neighbor 10 should be paired with bridge tag"
+        );
+
+        // Find the pair with neighbor 3 (from way 2 with tunnel)
+        let pair_3 = data.iter().find(|(id, _)| *id == 3).unwrap();
+        assert!(
+            !pair_3.1.bridge && pair_3.1.tunnel,
+            "Neighbor 3 should be paired with tunnel tag"
+        );
+
+        // Find the pair with neighbor 30 (from way 3 with neither)
+        let pair_30 = data.iter().find(|(id, _)| *id == 30).unwrap();
+        assert!(
+            !pair_30.1.bridge && !pair_30.1.tunnel,
+            "Neighbor 30 should be paired with neither tag"
+        );
     }
 }
