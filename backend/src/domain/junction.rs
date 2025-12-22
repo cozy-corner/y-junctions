@@ -36,14 +36,13 @@ pub struct Junction {
     pub bearings: Vec<f32>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
-
-    #[allow(dead_code)]
+    /// Elevation of the junction node in meters
     pub elevation: Option<f64>,
-    #[allow(dead_code)]
+    /// Minimum elevation difference among the three angles
     pub min_elevation_diff: Option<f64>,
-    #[allow(dead_code)]
+    /// Maximum elevation difference among the three angles
     pub max_elevation_diff: Option<f64>,
-    #[allow(dead_code)]
+    /// Elevation difference at the minimum angle
     pub min_angle_elevation_diff: Option<f64>,
 }
 
@@ -118,7 +117,7 @@ impl Junction {
                 "elevation": self.elevation,
                 "min_elevation_diff": self.min_elevation_diff,
                 "max_elevation_diff": self.max_elevation_diff,
-                "min_angle_elevation_diff": self.min_angle_elevation_diff
+                "min_angle_elevation_diff": self.min_angle_elevation_diff,
             }
         })
     }
