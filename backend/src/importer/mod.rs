@@ -17,7 +17,7 @@ pub async fn import_osm_data(
 ) -> Result<usize> {
     tracing::info!("Opening PBF file: {}", input_path);
 
-    // Parse PBF and extract Y-junctions (without elevation data)
+    // Parse PBF and extract Y-junctions
     let junctions = parser::parse_pbf(input_path, min_lon, min_lat, max_lon, max_lat)?;
 
     let count = junctions.len();

@@ -256,7 +256,7 @@ pub fn parse_pbf(
                 .map(|t| (t.bridge, t.tunnel))
                 .unwrap_or((false, false));
 
-            // Create JunctionForInsert (without elevation data)
+            // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {
                 osm_node_id: junction.node_id,
                 lat: junction.lat,
