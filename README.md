@@ -76,6 +76,7 @@ git config --get-all gtr.hook.postCreate
 # .envファイルを作成
 cat > .env <<EOF
 DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
+TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
 EOF
 ```
 
@@ -92,24 +93,53 @@ sleep 5
 #### 4. データベーススキーマの作成
 
 ```bash
-# マイグレーションを実行
-docker exec -i integration-db-1 psql -U y_junction -d y_junction < backend/migrations/001_create_y_junctions.sql
+# テスト用DBを作成（テスト実行時に自動でマイグレーション実行される）
+docker exec integration-db-1 psql -U y_junction -c "CREATE DATABASE y_junction_test;"
+
+# 開発用DBにマイグレーションを実行
+cd backend
+sqlx migrate run
+cd ..
 ```
 
 #### 5. データのインポート
 
-OSM PBFファイルから Y字路データをインポートします。
+**データ配置構成:**
+
+```
+~/y-junctions-data/
+├── osm/
+│   └── shikoku-latest.osm.pbf
+└── gsi/
+    └── xml/
+        ├── FG-GML-*.xml
+        └── ...
+```
+
+**5-1. Y字路データのインポート**
 
 ```bash
 # 四国全域のデータをインポート（約1分）
 cargo run --manifest-path backend/Cargo.toml --bin import -- \
-  --input /path/to/shikoku-latest.pbf \
+  --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
   --bbox 132,33,135,35
 ```
 
-**PBFファイルの入手方法:**
-- [Geofabrik](https://download.geofabrik.de/) からダウンロード
+**PBFファイルの準備:**
+- [Geofabrik](https://download.geofabrik.de/)からダウンロード
 - 例: 四国データ `https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf`
+- `~/y-junctions-data/osm/` に配置
+
+**5-2. 標高データの追加**
+
+```bash
+cargo run --manifest-path backend/Cargo.toml --bin import-elevation -- \
+  --elevation-dir ~/y-junctions-data/gsi
+```
+
+**標高データの準備:**
+- [国土地理院 基盤地図情報](https://fgd.gsi.go.jp/download/menu.php)からダウンロード（DEM5A）
+- ZIPを解凍し、XMLファイルを `~/y-junctions-data/gsi/xml/` に配置
 
 **インポート結果の確認:**
 
@@ -141,6 +171,8 @@ cargo run --bin server
 - `angle_type` - 角度タイプでフィルタ（複数指定可: `verysharp`, `sharp`, `normal`）
 - `min_angle_gt` - 最小角度の下限（例: `min_angle_gt=30` で angle_1 > 30°）
 - `min_angle_lt` - 最小角度の上限（例: `min_angle_lt=45` で angle_1 < 45°）
+- `min_angle_elevation_diff` - 最小角高低差の下限（メートル、例: `2.0`）
+- `max_angle_elevation_diff` - 最小角高低差の上限（メートル、例: `5.0`）
 - `limit` - 取得件数の上限（デフォルト: 1000）
 
 **例:**
@@ -153,6 +185,12 @@ curl "http://localhost:8080/api/junctions?bbox=132,33,135,35&angle_type=veryshar
 
 # 最小角度が30°未満のY字路を取得
 curl "http://localhost:8080/api/junctions?bbox=132,33,135,35&min_angle_lt=30"
+
+# 最小角高低差が2m以上のY字路を取得
+curl "http://localhost:8080/api/junctions?bbox=132,33,135,35&min_angle_elevation_diff=2"
+
+# 最小角高低差が2m〜5mのY字路を取得
+curl "http://localhost:8080/api/junctions?bbox=132,33,135,35&min_angle_elevation_diff=2&max_angle_elevation_diff=5"
 ```
 
 **レスポンス:**
@@ -172,6 +210,10 @@ curl "http://localhost:8080/api/junctions?bbox=132,33,135,35&min_angle_lt=30"
         "osm_node_id": 123456789,
         "angles": [35, 145, 180],
         "angle_type": "sharp",
+        "elevation": 245.5,
+        "min_elevation_diff": 12.3,
+        "max_elevation_diff": 18.7,
+        "min_angle_elevation_diff": 15.2,
         "streetview_url": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=34.0,133.5"
       }
     }

@@ -45,13 +45,19 @@ async fn insert_batch(
     }
 
     // Build VALUES clause dynamically for bulk insert
-    // Example: VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, ARRAY[$7, $8, $9]),
-    //                 ($10, ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography, $13, $14, $15, ARRAY[$16, $17, $18]), ...
+    // Example: VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, ARRAY[$7, $8, $9], ...),
+    //                 ($21, ST_SetSRID(ST_MakePoint($22, $23), 4326)::geography, $24, $25, $26, ARRAY[$27, $28, $29], ...), ...
     let mut query = String::from(
-        "INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings) VALUES ",
+        "INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, \
+         elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, \
+         elevation_diff_1, elevation_diff_2, elevation_diff_3, \
+         min_angle_index, min_elevation_diff, max_elevation_diff, \
+         way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel) VALUES ",
     );
 
-    const PARAMS_PER_ROW: usize = 9; // osm_node_id, lon, lat, angle_1, angle_2, angle_3, bearing_1, bearing_2, bearing_3
+    const PARAMS_PER_ROW: usize = 25; // osm_node_id, lon, lat, angle_1, angle_2, angle_3, bearing_1, bearing_2, bearing_3,
+                                      // elevation, neighbor_elevation_1~3, elevation_diff_1~3, min_angle_index, min/max_elevation_diff,
+                                      // way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel
 
     for (i, _) in junctions.iter().enumerate() {
         if i > 0 {
@@ -59,16 +65,33 @@ async fn insert_batch(
         }
         let base = i * PARAMS_PER_ROW + 1;
         query.push_str(&format!(
-            "(${}, ST_SetSRID(ST_MakePoint(${}, ${}), 4326)::geography, ${}, ${}, ${}, ARRAY[${}, ${}, ${}])",
-            base,
-            base + 1,
-            base + 2,
-            base + 3,
-            base + 4,
-            base + 5,
-            base + 6,
-            base + 7,
-            base + 8
+            "(${}, ST_SetSRID(ST_MakePoint(${}, ${}), 4326)::geography, ${}, ${}, ${}, ARRAY[${}, ${}, ${}], \
+             ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${})",
+            base,        // osm_node_id
+            base + 1,    // lon
+            base + 2,    // lat
+            base + 3,    // angle_1
+            base + 4,    // angle_2
+            base + 5,    // angle_3
+            base + 6,    // bearing_1
+            base + 7,    // bearing_2
+            base + 8,    // bearing_3
+            base + 9,    // elevation
+            base + 10,   // neighbor_elevation_1
+            base + 11,   // neighbor_elevation_2
+            base + 12,   // neighbor_elevation_3
+            base + 13,   // elevation_diff_1
+            base + 14,   // elevation_diff_2
+            base + 15,   // elevation_diff_3
+            base + 16,   // min_angle_index
+            base + 17,   // min_elevation_diff
+            base + 18,   // max_elevation_diff
+            base + 19,   // way_1_bridge
+            base + 20,   // way_1_tunnel
+            base + 21,   // way_2_bridge
+            base + 22,   // way_2_tunnel
+            base + 23,   // way_3_bridge
+            base + 24    // way_3_tunnel
         ));
     }
 
@@ -86,7 +109,23 @@ async fn insert_batch(
             .bind(junction.angle_3)
             .bind(junction.bearings[0] as f32)
             .bind(junction.bearings[1] as f32)
-            .bind(junction.bearings[2] as f32);
+            .bind(junction.bearings[2] as f32)
+            .bind(junction.elevation)
+            .bind(junction.neighbor_elevations.map(|e| e[0]))
+            .bind(junction.neighbor_elevations.map(|e| e[1]))
+            .bind(junction.neighbor_elevations.map(|e| e[2]))
+            .bind(junction.elevation_diffs.map(|e| e[0]))
+            .bind(junction.elevation_diffs.map(|e| e[1]))
+            .bind(junction.elevation_diffs.map(|e| e[2]))
+            .bind(junction.min_angle_index)
+            .bind(junction.min_elevation_diff)
+            .bind(junction.max_elevation_diff)
+            .bind(junction.way_1_bridge)
+            .bind(junction.way_1_tunnel)
+            .bind(junction.way_2_bridge)
+            .bind(junction.way_2_tunnel)
+            .bind(junction.way_3_bridge)
+            .bind(junction.way_3_tunnel);
     }
 
     q.execute(&mut **tx).await?;

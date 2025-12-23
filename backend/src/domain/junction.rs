@@ -36,6 +36,14 @@ pub struct Junction {
     pub bearings: Vec<f32>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
+    /// Elevation of the junction node in meters
+    pub elevation: Option<f64>,
+    /// Minimum elevation difference among the three angles
+    pub min_elevation_diff: Option<f64>,
+    /// Maximum elevation difference among the three angles
+    pub max_elevation_diff: Option<f64>,
+    /// Elevation difference at the minimum angle
+    pub min_angle_elevation_diff: Option<f64>,
 }
 
 impl Junction {
@@ -105,7 +113,11 @@ impl Junction {
                 "osm_node_id": self.osm_node_id,
                 "angles": self.angles(),
                 "angle_type": self.angle_type(),
-                "streetview_url": self.streetview_url()
+                "streetview_url": self.streetview_url(),
+                "elevation": self.elevation,
+                "min_elevation_diff": self.min_elevation_diff,
+                "max_elevation_diff": self.max_elevation_diff,
+                "min_angle_elevation_diff": self.min_angle_elevation_diff,
             }
         })
     }
@@ -158,6 +170,10 @@ mod tests {
             angle_3: 180,
             bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         assert_eq!(junction.angle_type(), AngleType::Sharp);
@@ -175,6 +191,10 @@ mod tests {
             angle_3: 180,
             bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         assert_eq!(junction.angles(), [30, 150, 180]);
@@ -192,6 +212,10 @@ mod tests {
             angle_3: 180,
             bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         let url = junction.streetview_url();
@@ -213,6 +237,10 @@ mod tests {
             angle_3: 180,
             bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         let feature = junction.to_feature();
@@ -242,6 +270,10 @@ mod tests {
             angle_3: 180,
             bearings: vec![10.0, 40.0, 190.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         let junction2 = Junction {
@@ -254,6 +286,10 @@ mod tests {
             angle_3: 130,
             bearings: vec![50.0, 160.0, 280.0],
             created_at: Utc::now(),
+            elevation: None,
+            min_elevation_diff: None,
+            max_elevation_diff: None,
+            min_angle_elevation_diff: None,
         };
 
         let collection = Junction::to_feature_collection(vec![junction1, junction2], 2);
