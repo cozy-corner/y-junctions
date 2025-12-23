@@ -59,8 +59,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("Database connection established");
 
-    // Import from PBF
-    y_junction_backend::importer::import_from_pbf(
+    // Import OSM data from PBF
+    let count = y_junction_backend::importer::import_osm_data(
         &pool,
         &args.input,
         min_lon,
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    tracing::info!("Import process completed");
+    tracing::info!("Import process completed: {} junctions imported", count);
 
     Ok(())
 }

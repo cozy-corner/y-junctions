@@ -28,6 +28,7 @@ export interface JunctionProperties {
   angle_type: AngleType;
   streetview_url: string;
   bearings: number[];
+  min_angle_elevation_diff?: number;
 }
 
 export interface JunctionFeature {
@@ -58,6 +59,8 @@ export interface FilterParams {
   angle_type?: AngleType[];
   min_angle_lt?: number;
   min_angle_gt?: number;
+  min_angle_elevation_diff?: number;
+  max_angle_elevation_diff?: number; // 範囲検索用
   limit?: number;
 }
 

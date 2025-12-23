@@ -43,8 +43,12 @@ pub fn parse_pbf(
                     // Collect node IDs from this way
                     let node_ids: Vec<i64> = way.refs().collect();
 
+                    // Extract bridge and tunnel tags
+                    let bridge = way.tags().any(|(k, v)| k == "bridge" && v == "yes");
+                    let tunnel = way.tags().any(|(k, v)| k == "tunnel" && v == "yes");
+
                     // Add this way and its nodes to the counter
-                    counter.add_way(way.id(), &node_ids, highway_type);
+                    counter.add_way(way.id(), &node_ids, highway_type, bridge, tunnel);
                 }
             }
         }
@@ -186,12 +190,17 @@ pub fn parse_pbf(
     let mut failed_calculations = 0;
 
     for junction in &y_junctions {
-        let neighbor_ids = counter.get_neighboring_nodes(junction.node_id);
+        // Get neighboring nodes with their way tags in consistent order
+        let neighbor_data = counter.get_neighbors_with_tags(junction.node_id);
 
-        if neighbor_ids.len() != 3 {
+        if neighbor_data.len() != 3 {
             failed_calculations += 1;
             continue;
         }
+
+        // Extract neighbor IDs and way tags from the paired data
+        let neighbor_ids: Vec<i64> = neighbor_data.iter().map(|(id, _)| *id).collect();
+        let way_tags: Vec<_> = neighbor_data.iter().map(|(_, tag)| tag).collect();
 
         // Get coordinates for all 3 neighboring nodes
         let neighbor_points: Vec<(f64, f64)> = neighbor_ids
@@ -237,6 +246,11 @@ pub fn parse_pbf(
 
             successful_calculations += 1;
 
+            // Extract bridge/tunnel flags from way tags (now guaranteed to be in same order as angles)
+            let (way_1_bridge, way_1_tunnel) = (way_tags[0].bridge, way_tags[0].tunnel);
+            let (way_2_bridge, way_2_tunnel) = (way_tags[1].bridge, way_tags[1].tunnel);
+            let (way_3_bridge, way_3_tunnel) = (way_tags[2].bridge, way_tags[2].tunnel);
+
             // Create JunctionForInsert
             junctions_for_insert.push(JunctionForInsert {
                 osm_node_id: junction.node_id,
@@ -246,6 +260,18 @@ pub fn parse_pbf(
                 angle_2: angles[1],
                 angle_3: angles[2],
                 bearings,
+                elevation: None,
+                neighbor_elevations: None,
+                elevation_diffs: None,
+                min_angle_index: None,
+                min_elevation_diff: None,
+                max_elevation_diff: None,
+                way_1_bridge,
+                way_1_tunnel,
+                way_2_bridge,
+                way_2_tunnel,
+                way_3_bridge,
+                way_3_tunnel,
             });
         } else {
             failed_calculations += 1;
@@ -259,4 +285,9 @@ pub fn parse_pbf(
     );
 
     Ok(junctions_for_insert)
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests removed - elevation logic moved to separate module
 }

@@ -13,16 +13,56 @@ use tower::util::ServiceExt;
 // テスト用のosm_node_id自動生成
 static TEST_OSM_NODE_ID_COUNTER: AtomicI64 = AtomicI64::new(1);
 
-// テストヘルパー: テスト用DBセットアップ
 async fn setup_test_db() -> PgPool {
     dotenvy::dotenv().ok();
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    // TEST_DATABASE_URLとDATABASE_URLが両方設定されている場合、同じデータベースを使っていないかチェック
+    if let (Ok(test_url), Ok(prod_url)) = (
+        std::env::var("TEST_DATABASE_URL"),
+        std::env::var("DATABASE_URL"),
+    ) {
+        // URLからデータベース名を抽出（最後の/以降）
+        let test_db_name = test_url.split('/').next_back().unwrap_or("");
+        let prod_db_name = prod_url.split('/').next_back().unwrap_or("");
+
+        if !test_db_name.is_empty() && test_db_name == prod_db_name {
+            panic!(
+                "CRITICAL: TEST_DATABASE_URL and DATABASE_URL use the same database!\n\
+                     Test database name: {}\n\
+                     Production database name: {}\n\
+                     Test URL: {}\n\
+                     Production URL: {}\n\
+                     These must use different database names to prevent data loss.",
+                test_db_name, prod_db_name, test_url, prod_url
+            );
+        }
+    }
+
+    let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
+        let prod_url =
+            std::env::var("DATABASE_URL").expect("DATABASE_URL or TEST_DATABASE_URL must be set");
+
+        if !prod_url.ends_with("_test") && !prod_url.contains("test") {
+            panic!(
+                "CRITICAL: Tests are attempting to use production database!\n\
+                     Set TEST_DATABASE_URL to a separate test database."
+            );
+        }
+
+        prod_url
+    });
 
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url)
         .await
         .expect("Failed to connect to test database");
+
+    // マイグレーション実行（テストDB初回実行時にスキーマを作成）
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     sqlx::query("TRUNCATE TABLE y_junctions RESTART IDENTITY CASCADE")
         .execute(&pool)
@@ -41,6 +81,18 @@ struct TestJunctionData {
     angle_2: i16,
     angle_3: i16,
     bearings: [f32; 3],
+    elevation: Option<f64>,
+    neighbor_elevations: Option<[f64; 3]>,
+    elevation_diffs: Option<[f64; 3]>,
+    min_angle_index: Option<i16>,
+    min_elevation_diff: Option<f64>,
+    max_elevation_diff: Option<f64>,
+    way_1_bridge: bool,
+    way_1_tunnel: bool,
+    way_2_bridge: bool,
+    way_2_tunnel: bool,
+    way_3_bridge: bool,
+    way_3_tunnel: bool,
 }
 
 impl TestJunctionData {
@@ -53,6 +105,18 @@ impl TestJunctionData {
             angle_2: 145,
             angle_3: 180,
             bearings: [10.0, 45.0, 190.0],
+            elevation: Some(100.0),
+            neighbor_elevations: Some([95.0, 105.0, 100.0]),
+            elevation_diffs: Some([5.0, 5.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(5.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
@@ -65,6 +129,18 @@ impl TestJunctionData {
             angle_2: 140,
             angle_3: 200,
             bearings: [5.0, 25.0, 165.0],
+            elevation: Some(50.0),
+            neighbor_elevations: Some([45.0, 55.0, 50.0]),
+            elevation_diffs: Some([5.0, 5.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(5.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
@@ -77,6 +153,18 @@ impl TestJunctionData {
             angle_2: 150,
             angle_3: 150,
             bearings: [30.0, 90.0, 240.0],
+            elevation: Some(200.0),
+            neighbor_elevations: Some([190.0, 210.0, 200.0]),
+            elevation_diffs: Some([10.0, 10.0, 0.0]),
+            min_angle_index: Some(1),
+            min_elevation_diff: Some(0.0),
+            max_elevation_diff: Some(10.0),
+            way_1_bridge: false,
+            way_1_tunnel: false,
+            way_2_bridge: false,
+            way_2_tunnel: false,
+            way_3_bridge: false,
+            way_3_tunnel: false,
         }
     }
 
@@ -85,14 +173,46 @@ impl TestJunctionData {
         self.lon = lon;
         self
     }
+
+    fn with_bridge_tunnel(
+        mut self,
+        way_1_bridge: bool,
+        way_1_tunnel: bool,
+        way_2_bridge: bool,
+        way_2_tunnel: bool,
+        way_3_bridge: bool,
+        way_3_tunnel: bool,
+    ) -> Self {
+        self.way_1_bridge = way_1_bridge;
+        self.way_1_tunnel = way_1_tunnel;
+        self.way_2_bridge = way_2_bridge;
+        self.way_2_tunnel = way_2_tunnel;
+        self.way_3_bridge = way_3_bridge;
+        self.way_3_tunnel = way_3_tunnel;
+        self
+    }
 }
 
 // テストヘルパー: テストデータ挿入
 async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     let rec = sqlx::query_as::<_, (i64,)>(
         r#"
-        INSERT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, created_at)
-        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY[$7, $8, $9], NOW())
+        INSERT INTO y_junctions (
+            osm_node_id, location, angle_1, angle_2, angle_3, bearings,
+            elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
+            elevation_diff_1, elevation_diff_2, elevation_diff_3,
+            min_angle_index, min_elevation_diff, max_elevation_diff,
+            way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+            created_at
+        )
+        VALUES (
+            $1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6, ARRAY[$7, $8, $9],
+            $10, $11, $12, $13,
+            $14, $15, $16,
+            $17, $18, $19,
+            $20, $21, $22, $23, $24, $25,
+            NOW()
+        )
         RETURNING id
         "#,
     )
@@ -105,6 +225,22 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     .bind(data.bearings[0])
     .bind(data.bearings[1])
     .bind(data.bearings[2])
+    .bind(data.elevation)
+    .bind(data.neighbor_elevations.map(|e| e[0]))
+    .bind(data.neighbor_elevations.map(|e| e[1]))
+    .bind(data.neighbor_elevations.map(|e| e[2]))
+    .bind(data.elevation_diffs.map(|e| e[0]))
+    .bind(data.elevation_diffs.map(|e| e[1]))
+    .bind(data.elevation_diffs.map(|e| e[2]))
+    .bind(data.min_angle_index)
+    .bind(data.min_elevation_diff)
+    .bind(data.max_elevation_diff)
+    .bind(data.way_1_bridge)
+    .bind(data.way_1_tunnel)
+    .bind(data.way_2_bridge)
+    .bind(data.way_2_tunnel)
+    .bind(data.way_3_bridge)
+    .bind(data.way_3_tunnel)
     .fetch_one(pool)
     .await
     .expect("Failed to insert test junction");
@@ -380,4 +516,230 @@ async fn test_error_response_format() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(json["error"].is_string());
     assert!(!json["error"].as_str().unwrap().is_empty());
+}
+
+// ========== 最小角の高低差フィルタのテスト ==========
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_min_angle_elevation_diff_filter() {
+    let pool = setup_test_db().await;
+
+    // min_angle_elevation_diff は GENERATED カラムなので、テストデータ挿入後にDBで計算される
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // min_angle_elevation_diff >= 0 でフィルタリング（全件取得）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_response_includes_elevation_data() {
+    let pool = setup_test_db().await;
+
+    let id = insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+
+    // 標高データがレスポンスに含まれることを確認
+    let properties = &json["properties"];
+    assert_eq!(properties["elevation"], 100.0);
+    // min_elevation_diff, max_elevation_diff もレスポンスに含まれる（表示用）
+    assert_eq!(properties["min_elevation_diff"], 0.0);
+    assert_eq!(properties["max_elevation_diff"], 5.0);
+    // min_angle_elevation_diff は GENERATED カラムなので、DBで計算される
+    assert!(properties["min_angle_elevation_diff"].is_number());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_combined_filters_with_elevation() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::verysharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // angle_type=sharp AND min_angle_elevation_diff=0 で複合フィルタリング
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&angle_type=sharp&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // sharp タイプが1件
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_angle_elevation_diff_filter() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // max_angle_elevation_diff <= 100 でフィルタリング（全件取得）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+    insert_test_junction(&pool, TestJunctionData::normal_type()).await;
+
+    let app = create_test_app(pool);
+
+    // 範囲指定: 0 <= min_angle_elevation_diff <= 100
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0&max_angle_elevation_diff=100",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"].as_i64().unwrap(), 2);
+    assert_eq!(json["features"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_invalid_elevation_diff_range() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // min > max エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=10&max_angle_elevation_diff=5",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("min_angle_elevation_diff must be <= max_angle_elevation_diff"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_max_elevation_diff_negative() {
+    let pool = setup_test_db().await;
+
+    let app = create_test_app(pool);
+
+    // max < 0 エラー
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&max_angle_elevation_diff=-1",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("max_angle_elevation_diff must be >= 0"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_bridge_tunnel_excluded_with_elevation_filter() {
+    let pool = setup_test_db().await;
+
+    // Insert normal junction
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    // Insert junction with bridge (should be excluded when using elevation filter)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(true, false, false, false, false, false),
+    )
+    .await;
+
+    // Insert junction with tunnel (should be excluded when using elevation filter)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(false, true, false, false, false, false),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // With elevation filter: bridges and tunnels should be excluded
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&min_angle_elevation_diff=0",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let features = json["features"].as_array().unwrap();
+    // Only 1 junction should be returned (the normal one)
+    assert_eq!(features.len(), 1);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_bridge_tunnel_included_without_elevation_filter() {
+    let pool = setup_test_db().await;
+
+    // Insert normal junction
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    // Insert junction with bridge
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(true, false, false, false, false, false),
+    )
+    .await;
+
+    // Insert junction with tunnel
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_bridge_tunnel(false, true, false, false, false, false),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // Without elevation filter: all junctions should be included
+    let (status, json) = send_request(app, "/api/junctions?bbox=138.0,34.0,140.0,36.0").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let features = json["features"].as_array().unwrap();
+    // All 3 junctions should be returned
+    assert_eq!(features.len(), 3);
 }
