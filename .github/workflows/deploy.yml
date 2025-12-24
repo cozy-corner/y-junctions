@@ -254,15 +254,24 @@ jobs:
           fi
           echo "Latest revision: $LATEST_REVISION"
 
-          # Get the revision URL
-          REVISION_URL=$(gcloud run revisions describe $LATEST_REVISION \
-            --region=${{ secrets.GCP_REGION }} \
-            --format='value(status.url)')
+          # Get the revision URL with retry (wait for revision to be ready)
+          for retry in {1..30}; do
+            REVISION_URL=$(gcloud run revisions describe $LATEST_REVISION \
+              --region=${{ secrets.GCP_REGION }} \
+              --format='value(status.url)' 2>/dev/null || true)
 
-          if [ -z "$REVISION_URL" ]; then
-            echo "ERROR: Failed to get revision URL for $LATEST_REVISION" >&2
-            exit 1
-          fi
+            if [ -n "$REVISION_URL" ]; then
+              break
+            fi
+
+            if [ $retry -eq 30 ]; then
+              echo "ERROR: Timeout waiting for revision URL after 5 minutes" >&2
+              exit 1
+            fi
+
+            echo "Waiting for revision URL (attempt $retry/30)..."
+            sleep 10
+          done
           echo "Revision URL: $REVISION_URL"
 
           # Health check on the new revision
