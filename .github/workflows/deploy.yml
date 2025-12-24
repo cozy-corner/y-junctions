@@ -233,68 +233,26 @@ jobs:
             --memory 512Mi \
             --cpu 1 \
             --min-instances 0 \
-            --max-instances 10 \
-            --no-traffic
+            --max-instances 10
 
       - name: Verify deployment
         run: |
-          set -euo pipefail
+          SERVICE_URL=$(gcloud run services describe y-junctions-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --format 'value(status.url)')
+          echo "Backend deployed to: $SERVICE_URL"
 
-          # Get the latest revision name
-          LATEST_REVISION=$(gcloud run revisions list \
-            --service=y-junctions-api \
-            --region=${{ secrets.GCP_REGION }} \
-            --format="value(name)" \
-            --sort-by=~createdTime \
-            --limit=1)
-
-          if [ -z "$LATEST_REVISION" ]; then
-            echo "ERROR: Failed to get latest revision" >&2
-            exit 1
-          fi
-          echo "Latest revision: $LATEST_REVISION"
-
-          # Get the revision URL with retry (wait for revision to be ready)
-          for retry in {1..30}; do
-            REVISION_URL=$(gcloud run revisions describe $LATEST_REVISION \
-              --region=${{ secrets.GCP_REGION }} \
-              --format='value(status.url)' 2>/dev/null || true)
-
-            if [ -n "$REVISION_URL" ]; then
-              break
-            fi
-
-            if [ $retry -eq 30 ]; then
-              echo "ERROR: Timeout waiting for revision URL after 5 minutes" >&2
-              exit 1
-            fi
-
-            echo "Waiting for revision URL (attempt $retry/30)..."
-            sleep 10
-          done
-          echo "Revision URL: $REVISION_URL"
-
-          # Health check on the new revision
+          # Health check
           for i in {1..5}; do
-            if curl -f --max-time 30 "$REVISION_URL/health"; then
-              echo "Health check passed on new revision"
+            if curl -f --max-time 30 "$SERVICE_URL/health"; then
+              echo "Health check passed"
               exit 0
             fi
             echo "Health check attempt $i failed, retrying..."
             sleep 10
           done
-          echo "ERROR: Health check failed after 5 attempts" >&2
+          echo "Health check failed after 5 attempts"
           exit 1
-
-      - name: Switch traffic to new revision
-        run: |
-          set -euo pipefail
-
-          echo "Switching traffic to latest revision..."
-          gcloud run services update-traffic y-junctions-api \
-            --to-latest \
-            --region=${{ secrets.GCP_REGION }}
-          echo "Traffic switched successfully"
 
       - name: Rollback on failure
         if: failure()
