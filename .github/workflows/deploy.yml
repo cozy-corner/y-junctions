@@ -238,6 +238,8 @@ jobs:
 
       - name: Verify deployment
         run: |
+          set -euo pipefail
+
           # Get the latest revision name
           LATEST_REVISION=$(gcloud run revisions list \
             --service=y-junctions-api \
@@ -245,12 +247,22 @@ jobs:
             --format="value(name)" \
             --sort-by=~createdTime \
             --limit=1)
+
+          if [ -z "$LATEST_REVISION" ]; then
+            echo "ERROR: Failed to get latest revision" >&2
+            exit 1
+          fi
           echo "Latest revision: $LATEST_REVISION"
 
           # Get the revision URL
           REVISION_URL=$(gcloud run revisions describe $LATEST_REVISION \
             --region=${{ secrets.GCP_REGION }} \
             --format='value(status.url)')
+
+          if [ -z "$REVISION_URL" ]; then
+            echo "ERROR: Failed to get revision URL for $LATEST_REVISION" >&2
+            exit 1
+          fi
           echo "Revision URL: $REVISION_URL"
 
           # Health check on the new revision
@@ -262,11 +274,13 @@ jobs:
             echo "Health check attempt $i failed, retrying..."
             sleep 10
           done
-          echo "Health check failed after 5 attempts"
+          echo "ERROR: Health check failed after 5 attempts" >&2
           exit 1
 
       - name: Switch traffic to new revision
         run: |
+          set -euo pipefail
+
           echo "Switching traffic to latest revision..."
           gcloud run services update-traffic y-junctions-api \
             --to-latest \
