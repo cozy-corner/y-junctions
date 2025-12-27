@@ -52,35 +52,7 @@ git clone <repository-url>
 cd y-junctions
 ```
 
-#### 2. Git Worktree Runner の設定
-
-このプロジェクトでは [git-worktree-runner](https://github.com/coderabbitai/git-worktree-runner) を使用してworktreeを管理します。
-
-```bash
-# worktree作成時の自動セットアップを有効化
-git gtr config add gtr.hook.postCreate "npm install"
-git gtr config add gtr.hook.postCreate "cd frontend && npm install"
-git gtr config add gtr.hook.postCreate "mise trust"
-
-# 設定確認
-git config --get-all gtr.hook.postCreate
-```
-
-この設定により、`git gtr new <branch>` で新しいworktreeを作成すると、自動的に以下が実行されます：
-- 必要な依存関係（husky, lint-staged, フロントエンド開発ツール）のインストール
-- mise設定ファイル（.mise.toml）の自動trust（worktree間のcd移動時のエラー回避）
-
-#### 3. 環境変数の設定
-
-```bash
-# .envファイルを作成
-cat > .env <<EOF
-DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
-TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
-EOF
-```
-
-#### 3. データベースの起動
+#### 2. データベースの起動
 
 ```bash
 # PostgreSQL + PostGISコンテナを起動
@@ -90,16 +62,26 @@ docker-compose up -d
 sleep 5
 ```
 
+#### 3. 環境変数の設定（メインworktree用）
+
+```bash
+# backend/.envファイルを作成
+cat > backend/.env <<EOF
+DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
+TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
+EOF
+```
+
+**注意**: 追加worktreeでは`./scripts/setup-worktree.sh`が自動で.envを作成するため、この手順は不要です。
+
 #### 4. データベーススキーマの作成
 
 ```bash
-# テスト用DBを作成（テスト実行時に自動でマイグレーション実行される）
-docker exec integration-db-1 psql -U y_junction -c "CREATE DATABASE y_junction_test;"
+# テスト用DBを作成
+docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_test;"
 
 # 開発用DBにマイグレーションを実行
-cd backend
-sqlx migrate run
-cd ..
+(cd backend && sqlx migrate run)
 ```
 
 #### 5. データのインポート
@@ -120,9 +102,9 @@ cd ..
 
 ```bash
 # 四国全域のデータをインポート（約1分）
-cargo run --manifest-path backend/Cargo.toml --bin import -- \
+(cd backend && cargo run --bin import -- \
   --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
-  --bbox 132,33,135,35
+  --bbox 132,33,135,35)
 ```
 
 **PBFファイルの準備:**
@@ -133,8 +115,8 @@ cargo run --manifest-path backend/Cargo.toml --bin import -- \
 **5-2. 標高データの追加**
 
 ```bash
-cargo run --manifest-path backend/Cargo.toml --bin import-elevation -- \
-  --elevation-dir ~/y-junctions-data/gsi
+(cd backend && cargo run --bin import-elevation -- \
+  --elevation-dir ~/y-junctions-data/gsi)
 ```
 
 **標高データの準備:**
@@ -145,15 +127,14 @@ cargo run --manifest-path backend/Cargo.toml --bin import-elevation -- \
 
 ```bash
 # データ件数を確認
-docker exec integration-db-1 psql -U y_junction -d y_junction -c "SELECT COUNT(*) FROM y_junctions;"
+docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT COUNT(*) FROM y_junctions;"
 ```
 
 #### 6. バックエンドの起動
 
 ```bash
-# 別のターミナルで実行
-cd backend
-cargo run --bin server
+# backend/ディレクトリから実行
+(cd backend && cargo run --bin server)
 ```
 
 バックエンドは `http://localhost:8080` で起動します。
@@ -262,13 +243,56 @@ npm run dev
 
 フロントエンドは `http://localhost:5173` で起動します。
 
+### Git Worktree Runnerの設定（追加worktree用）
+
+初回セットアップ完了後、以下の設定を行うことで、追加worktree作成時の手間を自動化できます。
+
+```bash
+# worktree作成時の自動セットアップを有効化
+git gtr config add gtr.hook.postCreate "npm install"
+git gtr config add gtr.hook.postCreate "cd frontend && npm install"
+git gtr config add gtr.hook.postCreate "mise trust"
+git gtr config add gtr.hook.postCreate "./scripts/setup-worktree.sh"
+
+# 設定確認
+git config --get-all gtr.hook.postCreate
+```
+
+この設定により、`git gtr new <branch>` で新しいworktreeを作成すると、自動的に以下が実行されます：
+- 必要な依存関係のインストール
+- mise設定ファイルの自動trust
+- **データベース設定（backend/.env）の自動作成**（共有DBを使用、インポート不要）
+
+## Worktree運用
+
+**前提**: 上記の初回セットアップとGit Worktree Runner設定が完了していること。
+
+### 新しいworktree作成
+
+```bash
+git gtr new feature/xxx
+cd ../y-junctions-feature-xxx
+(cd backend && cargo test)  # すぐテスト可能
+```
+
+### スキーマ変更時（稀）
+
+```bash
+# 専用DB作成
+docker exec y-junctions-db psql -U y_junction -c \
+  "CREATE DATABASE my_feature_db TEMPLATE y_junction;"
+
+# .env書き換えとマイグレーション実行
+echo "DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/my_feature_db" > backend/.env
+(cd backend && sqlx migrate run)
+```
+
 ## 開発
 
 ### バックエンドのテスト
 
 ```bash
-cd backend
-cargo test
+(cd backend && cargo test)
 ```
 
 ### フロントエンドのテスト
@@ -283,7 +307,7 @@ npm run lint
 
 ```bash
 # psqlでデータベースに接続
-docker exec -it integration-db-1 psql -U y_junction -d y_junction
+docker exec -it y-junctions-db psql -U y_junction -d y_junction
 ```
 
 ### テーブル構造の確認
@@ -314,20 +338,20 @@ docker stop <container-id>
 ```bash
 # データベースコンテナの状態確認
 docker ps
-docker logs integration-db-1
+docker logs y-junctions-db
 
 # 環境変数の確認
-cat .env
+cat backend/.env
 ```
 
 ### インポートが失敗する
 
 ```bash
-# .envファイルが存在するか確認
-ls -la .env
+# backend/.envファイルが存在するか確認
+ls -la backend/.env
 
 # データベースが起動しているか確認
-docker exec integration-db-1 psql -U y_junction -d y_junction -c "SELECT 1;"
+docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 ```
 
 ## プロジェクト構成
@@ -351,8 +375,7 @@ docker exec integration-db-1 psql -U y_junction -d y_junction -c "SELECT 1;"
 │   │   ├── api/          # APIクライアント
 │   │   └── hooks/        # カスタムフック
 │   └── package.json
-├── docker-compose.yml    # PostgreSQL設定
-└── .env                  # 環境変数
+└── docker-compose.yml    # PostgreSQL設定
 ```
 
 ## 本番環境デプロイ
@@ -372,10 +395,9 @@ DB_URL=$(terraform output -raw neon_connection_uri)
 curl -L -o kanto-latest.osm.pbf https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
 
 # データインポート
-cd ../backend
-DATABASE_URL="$DB_URL" cargo run --bin import -- \
-  --input kanto-latest.osm.pbf \
-  --bbox "138.5,34.5,140.9,36.5"
+(cd backend && DATABASE_URL="$DB_URL" cargo run --bin import -- \
+  --input ../kanto-latest.osm.pbf \
+  --bbox "138.5,34.5,140.9,36.5")
 ```
 
 ## ライセンス
