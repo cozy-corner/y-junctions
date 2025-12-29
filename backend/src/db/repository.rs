@@ -299,6 +299,20 @@ pub async fn find_all(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
     Ok(rows.into_iter().map(Junction::from).collect())
 }
 
+pub async fn find_without_elevation(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
+    let rows: Vec<JunctionRow> = sqlx::query_as(
+        "SELECT id, osm_node_id, \
+         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         angle_1, angle_2, angle_3, bearings, created_at, \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
+         FROM y_junctions WHERE elevation IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(Junction::from).collect())
+}
+
 pub async fn bulk_update_elevations(
     pool: &PgPool,
     updates: &[ElevationUpdate],
