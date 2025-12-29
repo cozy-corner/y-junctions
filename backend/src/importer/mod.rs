@@ -35,11 +35,11 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
     // Initialize elevation provider
     let mut elevation_provider = elevation::ElevationProvider::new(elevation_dir)?;
 
-    // Fetch all junctions from database using repository
-    let junctions = crate::db::repository::find_all(pool).await?;
+    // Fetch junctions without elevation data from database using repository
+    let junctions = crate::db::repository::find_without_elevation(pool).await?;
 
     tracing::info!(
-        "Found {} Y-junctions to enrich with elevation",
+        "Found {} Y-junctions without elevation data to process",
         junctions.len()
     );
 
