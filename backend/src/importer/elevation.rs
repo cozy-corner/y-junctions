@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use glob::glob;
 use roxmltree::Document;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 fn calculate_mesh_code(lat: f64, lon: f64) -> String {
     // 基盤地図情報の標準メッシュコード計算式
@@ -83,10 +85,10 @@ impl GsiTile {
 
 /// Provides elevation data from GSI JPGIS XML files
 pub struct ElevationProvider {
-    /// Cache of loaded tiles, keyed by mesh code
-    cache: HashMap<String, GsiTile>,
-    /// Map from mesh code to XML file path
-    mesh_to_file: HashMap<String, PathBuf>,
+    /// Cache of loaded tiles, keyed by mesh code (thread-safe)
+    cache: Arc<DashMap<String, Arc<GsiTile>>>,
+    /// Map from mesh code to XML file path (read-only, shared)
+    mesh_to_file: Arc<HashMap<String, PathBuf>>,
 }
 
 impl ElevationProvider {
@@ -125,8 +127,8 @@ impl ElevationProvider {
         );
 
         Ok(Self {
-            cache: HashMap::new(),
-            mesh_to_file,
+            cache: Arc::new(DashMap::new()),
+            mesh_to_file: Arc::new(mesh_to_file),
         })
     }
 
@@ -151,30 +153,32 @@ impl ElevationProvider {
     /// * `Ok(Some(elevation))` - Elevation in meters
     /// * `Ok(None)` - Valid coordinate but no data available (XML parse errors are logged and skipped)
     /// * `Err(...)` - File read error
-    pub fn get_elevation(&mut self, lat: f64, lon: f64) -> Result<Option<f64>> {
+    pub fn get_elevation(&self, lat: f64, lon: f64) -> Result<Option<f64>> {
         let mesh_code = calculate_mesh_code(lat, lon);
 
+        // Fast path: check cache (lock-free read)
         if let Some(tile) = self.cache.get(&mesh_code) {
             // -9999（データ欠損を示す特殊値）をNULLとして扱う
             return Ok(tile.get_elevation(lat, lon).filter(|&e| e != -9999.0));
         }
 
-        if let Some(xml_path) = self.mesh_to_file.get(&mesh_code) {
-            match Self::parse_xml_file(xml_path) {
-                Ok(tile) => {
-                    let elevation = tile.get_elevation(lat, lon);
-                    self.cache.insert(mesh_code, tile);
-                    // -9999（データ欠損を示す特殊値）をNULLとして扱う
-                    return Ok(elevation.filter(|&e| e != -9999.0));
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse XML {:?}: {}", xml_path, e);
-                    return Ok(None);
-                }
-            }
-        }
+        // Slow path: parse XML and insert atomically
+        let tile_ref = self.cache.entry(mesh_code.clone()).or_try_insert_with(
+            || -> Result<Arc<GsiTile>> {
+                let xml_path = self
+                    .mesh_to_file
+                    .get(&mesh_code)
+                    .ok_or_else(|| anyhow::anyhow!("Mesh code not found: {}", mesh_code))?;
+                let tile = Self::parse_xml_file(xml_path)?;
+                Ok(Arc::new(tile))
+            },
+        )?;
 
-        Ok(None)
+        // -9999（データ欠損を示す特殊値）をNULLとして扱う
+        Ok(tile_ref
+            .value()
+            .get_elevation(lat, lon)
+            .filter(|&e| e != -9999.0))
     }
 
     /// Parses a GSI JPGIS XML file and extracts elevation data
@@ -331,7 +335,7 @@ mod tests {
     #[test]
     fn test_fixture_data() {
         // Deterministic test using fixture (always runs in CI)
-        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
+        let provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
 
         // Test coordinates within fixture bounds (35.0-35.01, 138.0-138.01)
         let result = provider.get_elevation(35.005, 138.005);
@@ -357,7 +361,7 @@ mod tests {
             return;
         };
 
-        let mut provider = ElevationProvider::new(&data_dir).unwrap();
+        let provider = ElevationProvider::new(&data_dir).unwrap();
         let result = provider.get_elevation(TEST_LAT_FUJI, TEST_LON_FUJI);
 
         assert!(result.is_ok());
@@ -379,7 +383,7 @@ mod tests {
             return;
         };
 
-        let mut provider = ElevationProvider::new(&data_dir).unwrap();
+        let provider = ElevationProvider::new(&data_dir).unwrap();
         let result = provider.get_elevation(TEST_LAT_TOKYO, TEST_LON_TOKYO);
 
         assert!(result.is_ok());
@@ -403,7 +407,7 @@ mod tests {
     #[test]
     fn test_caching_behavior() {
         // Deterministic test using fixture (always runs in CI)
-        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
+        let provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
 
         // First query - should parse XML and cache
         let _ = provider.get_elevation(35.005, 138.005);
@@ -420,7 +424,7 @@ mod tests {
     #[test]
     fn test_filter_invalid_elevation_value() {
         // Test that -9999 (data absence marker) is filtered to None
-        let mut provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
+        let provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
 
         // Get elevation from fixture
         let result = provider.get_elevation(35.005, 138.005);
