@@ -386,19 +386,59 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 - mainブランチへのpush時、GitHub Actionsで自動デプロイ
 
 ### データインポート（本番環境）
+
+ローカルDBでインポート・検証済みのデータを本番DBに転送します。PostgreSQL COPYを使うことで高速に転送できます。
+
 ```bash
-# データベース接続文字列を取得
+# 1. ローカルDBから対象地域のデータをエクスポート（CSV形式）
+docker exec y-junctions-db psql -U y_junction -d y_junction -c "
+COPY (
+  SELECT
+    osm_node_id, location, angle_1, angle_2, angle_3, bearings,
+    elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
+    elevation_diff_1, elevation_diff_2, elevation_diff_3,
+    min_angle_index, min_elevation_diff, max_elevation_diff,
+    way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+    created_at
+  FROM y_junctions
+  WHERE ST_X(location::geometry) BETWEEN <min_lon> AND <max_lon>
+    AND ST_Y(location::geometry) BETWEEN <min_lat> AND <max_lat>
+) TO STDOUT WITH (FORMAT CSV, HEADER)
+" > ~/y-junctions-data/export.csv
+
+# 2. 本番DBの接続情報を取得
 cd terraform
-DB_URL=$(terraform output -raw neon_connection_uri)
+PROD_DB_URL=$(terraform output -raw neon_connection_uri)
 
-# OSMデータをダウンロード（例：関東地方）
-curl -L -o kanto-latest.osm.pbf https://download.geofabrik.de/asia/japan/kanto-latest.osm.pbf
+# 3. 本番DBから既存の対象地域データを削除（同じbboxで）
+docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "
+DELETE FROM y_junctions
+WHERE ST_X(location::geometry) BETWEEN <min_lon> AND <max_lon>
+  AND ST_Y(location::geometry) BETWEEN <min_lat> AND <max_lat>;
+"
 
-# データインポート
-(cd backend && DATABASE_URL="$DB_URL" cargo run --bin import -- \
-  --input ../kanto-latest.osm.pbf \
-  --bbox "138.5,34.5,140.9,36.5")
+# 4. 本番DBに新データをCOPYでインポート
+cat ~/y-junctions-data/export.csv | docker run --rm -i postgres:15-alpine psql "$PROD_DB_URL" -c "
+COPY y_junctions (
+  osm_node_id, location, angle_1, angle_2, angle_3, bearings,
+  elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
+  elevation_diff_1, elevation_diff_2, elevation_diff_3,
+  min_angle_index, min_elevation_diff, max_elevation_diff,
+  way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+  created_at
+) FROM STDIN WITH (FORMAT CSV, HEADER);
+"
+
+# 5. インポート結果を確認
+docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "
+SELECT COUNT(*) as total_records FROM y_junctions;
+"
 ```
+
+**注意事項:**
+- `<min_lon>`, `<max_lon>`, `<min_lat>`, `<max_lat>` は対象地域のbboxに置き換える
+- 削除とインポートで**必ず同じbbox**を使用すること（データ不整合を防ぐため）
+- bboxはGeofabrikのPBFファイル情報から取得できる: `osmium fileinfo <pbf-file>`
 
 ## ライセンス
 
