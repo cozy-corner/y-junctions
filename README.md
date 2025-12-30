@@ -440,6 +440,15 @@ SELECT COUNT(*) as total_records FROM y_junctions;
 - 削除とインポートで**必ず同じbbox**を使用すること（データ不整合を防ぐため）
 - bboxはGeofabrikのPBFファイル情報から取得できる: `osmium fileinfo <pbf-file>`
 
+## ブランチ命名規則
+
+PRのマージ時にGitHub Releasesのドラフトが自動生成されます。ブランチ名によって自動的にラベルが付与されます：
+
+- `data/*` - データ追加（地域拡大） → `region` ラベル
+- `feature/*` - 新機能 → `feature` ラベル
+- `fix/*` または `bugfix/*` - バグ修正 → `bug` ラベル
+- `refactor/*`, `chore/*`, `perf/*`, `style/*` - 内部改善 → `internal` ラベル（リリースノートに含まれない）
+
 ## ライセンス
 
 MIT
