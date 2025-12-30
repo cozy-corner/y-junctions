@@ -1,0 +1,69 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+categories:
+  - title: '🗺️ 地域拡大'
+    labels:
+      - '🗺️ 地域拡大'
+  - title: '✨ 新機能'
+    labels:
+      - '✨ 新機能'
+  - title: '🐛 バグ修正'
+    labels:
+      - '🐛 バグ修正'
+exclude-labels:
+  - 'internal'
+change-template: '- $TITLE (#$NUMBER)'
+template: |
+  ## 変更内容
+
+  $CHANGES
+  
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+version-resolver:
+  major:
+    labels:
+      - 'breaking'
+  minor:
+    labels:
+      - '✨ 新機能'
+      - '🗺️ 地域拡大'
+  patch:
+    labels:
+      - '🐛 バグ修正'
+  default: patch
+autolabeler:
+  # データ追加の自動ラベリング
+  - label: '🗺️ 地域拡大'
+    branch:
+      - '/^data\/.*/'
+      - '/^region\/.*/'
+      - '/^import\/.*/'
+    files:
+      - 'doc/data-updates.md'
+    title:
+      - '/地域|データ|インポート|追加|道|県|府/'
+  
+  # 新機能の自動ラベリング
+  - label: '✨ 新機能'
+    branch:
+      - '/^feature\/.*/'
+    title:
+      - '/feat|feature|新機能|機能追加/'
+  
+  # バグ修正の自動ラベリング
+  - label: '🐛 バグ修正'
+    branch:
+      - '/^fix\/.*/'
+      - '/^bugfix\/.*/'
+    title:
+      - '/fix|bug|修正|バグ/'
+  
+  # 内部改善（リリースノートに含めない）
+  - label: 'internal'
+    branch:
+      - '/^refactor\/.*/'
+      - '/^chore\/.*/'
+      - '/^perf\/.*/'
+      - '/^style\/.*/'
+    title:
+      - '/refactor|chore|perf|style|リファクタ|チューニング|最適化/'
