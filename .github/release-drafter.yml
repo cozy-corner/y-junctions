@@ -1,15 +1,15 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
-  - title: '🗺️ 地域拡大'
+  - title: '🗺️ Region Expansion'
     labels:
-      - '🗺️ 地域拡大'
-  - title: '✨ 新機能'
+      - 'region'
+  - title: '✨ Features'
     labels:
-      - '✨ 新機能'
-  - title: '🐛 バグ修正'
+      - 'feature'
+  - title: '🐛 Bug Fixes'
     labels:
-      - '🐛 バグ修正'
+      - 'bug'
 exclude-labels:
   - 'internal'
 change-template: '- $TITLE (#$NUMBER)'
@@ -25,15 +25,15 @@ version-resolver:
       - 'breaking'
   minor:
     labels:
-      - '✨ 新機能'
-      - '🗺️ 地域拡大'
+      - 'feature'
+      - 'region'
   patch:
     labels:
-      - '🐛 バグ修正'
+      - 'bug'
   default: patch
 autolabeler:
   # データ追加の自動ラベリング
-  - label: '🗺️ 地域拡大'
+  - label: 'region'
     branch:
       - '/^data\/.*/'
       - '/^region\/.*/'
@@ -44,14 +44,14 @@ autolabeler:
       - '/地域|データ|インポート|追加|道|県|府/'
   
   # 新機能の自動ラベリング
-  - label: '✨ 新機能'
+  - label: 'feature'
     branch:
       - '/^feature\/.*/'
     title:
       - '/feat|feature|新機能|機能追加/'
   
   # バグ修正の自動ラベリング
-  - label: '🐛 バグ修正'
+  - label: 'bug'
     branch:
       - '/^fix\/.*/'
       - '/^bugfix\/.*/'
