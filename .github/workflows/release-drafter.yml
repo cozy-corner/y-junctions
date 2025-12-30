@@ -1,0 +1,33 @@
+# Release Drafter Workflow
+#
+# Triggers:
+# - push to main: Updates release draft with merged PRs
+# - pull_request events: Applies automatic labels via autolabeler
+#
+# Permissions:
+# - contents: write - Required to create/update GitHub Releases
+# - pull-requests: write - Required to apply labels via autolabeler
+
+name: Release Drafter
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+
+jobs:
+  update_release_draft:
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
