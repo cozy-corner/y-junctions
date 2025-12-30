@@ -25,7 +25,7 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
           <div style={{ marginBottom: 4 }}>
             <strong>角度:</strong> {angles[0]}°, {angles[1]}°, {angles[2]}°
           </div>
-          {min_angle_elevation_diff !== undefined && (
+          {min_angle_elevation_diff != null && (
             <div>
               <strong>標高差:</strong> {min_angle_elevation_diff.toFixed(1)}m
             </div>
