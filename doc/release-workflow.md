@@ -11,12 +11,12 @@
 
 | ブランチプレフィックス | 説明 | 自動ラベル | リリースノートに含む |
 |-------------------|------|-----------|-----------------|
-| `data/` | データ追加（地域拡大） | 🗺️ 地域拡大 | ✅ はい |
-| `region/` | データ追加（地域拡大） | 🗺️ 地域拡大 | ✅ はい |
-| `import/` | データ追加（地域拡大） | 🗺️ 地域拡大 | ✅ はい |
-| `feature/` | 新機能追加 | ✨ 新機能 | ✅ はい |
-| `fix/` | バグ修正 | 🐛 バグ修正 | ✅ はい |
-| `bugfix/` | バグ修正 | 🐛 バグ修正 | ✅ はい |
+| `data/` | データ追加（地域拡大） | region | ✅ はい |
+| `region/` | データ追加（地域拡大） | region | ✅ はい |
+| `import/` | データ追加（地域拡大） | region | ✅ はい |
+| `feature/` | 新機能追加 | feature | ✅ はい |
+| `fix/` | バグ修正 | bug | ✅ はい |
+| `bugfix/` | バグ修正 | bug | ✅ はい |
 | `refactor/` | リファクタリング | internal | ❌ いいえ |
 | `chore/` | 雑務・設定変更 | internal | ❌ いいえ |
 | `perf/` | パフォーマンス改善 | internal | ❌ いいえ |
@@ -43,7 +43,7 @@ gh pr create --title "大阪府のY字路データを追加（1,200箇所）"
 ```
 
 **自動処理:**
-- ブランチ名 `data/osaka-prefecture` から自動的に「🗺️ 地域拡大」ラベルが付与される
+- ブランチ名 `data/osaka-prefecture` から自動的に「region」ラベルが付与される
 - マージ後、GitHub Releases のドラフトに自動追加される
 
 ---
@@ -66,7 +66,7 @@ gh pr create --title "距離測定機能を追加"
 ```
 
 **自動処理:**
-- ブランチ名 `feature/distance-measurement` から自動的に「✨ 新機能」ラベルが付与される
+- ブランチ名 `feature/distance-measurement` から自動的に「feature」ラベルが付与される
 - マージ後、GitHub Releases のドラフトに自動追加される
 
 ---
@@ -89,7 +89,7 @@ gh pr create --title "検索結果が表示されない問題を修正"
 ```
 
 **自動処理:**
-- ブランチ名 `fix/search-result-display` から自動的に「🐛 バグ修正」ラベルが付与される
+- ブランチ名 `fix/search-result-display` から自動的に「bug」ラベルが付与される
 - マージ後、GitHub Releases のドラフトに自動追加される
 
 ---
@@ -139,16 +139,16 @@ PRがマージされると、自動的に GitHub Releases のドラフトが更�
 
 release-drafter が以下の条件でラベルを自動付与します：
 
-### 🗺️ 地域拡大
+### region
 - ブランチ名が `data/`, `region/`, `import/` で始まる
 - `doc/data-updates.md` が変更されている
 - PRタイトルに「地域」「データ」「インポート」「追加」「道」「県」「府」が含まれる
 
-### ✨ 新機能
+### feature
 - ブランチ名が `feature/` で始まる
 - PRタイトルに「feat」「feature」「新機能」「機能追加」が含まれる
 
-### 🐛 バグ修正
+### bug
 - ブランチ名が `fix/`, `bugfix/` で始まる
 - PRタイトルに「fix」「bug」「修正」「バグ」が含まれる
 
