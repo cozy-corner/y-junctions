@@ -444,7 +444,7 @@ SELECT COUNT(*) as total_records FROM y_junctions;
 
 PRのマージ時にGitHub Releasesのドラフトが自動生成されます。ブランチ名によって自動的にラベルが付与されます：
 
-- `data/*` - データ追加（地域拡大） → `region` ラベル
+- `data/*` - データ追加・更新 → `data` ラベル
 - `feature/*` - 新機能 → `feature` ラベル
 - `fix/*` または `bugfix/*` - バグ修正 → `bug` ラベル
 - `refactor/*`, `chore/*`, `perf/*`, `style/*` - 内部改善 → `internal` ラベル（リリースノートに含まれない）
