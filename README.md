@@ -447,7 +447,8 @@ PRのマージ時にGitHub Releasesのドラフトが自動生成されます。
 - `data/*` - データ追加・更新 → `data` ラベル
 - `feature/*` - 新機能 → `feature` ラベル
 - `fix/*` または `bugfix/*` - バグ修正 → `bug` ラベル
-- `refactor/*`, `chore/*`, `perf/*`, `style/*` - 内部改善 → `internal` ラベル（リリースノートに含まれない）
+- `refactor/*`, `chore/*`, `perf/*`, `style/*`, `docs/*` - 内部改善・ドキュメント → `internal` ラベル（リリースノートに含まれない）
+- `dependabot/*` または dependabot作成のPR - 依存関係の自動更新 → `internal` ラベル（リリースノートに含まれない）
 
 ## ライセンス
 

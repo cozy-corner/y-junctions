@@ -12,6 +12,7 @@ categories:
       - 'bug'
 exclude-labels:
   - 'internal'
+  - 'dependencies'
 change-template: '- $TITLE (#$NUMBER)'
 template: |
   ## 変更内容
@@ -63,5 +64,7 @@ autolabeler:
       - '/^chore\/.*/'
       - '/^perf\/.*/'
       - '/^style\/.*/'
+      - '/^docs\/.*/'
+      - '/^dependabot\/.*/'
     title:
-      - '/refactor|chore|perf|style|リファクタ|チューニング|最適化/'
+      - '/refactor|chore|perf|style|docs|リファクタ|チューニング|最適化/'
