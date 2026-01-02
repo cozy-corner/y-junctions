@@ -1,5 +1,6 @@
 use anyhow::Result;
 use dashmap::DashMap;
+use rayon::prelude::*;
 use std::fs::File;
 
 use super::calculator::calculate_junction_angles;
@@ -85,9 +86,9 @@ pub fn parse_pbf(
     // In-memory processing: Retrieve coordinates for Y-junction candidates from cache
     tracing::info!("Processing candidates: retrieving coordinates from cache");
 
-    // Combine candidates with their coordinates (with bbox filtering)
+    // Combine candidates with their coordinates (with bbox filtering) - PARALLEL
     let y_junctions: Vec<YJunctionWithCoords> = candidates
-        .iter()
+        .par_iter()
         .filter_map(|candidate| {
             node_coords.get(&candidate.node_id).and_then(|coords_ref| {
                 let (lat, lon) = *coords_ref;
@@ -116,69 +117,44 @@ pub fn parse_pbf(
         return Ok(Vec::new());
     }
 
-    // In-memory processing: Calculate angles for Y-junctions
+    // In-memory processing: Calculate angles for Y-junctions - PARALLEL
     tracing::info!("Processing angles: calculating bearings and angles from cached coordinates");
 
-    let mut junctions_for_insert = Vec::new();
-    let mut successful_calculations = 0;
-    let mut failed_calculations = 0;
+    let junctions_for_insert: Vec<JunctionForInsert> = y_junctions
+        .par_iter()
+        .filter_map(|junction| {
+            // Get neighboring nodes with their way tags in consistent order
+            let neighbor_data = counter.get_neighbors_with_tags(junction.node_id);
 
-    for junction in &y_junctions {
-        // Get neighboring nodes with their way tags in consistent order
-        let neighbor_data = counter.get_neighbors_with_tags(junction.node_id);
+            if neighbor_data.len() != 3 {
+                return None;
+            }
 
-        if neighbor_data.len() != 3 {
-            failed_calculations += 1;
-            continue;
-        }
+            // Extract neighbor IDs and way tags from the paired data
+            let neighbor_ids: Vec<i64> = neighbor_data.iter().map(|(id, _)| *id).collect();
+            let way_tags: Vec<_> = neighbor_data.iter().map(|(_, tag)| tag).collect();
 
-        // Extract neighbor IDs and way tags from the paired data
-        let neighbor_ids: Vec<i64> = neighbor_data.iter().map(|(id, _)| *id).collect();
-        let way_tags: Vec<_> = neighbor_data.iter().map(|(_, tag)| tag).collect();
+            // Get coordinates for all 3 neighboring nodes from cache
+            let neighbor_points: Vec<(f64, f64)> = neighbor_ids
+                .iter()
+                .filter_map(|&id| node_coords.get(&id).map(|coords_ref| *coords_ref))
+                .collect();
 
-        // Get coordinates for all 3 neighboring nodes from cache
-        let neighbor_points: Vec<(f64, f64)> = neighbor_ids
-            .iter()
-            .filter_map(|&id| node_coords.get(&id).map(|coords_ref| *coords_ref))
-            .collect();
+            if neighbor_points.len() != 3 {
+                return None;
+            }
 
-        if neighbor_points.len() != 3 {
-            failed_calculations += 1;
-            continue;
-        }
+            // Calculate angles and bearings
+            let (angles, bearings) =
+                calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)?;
 
-        // Calculate angles and bearings
-        if let Some((angles, bearings)) =
-            calculate_junction_angles(junction.lat, junction.lon, &neighbor_points)
-        {
             // Find minimum angle for filtering and type classification
             let min_angle = *angles.iter().min().unwrap();
-            let mut sorted_angles = angles;
-            sorted_angles.sort_unstable();
-            let angle_type =
-                AngleType::from_angles(sorted_angles[0], sorted_angles[1], sorted_angles[2]);
-
-            // Log first 10 junctions for verification
-            if junctions_for_insert.len() < 10 {
-                tracing::info!(
-                    "Node {}: [{}°, {}°, {}°] type={:?}, bearings=[{:.1}°, {:.1}°, {:.1}°]",
-                    junction.node_id,
-                    angles[0],
-                    angles[1],
-                    angles[2],
-                    angle_type,
-                    bearings[0],
-                    bearings[1],
-                    bearings[2]
-                );
-            }
 
             // 最小角度が60度以上の場合はT字路とみなして除外
             if min_angle >= 60 {
-                continue;
+                return None;
             }
-
-            successful_calculations += 1;
 
             // Extract bridge/tunnel flags from way tags (now guaranteed to be in same order as angles)
             let (way_1_bridge, way_1_tunnel) = (way_tags[0].bridge, way_tags[0].tunnel);
@@ -186,7 +162,7 @@ pub fn parse_pbf(
             let (way_3_bridge, way_3_tunnel) = (way_tags[2].bridge, way_tags[2].tunnel);
 
             // Create JunctionForInsert
-            junctions_for_insert.push(JunctionForInsert {
+            Some(JunctionForInsert {
                 osm_node_id: junction.node_id,
                 lat: junction.lat,
                 lon: junction.lon,
@@ -206,10 +182,31 @@ pub fn parse_pbf(
                 way_2_tunnel,
                 way_3_bridge,
                 way_3_tunnel,
-            });
-        } else {
-            failed_calculations += 1;
-        }
+            })
+        })
+        .collect();
+
+    let successful_calculations = junctions_for_insert.len();
+    let failed_calculations = y_junctions.len() - successful_calculations;
+
+    // Log first 10 junctions for verification (after parallel processing)
+    for junction in junctions_for_insert.iter().take(10) {
+        let mut sorted_angles = [junction.angle_1, junction.angle_2, junction.angle_3];
+        sorted_angles.sort_unstable();
+        let angle_type =
+            AngleType::from_angles(sorted_angles[0], sorted_angles[1], sorted_angles[2]);
+
+        tracing::info!(
+            "Node {}: [{}°, {}°, {}°] type={:?}, bearings=[{:.1}°, {:.1}°, {:.1}°]",
+            junction.osm_node_id,
+            junction.angle_1,
+            junction.angle_2,
+            junction.angle_3,
+            angle_type,
+            junction.bearings[0],
+            junction.bearings[1],
+            junction.bearings[2]
+        );
     }
 
     tracing::info!(
