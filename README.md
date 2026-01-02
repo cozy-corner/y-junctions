@@ -98,11 +98,18 @@ docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_tes
         └── ...
 ```
 
+**インポートバイナリのビルド（初回のみ）**
+
+```bash
+# インポートツールをリリースモードでビルド
+(cd backend && cargo build --release --bin import --bin import-elevation)
+```
+
 **5-1. Y字路データのインポート**
 
 ```bash
 # 四国全域のデータをインポート（約1分）
-(cd backend && cargo run --bin import -- \
+(cd backend && ./target/release/import \
   --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
   --bbox 132,33,135,35)
 ```
@@ -115,7 +122,7 @@ docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_tes
 **5-2. 標高データの追加**
 
 ```bash
-(cd backend && cargo run --bin import-elevation -- \
+(cd backend && ./target/release/import-elevation \
   --elevation-dir ~/y-junctions-data/gsi)
 ```
 
@@ -133,8 +140,11 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT COUNT(*) 
 #### 6. バックエンドの起動
 
 ```bash
-# backend/ディレクトリから実行
-(cd backend && cargo run --bin server)
+# サーバーバイナリをビルド（初回または変更時のみ）
+(cd backend && cargo build --release --bin server)
+
+# サーバーを起動
+(cd backend && ./target/release/server)
 ```
 
 バックエンドは `http://localhost:8080` で起動します。
