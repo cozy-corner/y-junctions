@@ -93,8 +93,12 @@ pub struct NodeConnectionCounter {
     way_nodes: HashMap<i64, Vec<i64>>,
     /// Maps way_id to tag information (bridge, tunnel, etc.)
     way_tags: HashMap<i64, WayTagInfo>,
+    /// Maps way_id to highway type
+    way_highway_types: HashMap<i64, String>,
     /// Valid highway types for Y-junction detection
     valid_highway_types: HashSet<String>,
+    /// Core highway types (roads, not pedestrian ways) - at least one required per junction
+    core_highway_types: HashSet<String>,
 }
 
 impl NodeConnectionCounter {
@@ -121,11 +125,35 @@ impl NodeConnectionCounter {
         valid_highway_types.insert("secondary_link".to_string());
         valid_highway_types.insert("tertiary_link".to_string());
 
+        // Pedestrian ways (added for famous Y-junctions like Shibuya)
+        valid_highway_types.insert("steps".to_string());
+        valid_highway_types.insert("pedestrian".to_string());
+        valid_highway_types.insert("path".to_string());
+
+        // Core highway types (traditional roads, not pedestrian ways)
+        // At least one core highway is required to avoid pure hiking trails
+        let mut core_highway_types = HashSet::new();
+        core_highway_types.insert("motorway".to_string());
+        core_highway_types.insert("trunk".to_string());
+        core_highway_types.insert("primary".to_string());
+        core_highway_types.insert("secondary".to_string());
+        core_highway_types.insert("tertiary".to_string());
+        core_highway_types.insert("residential".to_string());
+        core_highway_types.insert("unclassified".to_string());
+        core_highway_types.insert("service".to_string());
+        core_highway_types.insert("motorway_link".to_string());
+        core_highway_types.insert("trunk_link".to_string());
+        core_highway_types.insert("primary_link".to_string());
+        core_highway_types.insert("secondary_link".to_string());
+        core_highway_types.insert("tertiary_link".to_string());
+
         Self {
             node_to_ways: HashMap::new(),
             way_nodes: HashMap::new(),
             way_tags: HashMap::new(),
+            way_highway_types: HashMap::new(),
             valid_highway_types,
+            core_highway_types,
         }
     }
 
@@ -139,7 +167,7 @@ impl NodeConnectionCounter {
         &mut self,
         way_id: i64,
         node_ids: &[i64],
-        _highway_type: &str,
+        highway_type: &str,
         bridge: bool,
         tunnel: bool,
     ) {
@@ -148,6 +176,10 @@ impl NodeConnectionCounter {
 
         // Store way tags
         self.way_tags.insert(way_id, WayTagInfo { bridge, tunnel });
+
+        // Store highway type for filtering
+        self.way_highway_types
+            .insert(way_id, highway_type.to_string());
 
         for &node_id in node_ids {
             self.node_to_ways.entry(node_id).or_default().insert(way_id);
@@ -211,11 +243,12 @@ impl NodeConnectionCounter {
     }
 
     /// Find all nodes that have exactly 3 way connections (Y-junction candidates)
+    /// Filters to require at least one core highway type to avoid pure hiking trails
     pub fn find_y_junction_candidates(&self) -> Vec<YJunctionCandidate> {
         self.node_to_ways
             .iter()
             .filter_map(|(&node_id, way_ids)| {
-                if way_ids.len() == 3 {
+                if way_ids.len() == 3 && self.has_at_least_one_core_highway(node_id) {
                     Some(YJunctionCandidate {
                         node_id,
                         connected_ways: way_ids.iter().copied().collect(),
@@ -238,6 +271,21 @@ impl NodeConnectionCounter {
             .get(&node_id)
             .map(|ways| ways.len())
             .unwrap_or(0)
+    }
+
+    /// Check if a junction has at least one core highway type among its connected ways
+    /// This filters out pure hiking trails (path+path+path) while keeping urban junctions with stairs
+    pub fn has_at_least_one_core_highway(&self, node_id: i64) -> bool {
+        if let Some(way_ids) = self.node_to_ways.get(&node_id) {
+            way_ids.iter().any(|way_id| {
+                self.way_highway_types
+                    .get(way_id)
+                    .map(|highway_type| self.core_highway_types.contains(highway_type))
+                    .unwrap_or(false)
+            })
+        } else {
+            false
+        }
     }
 
     /// Get tag information for connected ways of a junction node
@@ -300,7 +348,11 @@ mod tests {
 
         assert!(!counter.is_valid_highway_type("footway"));
         assert!(!counter.is_valid_highway_type("cycleway"));
-        assert!(!counter.is_valid_highway_type("path"));
+
+        // Pedestrian ways are now valid
+        assert!(counter.is_valid_highway_type("steps"));
+        assert!(counter.is_valid_highway_type("pedestrian"));
+        assert!(counter.is_valid_highway_type("path"));
     }
 
     #[test]
@@ -438,6 +490,146 @@ mod tests {
         assert!(
             !pair_30.1.bridge && !pair_30.1.tunnel,
             "Neighbor 30 should be paired with neither tag"
+        );
+    }
+
+    #[test]
+    fn test_pedestrian_way_types_are_valid() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Test Shibuya Y-junction case: residential + service + steps
+        counter.add_way(1, &[1, 2], "residential", false, false);
+        counter.add_way(2, &[2, 3], "service", false, false);
+        counter.add_way(3, &[2, 4], "steps", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3);
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(candidates.len(), 1, "Should detect Y-junction with steps");
+        assert_eq!(candidates[0].node_id, 2);
+    }
+
+    #[test]
+    fn test_path_and_pedestrian_junctions() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Test with pedestrian way
+        counter.add_way(1, &[10, 20], "residential", false, false);
+        counter.add_way(2, &[20, 30], "pedestrian", false, false);
+        counter.add_way(3, &[20, 40], "service", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 3);
+
+        // Test with path
+        let mut counter2 = NodeConnectionCounter::new();
+        counter2.add_way(1, &[100, 200], "tertiary", false, false);
+        counter2.add_way(2, &[200, 300], "path", false, false);
+        counter2.add_way(3, &[200, 400], "unclassified", false, false);
+
+        assert_eq!(counter2.get_connection_count(200), 3);
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            1,
+            "Should detect Y-junction with pedestrian"
+        );
+
+        let candidates2 = counter2.find_y_junction_candidates();
+        assert_eq!(candidates2.len(), 1, "Should detect Y-junction with path");
+    }
+
+    #[test]
+    fn test_core_highway_filtering_accepts_shibuya_case() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Shibuya case: residential + service + steps → ACCEPT
+        counter.add_way(1, &[1, 2], "residential", false, false);
+        counter.add_way(2, &[2, 3], "service", false, false);
+        counter.add_way(3, &[2, 4], "steps", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3);
+        assert!(
+            counter.has_at_least_one_core_highway(2),
+            "Should have at least one core highway (residential, service)"
+        );
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            1,
+            "Should accept Y-junction with residential+service+steps"
+        );
+        assert_eq!(candidates[0].node_id, 2);
+    }
+
+    #[test]
+    fn test_core_highway_filtering_rejects_hiking_trails() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Hiking trail case: path + path + path → REJECT
+        counter.add_way(1, &[1, 2], "path", false, false);
+        counter.add_way(2, &[2, 3], "path", false, false);
+        counter.add_way(3, &[2, 4], "path", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3);
+        assert!(
+            !counter.has_at_least_one_core_highway(2),
+            "Should not have any core highway (all paths)"
+        );
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should reject Y-junction with only paths (hiking trail)"
+        );
+    }
+
+    #[test]
+    fn test_core_highway_filtering_accepts_mixed_pedestrian() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Mixed case: residential + path + path → ACCEPT (at least one core road)
+        counter.add_way(1, &[1, 2], "residential", false, false);
+        counter.add_way(2, &[2, 3], "path", false, false);
+        counter.add_way(3, &[2, 4], "path", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3);
+        assert!(
+            counter.has_at_least_one_core_highway(2),
+            "Should have at least one core highway (residential)"
+        );
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            1,
+            "Should accept Y-junction with at least one core road"
+        );
+        assert_eq!(candidates[0].node_id, 2);
+    }
+
+    #[test]
+    fn test_core_highway_filtering_rejects_steps_only() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Steps only case: steps + steps + pedestrian → REJECT
+        counter.add_way(1, &[1, 2], "steps", false, false);
+        counter.add_way(2, &[2, 3], "steps", false, false);
+        counter.add_way(3, &[2, 4], "pedestrian", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3);
+        assert!(
+            !counter.has_at_least_one_core_highway(2),
+            "Should not have any core highway (all pedestrian ways)"
+        );
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should reject Y-junction with only pedestrian ways"
         );
     }
 }
