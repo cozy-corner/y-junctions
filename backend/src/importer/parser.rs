@@ -1,11 +1,42 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::fs::File;
+use std::sync::Arc;
 
 use super::calculator::calculate_junction_angles;
 use super::detector::{JunctionForInsert, NodeConnectionCounter, YJunctionWithCoords};
 use crate::domain::junction::AngleType;
+
+/// Way data collected during parallel parsing
+#[derive(Debug)]
+struct WayData {
+    way_id: i64,
+    node_ids: Vec<i64>,
+    highway_type: String,
+    bridge: bool,
+    tunnel: bool,
+}
+
+/// Local state for each parallel parsing thread
+#[derive(Debug, Default)]
+struct LocalState {
+    ways: Vec<WayData>,
+    nodes: Vec<(i64, (f64, f64))>,
+}
+
+impl LocalState {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.ways.extend(other.ways);
+        self.nodes.extend(other.nodes);
+        self
+    }
+}
 
 pub fn parse_pbf(
     input_path: &str,
@@ -22,48 +53,84 @@ pub fn parse_pbf(
         max_lat
     );
 
-    // Single pass: Collect all data (ways, nodes, and coordinates)
-    tracing::info!("Starting single-pass: collecting ways, nodes, and coordinates");
-    let mut counter = NodeConnectionCounter::new();
-    let mut way_count = 0;
-    let mut highway_way_count = 0;
-    let node_coords: DashMap<i64, (f64, f64)> = DashMap::new();
+    // Single pass: Collect all data (ways, nodes, and coordinates) - PARALLEL
+    tracing::info!("Starting single-pass (parallel): collecting ways, nodes, and coordinates");
+
+    // Create valid highway types set for filtering (shared across threads)
+    let temp_counter = NodeConnectionCounter::new();
+    let valid_highway_types: Arc<HashSet<String>> =
+        Arc::new(temp_counter.valid_highway_types().iter().cloned().collect());
 
     let file = File::open(input_path)?;
     let reader = osmpbf::ElementReader::new(file);
 
-    reader.for_each(|element| match element {
-        osmpbf::Element::Way(way) => {
-            way_count += 1;
+    // Parallel map-reduce to collect ways and nodes
+    let valid_types = Arc::clone(&valid_highway_types);
+    let local_state = reader.par_map_reduce(
+        move |element| {
+            let mut local = LocalState::new();
+            match element {
+                osmpbf::Element::Way(way) => {
+                    // Check if this way has a highway tag
+                    if let Some(highway_type) =
+                        way.tags().find(|&(k, _)| k == "highway").map(|(_, v)| v)
+                    {
+                        // Check if it's a valid highway type for Y-junction detection
+                        if valid_types.contains(highway_type) {
+                            // Collect node IDs from this way
+                            let node_ids: Vec<i64> = way.refs().collect();
 
-            // Check if this way has a highway tag
-            if let Some(highway_type) = way.tags().find(|&(k, _)| k == "highway").map(|(_, v)| v) {
-                // Check if it's a valid highway type for Y-junction detection
-                if counter.is_valid_highway_type(highway_type) {
-                    highway_way_count += 1;
+                            // Extract bridge and tunnel tags
+                            let bridge = way.tags().any(|(k, v)| k == "bridge" && v == "yes");
+                            let tunnel = way.tags().any(|(k, v)| k == "tunnel" && v == "yes");
 
-                    // Collect node IDs from this way
-                    let node_ids: Vec<i64> = way.refs().collect();
-
-                    // Extract bridge and tunnel tags
-                    let bridge = way.tags().any(|(k, v)| k == "bridge" && v == "yes");
-                    let tunnel = way.tags().any(|(k, v)| k == "tunnel" && v == "yes");
-
-                    // Add this way and its nodes to the counter
-                    counter.add_way(way.id(), &node_ids, highway_type, bridge, tunnel);
+                            // Store way data
+                            local.ways.push(WayData {
+                                way_id: way.id(),
+                                node_ids,
+                                highway_type: highway_type.to_string(),
+                                bridge,
+                                tunnel,
+                            });
+                        }
+                    }
                 }
+                osmpbf::Element::Node(node) => {
+                    // Cache all node coordinates
+                    local.nodes.push((node.id(), (node.lat(), node.lon())));
+                }
+                osmpbf::Element::DenseNode(node) => {
+                    // Cache all dense node coordinates
+                    local.nodes.push((node.id(), (node.lat(), node.lon())));
+                }
+                _ => {}
             }
-        }
-        osmpbf::Element::Node(node) => {
-            // Cache all node coordinates
-            node_coords.insert(node.id(), (node.lat(), node.lon()));
-        }
-        osmpbf::Element::DenseNode(node) => {
-            // Cache all dense node coordinates
-            node_coords.insert(node.id(), (node.lat(), node.lon()));
-        }
-        _ => {}
-    })?;
+            local
+        },
+        LocalState::new,
+        |a, b| a.merge(b),
+    )?;
+
+    // Build NodeConnectionCounter from collected data
+    let way_count = local_state.ways.len();
+    let highway_way_count = way_count; // All ways in local_state are highway ways
+
+    let mut counter = NodeConnectionCounter::new();
+    for way in &local_state.ways {
+        counter.add_way(
+            way.way_id,
+            &way.node_ids,
+            &way.highway_type,
+            way.bridge,
+            way.tunnel,
+        );
+    }
+
+    // Build node coordinates map
+    let node_coords: DashMap<i64, (f64, f64)> = DashMap::new();
+    for (node_id, coords) in local_state.nodes {
+        node_coords.insert(node_id, coords);
+    }
 
     tracing::info!("Single pass complete:");
     tracing::info!("  Total ways processed: {}", way_count);

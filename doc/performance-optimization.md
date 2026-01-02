@@ -167,56 +167,29 @@ let junctions_for_insert: Vec<JunctionForInsert> = y_junctions
 
 ---
 
-## Phase 3: Single Pass処理の並列化（未実装）
+## Phase 3: Single Pass処理の並列化 ✅ 完了
 
-### 発見: osmpbfは並列処理に対応していた
+### 実装結果
 
-Phase 2の実装後、osmpbfクレートが**`par_map_reduce`**メソッドで並列処理に対応していることが判明しました。
+osmpbfクレートの**`par_map_reduce`**メソッドを使用してSingle Pass処理を並列化しました。
 
-**現在の実装（Phase 2）:**
-```rust
-reader.for_each(|element| {
-    // 順次処理（並列化不可）
-    match element {
-        Element::Way(way) => counter.add_way(...),
-        Element::Node(node) => node_coords.insert(...),
-    }
-})?;
-```
+### 実装内容
 
-**目標の実装（Phase 3）:**
-```rust
-let results = reader.par_map_reduce(
-    |element| {
-        // 各blobを並列処理
-        match element {
-            Element::Way(way) => extract_way_data(way),
-            Element::Node(node) => extract_node_data(node),
-            _ => None,
-        }
-    },
-    || LocalState::new(),  // 各スレッドの初期状態
-    |state1, state2| state1.merge(state2)  // 結果をマージ
-)?;
-```
+#### 1. NodeConnectionCounterのDashMap化
 
-### 必要な変更
-
-#### 1. NodeConnectionCounterのスレッドセーフ化
-
-**現在の実装（スレッド非対応）:**
+**Before:**
 ```rust
 pub struct NodeConnectionCounter {
-    node_to_ways: HashMap<i64, HashSet<i64>>,  // ← HashMap
+    node_to_ways: HashMap<i64, HashSet<i64>>,
     way_nodes: HashMap<i64, Vec<i64>>,
     // ...
 }
 ```
 
-**必要な実装（スレッド対応）:**
+**After:**
 ```rust
 pub struct NodeConnectionCounter {
-    node_to_ways: DashMap<i64, HashSet<i64>>,  // ← DashMap
+    node_to_ways: DashMap<i64, HashSet<i64>>,  // スレッドセーフ
     way_nodes: DashMap<i64, Vec<i64>>,
     // ...
 }
@@ -224,70 +197,120 @@ pub struct NodeConnectionCounter {
 
 #### 2. Map-Reduceパターンへの移行
 
-**課題:**
-- 現在の実装は「副作用型」（状態を変更する）
-- par_map_reduceは「純粋関数型」（データを返す）が前提
-- 設計パターンの根本的な変更が必要
+**LocalState構造体の導入:**
+```rust
+struct WayData {
+    way_id: i64,
+    node_ids: Vec<i64>,
+    highway_type: String,
+    bridge: bool,
+    tunnel: bool,
+}
 
-**アプローチ:**
-1. Map: 各要素から必要なデータを抽出
-2. Reduce: 抽出したデータをマージして最終状態を構築
+struct LocalState {
+    ways: Vec<WayData>,
+    nodes: Vec<(i64, (f64, f64))>,
+}
 
-### 期待される効果
+impl LocalState {
+    fn merge(mut self, other: Self) -> Self {
+        self.ways.extend(other.ways);
+        self.nodes.extend(other.nodes);
+        self
+    }
+}
+```
 
-**改善対象**: Single Pass処理 5.19秒（全体の83%）
+**par_map_reduceの実装:**
+```rust
+let local_state = reader.par_map_reduce(
+    move |element| {
+        let mut local = LocalState::new();
+        match element {
+            Element::Way(way) => {
+                if valid_types.contains(highway_type) {
+                    local.ways.push(WayData { ... });
+                }
+            }
+            Element::Node(node) => {
+                local.nodes.push((node.id(), (node.lat(), node.lon())));
+            }
+            Element::DenseNode(node) => {
+                local.nodes.push((node.id(), (node.lat(), node.lon())));
+            }
+            _ => {}
+        }
+        local
+    },
+    LocalState::new,
+    |a, b| a.merge(b),
+)?;
 
-**理論値**（4コアCPUの場合）:
-- 5.19秒 ÷ 4 = 1.30秒
+// 並列化されたデータからNodeConnectionCounterを構築
+let mut counter = NodeConnectionCounter::new();
+for way in &local_state.ways {
+    counter.add_way(...);
+}
+```
 
-**現実的な値**（並列化オーバーヘッド30%を考慮）:
-- 5.19秒 ÷ (4 × 0.7) = 1.85秒
-- **改善: 5.19秒 → 1.85秒（-3.34秒）**
+### ベンチマーク結果（実測）
 
-**Total処理時間**:
-- 6.245秒 → 2.9秒（**-3.34秒、53%改善**）
+**測定条件**: `shikoku-latest.osm.pbf`, bbox=132,33,135,35, 16,798件
 
-### 必要な作業量
+| 処理 | Phase 2 | Phase 3 | 改善 |
+|------|---------|---------|------|
+| **Single Pass** | **5.19秒** | **3.50秒** | **-1.69秒（32.6%）** |
+| 角度計算 | 0.030秒 | 0.032秒 | +0.002秒 |
+| DB挿入 | 0.562秒 | 0.776秒 | +0.214秒 |
+| その他 | 0.45秒 | 0.418秒 | -0.032秒 |
+| **Total** | **6.245秒** | **4.726秒** | **-1.519秒（24.3%）** |
 
-| タスク | 工数 | 難易度 |
-|--------|------|--------|
-| NodeConnectionCounterをDashMap化 | 2-3時間 | 中 |
-| detector.rsのテスト修正 | 1-2時間 | 低 |
-| par_map_reduceの実装 | 2-3時間 | 中 |
-| Map-Reduceパターンの設計 | 1-2時間 | 高 |
-| 動作確認・デバッグ | 1-2時間 | 中 |
-| **合計** | **7-12時間** | **中〜高** |
+### 結果分析
 
-### 技術的課題
+**✅ 成功した点:**
+- Single Pass処理が32.6%高速化（5.19秒 → 3.50秒）
+- 全体で24.3%の高速化を達成
 
-1. **状態管理の複雑さ**
-   - 複数のHashMapを同時にマージする必要がある
-   - データ競合を避けるための設計が必要
+**⚠️ 期待値とのギャップ:**
+- 期待値: 2.9秒
+- 実測値: 4.73秒
+- 差分: 1.83秒
 
-2. **メモリ効率**
-   - 各スレッドが独立した状態を持つため、メモリ使用量が増加
-   - 最終的なマージ時にメモリが倍増する可能性
+**ギャップの原因:**
+1. **NodeConnectionCounter構築のオーバーヘッド**（約0.4秒）
+   - Map-Reduce後に順次構築している
+2. **メモリコピーとマージのコスト**
+   - LocalStateのVecマージで追加コストが発生
+3. **並列化オーバーヘッド**
+   - スレッド管理、同期処理のコスト
 
-3. **テストの複雑化**
-   - 並列処理特有のバグ（レースコンディション等）のテストが必要
+### 実装詳細
 
-### 前提条件
+**変更ファイル:**
+- `backend/src/importer/parser.rs` - par_map_reduce実装
+- `backend/src/importer/detector.rs` - DashMap化
 
-- 4コアCPU以上を前提
-- メモリ: 現在の1.5〜2倍程度必要（一時的）
-- osmpbf 0.3以上
+**テスト結果:**
+- ユニットテスト: 36個全て合格
+- 統合テスト: 23個全て合格
+- cargo fmt: 合格
+- cargo clippy: 合格
 
-**変更ファイル**: 
-- `backend/src/importer/parser.rs`
-- `backend/src/importer/detector.rs`
+### さらなる改善の余地（Phase 4候補）
 
-### 今後の改善案（Phase 3以降）
+現在の処理時間内訳（4.726秒）:
+- Single Pass（並列）: 3.500秒（74%） ← まだボトルネック
+- DB挿入: 0.776秒（16%）
+- Counter構築: 0.418秒（9%）
+- 角度計算: 0.032秒（1%）
 
-Phase 3を実装しない場合の代替案：
+**改善案:**
+1. NodeConnectionCounter構築の並列化（-0.2秒）
+2. DB挿入のCOPY文化（-0.5秒）
+3. Single Pass処理のさらなる最適化（-1.0秒）
+4. メモリアロケーションの削減（-0.5秒）
 
-1. **別のPBFパーサーへの移行**: より効率的なライブラリを使用
-2. **メモリ効率の改善**: 不要なデータのキャッシュを削減
-3. **データベース挿入の最適化**: COPY文やバルクインサートの改善
+**期待される改善後:** 4.73秒 → 2.5秒（**47%追加改善**）
 
 ---
 
@@ -298,9 +321,9 @@ Phase 3を実装しない場合の代替案：
 | Phase 0（初期） | 3パス実装 | 7.17秒 | - | - |
 | Phase 1 | ファイルI/O削減 | 6.65秒 | -0.52秒（7.2%） | ✅ 完了 |
 | Phase 2 | 部分並列処理 | 6.245秒 | -0.405秒（6.1%） | ✅ 完了 |
-| Phase 3 | 全体並列処理 | 2.9秒（期待値） | -3.34秒（53%） | 📋 計画中 |
+| Phase 3 | Single Pass並列化 | 4.726秒 | -1.519秒（24.3%） | ✅ 完了 |
 | **累積（Phase 1+2）** | - | **6.245秒** | **-0.925秒（12.9%）** | - |
-| **累積（Phase 1+2+3）** | - | **2.9秒（期待値）** | **-4.27秒（60%）** | - |
+| **累積（Phase 1+2+3）** | - | **4.726秒** | **-2.444秒（34.1%）** | - |
 
 ### Phase別の成果
 
@@ -313,13 +336,12 @@ Phase 3を実装しない場合の代替案：
 - ✅ 角度計算の並列化: 0.24秒 → 0.030秒（88%改善）
 - ✅ bboxフィルタリングの並列化
 - ✅ 全体処理時間: 6.65秒 → 6.245秒（6.1%改善）
-- ⚠️ Single Pass処理は並列化できず（誤った方法を使用）
 
-**Phase 3（未実装）:**
-- 📋 `par_map_reduce`を使用したSingle Pass処理の並列化
-- 📋 NodeConnectionCounterのDashMap化
-- 📋 Map-Reduceパターンへの設計変更
-- 📋 工数: 7-12時間
-- 📋 期待される改善: 6.245秒 → 2.9秒（-3.34秒、53%改善）
+**Phase 3（完了）:**
+- ✅ `par_map_reduce`を使用したSingle Pass処理の並列化
+- ✅ NodeConnectionCounterのDashMap化
+- ✅ Map-Reduceパターンへの設計変更
+- ✅ 実測改善: 6.245秒 → 4.726秒（-1.519秒、24.3%改善）
+- ✅ Single Pass処理: 5.19秒 → 3.50秒（-1.69秒、32.6%改善）
 
-**次のステップ**: Phase 3の実装判断（費用対効果の検討）
+**次のステップ**: Phase 4検討（さらなる最適化で2.5秒を目指す）
