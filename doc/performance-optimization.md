@@ -63,7 +63,7 @@ reader.for_each(|element| match element {
 - ボトルネックは「PBFファイルの中身を解析（パース）する」処理
 
 ### DashMapの使用理由
-Phase 3での並列化に備えて先行導入（現時点では`HashMap`でも動作する）
+Phase 2での並列化に備えて先行導入（現時点では`HashMap`でも動作する）
 
 **変更ファイル**: `backend/src/importer/parser.rs`
 
