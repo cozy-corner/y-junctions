@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use dashmap::DashMap;
+use std::collections::HashSet;
 
 /// Way tag information (bridge, tunnel, etc.)
 #[derive(Debug, Clone, Default)]
@@ -88,13 +89,13 @@ impl JunctionForInsert {
 #[derive(Debug)]
 pub struct NodeConnectionCounter {
     /// Maps node_id to set of way_ids that contain this node
-    node_to_ways: HashMap<i64, HashSet<i64>>,
+    node_to_ways: DashMap<i64, HashSet<i64>>,
     /// Maps way_id to list of node_ids in that way
-    way_nodes: HashMap<i64, Vec<i64>>,
+    way_nodes: DashMap<i64, Vec<i64>>,
     /// Maps way_id to tag information (bridge, tunnel, etc.)
-    way_tags: HashMap<i64, WayTagInfo>,
+    way_tags: DashMap<i64, WayTagInfo>,
     /// Maps way_id to highway type
-    way_highway_types: HashMap<i64, String>,
+    way_highway_types: DashMap<i64, String>,
     /// Valid highway types for Y-junction detection
     valid_highway_types: HashSet<String>,
     /// Core highway types (roads, not pedestrian ways) - at least one required per junction
@@ -148,10 +149,10 @@ impl NodeConnectionCounter {
         core_highway_types.insert("tertiary_link".to_string());
 
         Self {
-            node_to_ways: HashMap::new(),
-            way_nodes: HashMap::new(),
-            way_tags: HashMap::new(),
-            way_highway_types: HashMap::new(),
+            node_to_ways: DashMap::new(),
+            way_nodes: DashMap::new(),
+            way_tags: DashMap::new(),
+            way_highway_types: DashMap::new(),
             valid_highway_types,
             core_highway_types,
         }
@@ -160,6 +161,11 @@ impl NodeConnectionCounter {
     /// Check if highway type is valid for Y-junction detection
     pub fn is_valid_highway_type(&self, highway_type: &str) -> bool {
         self.valid_highway_types.contains(highway_type)
+    }
+
+    /// Get reference to valid highway types (for parallel processing)
+    pub fn valid_highway_types(&self) -> &HashSet<String> {
+        &self.valid_highway_types
     }
 
     /// Add a way and its nodes to the connection counter
@@ -192,15 +198,15 @@ impl NodeConnectionCounter {
         let mut neighbors = Vec::new();
 
         if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids {
+            for &way_id in way_ids.value() {
                 if let Some(nodes) = self.way_nodes.get(&way_id) {
                     // Find the junction node in the way's node list
-                    if let Some(pos) = nodes.iter().position(|&id| id == junction_node_id) {
+                    if let Some(pos) = nodes.value().iter().position(|&id| id == junction_node_id) {
                         // Get the neighboring node (prefer next, fallback to previous)
-                        if pos + 1 < nodes.len() {
-                            neighbors.push(nodes[pos + 1]);
+                        if pos + 1 < nodes.value().len() {
+                            neighbors.push(nodes.value()[pos + 1]);
                         } else if pos > 0 {
-                            neighbors.push(nodes[pos - 1]);
+                            neighbors.push(nodes.value()[pos - 1]);
                         }
                     }
                 }
@@ -217,21 +223,25 @@ impl NodeConnectionCounter {
         let mut result = Vec::new();
 
         if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids {
+            for &way_id in way_ids.value() {
                 if let Some(nodes) = self.way_nodes.get(&way_id) {
                     // Find the junction node in the way's node list
-                    if let Some(pos) = nodes.iter().position(|&id| id == junction_node_id) {
+                    if let Some(pos) = nodes.value().iter().position(|&id| id == junction_node_id) {
                         // Get the neighboring node (prefer next, fallback to previous)
-                        let neighbor_id = if pos + 1 < nodes.len() {
-                            nodes[pos + 1]
+                        let neighbor_id = if pos + 1 < nodes.value().len() {
+                            nodes.value()[pos + 1]
                         } else if pos > 0 {
-                            nodes[pos - 1]
+                            nodes.value()[pos - 1]
                         } else {
                             continue;
                         };
 
                         // Get way tags
-                        let tags = self.way_tags.get(&way_id).cloned().unwrap_or_default();
+                        let tags = self
+                            .way_tags
+                            .get(&way_id)
+                            .map(|t| t.clone())
+                            .unwrap_or_default();
 
                         result.push((neighbor_id, tags));
                     }
@@ -247,7 +257,9 @@ impl NodeConnectionCounter {
     pub fn find_y_junction_candidates(&self) -> Vec<YJunctionCandidate> {
         self.node_to_ways
             .iter()
-            .filter_map(|(&node_id, way_ids)| {
+            .filter_map(|entry| {
+                let node_id = *entry.key();
+                let way_ids = entry.value();
                 if way_ids.len() == 3 && self.has_at_least_one_core_highway(node_id) {
                     Some(YJunctionCandidate {
                         node_id,
@@ -269,7 +281,7 @@ impl NodeConnectionCounter {
     pub fn get_connection_count(&self, node_id: i64) -> usize {
         self.node_to_ways
             .get(&node_id)
-            .map(|ways| ways.len())
+            .map(|ways| ways.value().len())
             .unwrap_or(0)
     }
 
@@ -277,10 +289,10 @@ impl NodeConnectionCounter {
     /// This filters out pure hiking trails (path+path+path) while keeping urban junctions with stairs
     pub fn has_at_least_one_core_highway(&self, node_id: i64) -> bool {
         if let Some(way_ids) = self.node_to_ways.get(&node_id) {
-            way_ids.iter().any(|way_id| {
+            way_ids.value().iter().any(|way_id| {
                 self.way_highway_types
                     .get(way_id)
-                    .map(|highway_type| self.core_highway_types.contains(highway_type))
+                    .map(|highway_type| self.core_highway_types.contains(highway_type.value()))
                     .unwrap_or(false)
             })
         } else {
@@ -293,8 +305,9 @@ impl NodeConnectionCounter {
     pub fn get_connected_way_tags(&self, junction_node_id: i64) -> Vec<WayTagInfo> {
         if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
             way_ids
+                .value()
                 .iter()
-                .filter_map(|way_id| self.way_tags.get(way_id).cloned())
+                .filter_map(|way_id| self.way_tags.get(way_id).map(|tag| tag.clone()))
                 .collect()
         } else {
             Vec::new()
