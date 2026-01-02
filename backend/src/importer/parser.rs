@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use dashmap::DashMap;
 use std::fs::File;
 
 use super::calculator::calculate_junction_angles;
@@ -21,17 +21,18 @@ pub fn parse_pbf(
         max_lat
     );
 
-    // 1st pass: Count way connections per node
-    tracing::info!("Starting 1st pass: collecting highway ways and counting node connections");
+    // Single pass: Collect all data (ways, nodes, and coordinates)
+    tracing::info!("Starting single-pass: collecting ways, nodes, and coordinates");
     let mut counter = NodeConnectionCounter::new();
     let mut way_count = 0;
     let mut highway_way_count = 0;
+    let node_coords: DashMap<i64, (f64, f64)> = DashMap::new();
 
     let file = File::open(input_path)?;
     let reader = osmpbf::ElementReader::new(file);
 
-    reader.for_each(|element| {
-        if let osmpbf::Element::Way(way) = element {
+    reader.for_each(|element| match element {
+        osmpbf::Element::Way(way) => {
             way_count += 1;
 
             // Check if this way has a highway tag
@@ -52,15 +53,25 @@ pub fn parse_pbf(
                 }
             }
         }
+        osmpbf::Element::Node(node) => {
+            // Cache all node coordinates
+            node_coords.insert(node.id(), (node.lat(), node.lon()));
+        }
+        osmpbf::Element::DenseNode(node) => {
+            // Cache all dense node coordinates
+            node_coords.insert(node.id(), (node.lat(), node.lon()));
+        }
+        _ => {}
     })?;
 
-    tracing::info!("1st pass complete:");
+    tracing::info!("Single pass complete:");
     tracing::info!("  Total ways processed: {}", way_count);
     tracing::info!("  Highway ways found: {}", highway_way_count);
     tracing::info!(
         "  Unique nodes in highway network: {}",
         counter.node_count()
     );
+    tracing::info!("  Total node coordinates cached: {}", node_coords.len());
 
     // Find Y-junction candidates (nodes with exactly 3 way connections)
     let candidates = counter.find_y_junction_candidates();
@@ -71,67 +82,27 @@ pub fn parse_pbf(
         return Ok(Vec::new());
     }
 
-    // 2nd pass: Retrieve coordinates for Y-junction candidates
-    tracing::info!("Starting 2nd pass: retrieving node coordinates");
+    // In-memory processing: Retrieve coordinates for Y-junction candidates from cache
+    tracing::info!("Processing candidates: retrieving coordinates from cache");
 
-    // Create a HashSet of candidate node IDs for fast lookup
-    let candidate_node_ids: HashSet<i64> = candidates.iter().map(|c| c.node_id).collect();
-
-    // Map to store node coordinates
-    let mut node_coords: HashMap<i64, (f64, f64)> = HashMap::new();
-
-    let file = File::open(input_path)?;
-    let reader = osmpbf::ElementReader::new(file);
-
-    reader.for_each(|element| {
-        match element {
-            osmpbf::Element::Node(node) => {
-                let node_id = node.id();
-
-                // Check if this node is a Y-junction candidate
-                if candidate_node_ids.contains(&node_id) {
-                    let lat = node.lat();
-                    let lon = node.lon();
-
-                    // Check if node is within bounding box
-                    if lon >= min_lon && lon <= max_lon && lat >= min_lat && lat <= max_lat {
-                        node_coords.insert(node_id, (lat, lon));
-                    }
-                }
-            }
-            osmpbf::Element::DenseNode(node) => {
-                let node_id = node.id();
-
-                // Check if this node is a Y-junction candidate
-                if candidate_node_ids.contains(&node_id) {
-                    let lat = node.lat();
-                    let lon = node.lon();
-
-                    // Check if node is within bounding box
-                    if lon >= min_lon && lon <= max_lon && lat >= min_lat && lat <= max_lat {
-                        node_coords.insert(node_id, (lat, lon));
-                    }
-                }
-            }
-            _ => {}
-        }
-    })?;
-
-    tracing::info!("2nd pass complete:");
-    tracing::info!("  Coordinates retrieved: {}", node_coords.len());
-
-    // Combine candidates with their coordinates
+    // Combine candidates with their coordinates (with bbox filtering)
     let y_junctions: Vec<YJunctionWithCoords> = candidates
         .iter()
         .filter_map(|candidate| {
-            node_coords
-                .get(&candidate.node_id)
-                .map(|&(lat, lon)| YJunctionWithCoords {
-                    node_id: candidate.node_id,
-                    lat,
-                    lon,
-                    connected_ways: candidate.connected_ways.clone(),
-                })
+            node_coords.get(&candidate.node_id).and_then(|coords_ref| {
+                let (lat, lon) = *coords_ref;
+                // Check if node is within bounding box
+                if lon >= min_lon && lon <= max_lon && lat >= min_lat && lat <= max_lat {
+                    Some(YJunctionWithCoords {
+                        node_id: candidate.node_id,
+                        lat,
+                        lon,
+                        connected_ways: candidate.connected_ways.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
         })
         .collect();
 
@@ -140,51 +111,14 @@ pub fn parse_pbf(
         y_junctions.len()
     );
 
-    // 3rd pass: Get coordinates of neighboring nodes and calculate angles
-    tracing::info!("Starting 3rd pass: calculating angles for Y-junctions");
-
-    // Collect all neighboring node IDs
-    let mut all_neighbor_ids = HashSet::new();
-    for junction in &y_junctions {
-        let neighbor_ids = counter.get_neighboring_nodes(junction.node_id);
-        for id in neighbor_ids {
-            all_neighbor_ids.insert(id);
-        }
+    if y_junctions.is_empty() {
+        tracing::warn!("No Y-junction candidates found within bounding box");
+        return Ok(Vec::new());
     }
 
-    tracing::info!(
-        "Need coordinates for {} neighboring nodes",
-        all_neighbor_ids.len()
-    );
+    // In-memory processing: Calculate angles for Y-junctions
+    tracing::info!("Processing angles: calculating bearings and angles from cached coordinates");
 
-    // Get coordinates for neighboring nodes
-    let mut neighbor_coords: HashMap<i64, (f64, f64)> = HashMap::new();
-
-    let file = File::open(input_path)?;
-    let reader = osmpbf::ElementReader::new(file);
-
-    reader.for_each(|element| match element {
-        osmpbf::Element::Node(node) => {
-            let node_id = node.id();
-            if all_neighbor_ids.contains(&node_id) {
-                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
-            }
-        }
-        osmpbf::Element::DenseNode(node) => {
-            let node_id = node.id();
-            if all_neighbor_ids.contains(&node_id) {
-                neighbor_coords.insert(node_id, (node.lat(), node.lon()));
-            }
-        }
-        _ => {}
-    })?;
-
-    tracing::info!(
-        "3rd pass complete: retrieved {} neighbor coordinates",
-        neighbor_coords.len()
-    );
-
-    // Calculate angles for each Y-junction and create JunctionForInsert records
     let mut junctions_for_insert = Vec::new();
     let mut successful_calculations = 0;
     let mut failed_calculations = 0;
@@ -202,10 +136,10 @@ pub fn parse_pbf(
         let neighbor_ids: Vec<i64> = neighbor_data.iter().map(|(id, _)| *id).collect();
         let way_tags: Vec<_> = neighbor_data.iter().map(|(_, tag)| tag).collect();
 
-        // Get coordinates for all 3 neighboring nodes
+        // Get coordinates for all 3 neighboring nodes from cache
         let neighbor_points: Vec<(f64, f64)> = neighbor_ids
             .iter()
-            .filter_map(|&id| neighbor_coords.get(&id).copied())
+            .filter_map(|&id| node_coords.get(&id).map(|coords_ref| *coords_ref))
             .collect();
 
         if neighbor_points.len() != 3 {
@@ -227,7 +161,7 @@ pub fn parse_pbf(
             // Log first 10 junctions for verification
             if junctions_for_insert.len() < 10 {
                 tracing::info!(
-                    "Node {}: [{}\u{00b0}, {}\u{00b0}, {}\u{00b0}] type={:?}, bearings=[{:.1}\u{00b0}, {:.1}\u{00b0}, {:.1}\u{00b0}]",
+                    "Node {}: [{}°, {}°, {}°] type={:?}, bearings=[{:.1}°, {:.1}°, {:.1}°]",
                     junction.node_id,
                     angles[0],
                     angles[1],
