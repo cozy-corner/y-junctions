@@ -91,6 +91,14 @@ function App() {
           <a href="https://x.com/coozy_corner" target="_blank" rel="noopener noreferrer">
             @coozy_corner
           </a>
+          {' | '}
+          <a
+            href="https://github.com/cozy-corner/y-junctions/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            リリースノート
+          </a>
         </p>
       </footer>
     </div>
