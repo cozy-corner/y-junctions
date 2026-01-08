@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
 };
+use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -58,7 +59,9 @@ pub struct JunctionsQuery {
     // 最大角の高低差フィルタ（範囲検索用）
     pub max_angle_elevation_diff: Option<f64>,
     // Category フィルタ（配列形式: ?category=highway&category=major）
-    pub category: Option<Vec<String>>,
+    // Note: Vec<T> + #[serde(default)] を使用（Option<Vec<T>>は単一値を扱えない）
+    #[serde(default)]
+    pub category: Vec<String>,
 }
 
 impl JunctionsQuery {
@@ -133,7 +136,11 @@ impl JunctionsQuery {
         }
 
         // category: 空のベクターはNoneとして扱う
-        let categories = self.category.as_ref().filter(|v| !v.is_empty()).cloned();
+        let categories = if self.category.is_empty() {
+            None
+        } else {
+            Some(self.category.clone())
+        };
 
         Ok(FilterParams {
             angle_type: self.parse_angle_types()?,
