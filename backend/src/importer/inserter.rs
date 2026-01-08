@@ -52,12 +52,14 @@ async fn insert_batch(
          elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, \
          elevation_diff_1, elevation_diff_2, elevation_diff_3, \
          min_angle_index, min_elevation_diff, max_elevation_diff, \
-         way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel) VALUES ",
+         way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type) VALUES ",
     );
 
-    const PARAMS_PER_ROW: usize = 25; // osm_node_id, lon, lat, angle_1, angle_2, angle_3, bearing_1, bearing_2, bearing_3,
+    const PARAMS_PER_ROW: usize = 28; // osm_node_id, lon, lat, angle_1, angle_2, angle_3, bearing_1, bearing_2, bearing_3,
                                       // elevation, neighbor_elevation_1~3, elevation_diff_1~3, min_angle_index, min/max_elevation_diff,
-                                      // way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel
+                                      // way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+                                      // way_1_highway_type, way_2_highway_type, way_3_highway_type
 
     for (i, _) in junctions.iter().enumerate() {
         if i > 0 {
@@ -66,7 +68,7 @@ async fn insert_batch(
         let base = i * PARAMS_PER_ROW + 1;
         query.push_str(&format!(
             "(${}, ST_SetSRID(ST_MakePoint(${}, ${}), 4326)::geography, ${}, ${}, ${}, ARRAY[${}, ${}, ${}], \
-             ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${})",
+             ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${}, ${})",
             base,        // osm_node_id
             base + 1,    // lon
             base + 2,    // lat
@@ -91,7 +93,10 @@ async fn insert_batch(
             base + 21,   // way_2_bridge
             base + 22,   // way_2_tunnel
             base + 23,   // way_3_bridge
-            base + 24    // way_3_tunnel
+            base + 24,   // way_3_tunnel
+            base + 25,   // way_1_highway_type
+            base + 26,   // way_2_highway_type
+            base + 27    // way_3_highway_type
         ));
     }
 
@@ -125,7 +130,10 @@ async fn insert_batch(
             .bind(junction.way_2_bridge)
             .bind(junction.way_2_tunnel)
             .bind(junction.way_3_bridge)
-            .bind(junction.way_3_tunnel);
+            .bind(junction.way_3_tunnel)
+            .bind(&junction.way_1_highway_type)
+            .bind(&junction.way_2_highway_type)
+            .bind(&junction.way_3_highway_type);
     }
 
     q.execute(&mut **tx).await?;

@@ -1,11 +1,12 @@
 use dashmap::DashMap;
 use std::collections::HashSet;
 
-/// Way tag information (bridge, tunnel, etc.)
+/// Way tag information (bridge, tunnel, highway_type, etc.)
 #[derive(Debug, Clone, Default)]
 pub struct WayTagInfo {
     pub bridge: bool,
     pub tunnel: bool,
+    pub highway_type: String,
 }
 
 /// Y-junction candidate information
@@ -58,6 +59,11 @@ pub struct JunctionForInsert {
     pub way_2_tunnel: bool,
     pub way_3_bridge: bool,
     pub way_3_tunnel: bool,
+
+    // Highway type information for categorization
+    pub way_1_highway_type: String,
+    pub way_2_highway_type: String,
+    pub way_3_highway_type: String,
 }
 
 impl JunctionForInsert {
@@ -181,7 +187,14 @@ impl NodeConnectionCounter {
         self.way_nodes.insert(way_id, node_ids.to_vec());
 
         // Store way tags
-        self.way_tags.insert(way_id, WayTagInfo { bridge, tunnel });
+        self.way_tags.insert(
+            way_id,
+            WayTagInfo {
+                bridge,
+                tunnel,
+                highway_type: highway_type.to_string(),
+            },
+        );
 
         // Store highway type for filtering
         self.way_highway_types
