@@ -30,6 +30,8 @@ pub struct FilterParams {
     pub min_angle_elevation_diff: Option<f64>,
     // 最大角の高低差フィルタ（範囲検索用）
     pub max_angle_elevation_diff: Option<f64>,
+    // Category フィルタ（OR条件: いずれか1本でも一致すればヒット）
+    pub categories: Option<Vec<String>>,
 }
 
 #[derive(Debug, FromRow)]
@@ -47,6 +49,12 @@ struct JunctionRow {
     min_elevation_diff: Option<f32>,
     max_elevation_diff: Option<f32>,
     min_angle_elevation_diff: Option<f32>,
+    way_1_highway_type: Option<String>,
+    way_2_highway_type: Option<String>,
+    way_3_highway_type: Option<String>,
+    way_1_category: Option<String>,
+    way_2_category: Option<String>,
+    way_3_category: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -64,6 +72,12 @@ struct JunctionRowWithCount {
     min_elevation_diff: Option<f32>,
     max_elevation_diff: Option<f32>,
     min_angle_elevation_diff: Option<f32>,
+    way_1_highway_type: Option<String>,
+    way_2_highway_type: Option<String>,
+    way_3_highway_type: Option<String>,
+    way_1_category: Option<String>,
+    way_2_category: Option<String>,
+    way_3_category: Option<String>,
     total_count: i64,
 }
 
@@ -83,6 +97,12 @@ impl From<JunctionRow> for Junction {
             min_elevation_diff: row.min_elevation_diff.map(|e| e as f64),
             max_elevation_diff: row.max_elevation_diff.map(|e| e as f64),
             min_angle_elevation_diff: row.min_angle_elevation_diff.map(|e| e as f64),
+            way_1_highway_type: row.way_1_highway_type,
+            way_2_highway_type: row.way_2_highway_type,
+            way_3_highway_type: row.way_3_highway_type,
+            way_1_category: row.way_1_category,
+            way_2_category: row.way_2_category,
+            way_3_category: row.way_3_category,
         }
     }
 }
@@ -103,6 +123,12 @@ impl From<JunctionRowWithCount> for Junction {
             min_elevation_diff: row.min_elevation_diff.map(|e| e as f64),
             max_elevation_diff: row.max_elevation_diff.map(|e| e as f64),
             min_angle_elevation_diff: row.min_angle_elevation_diff.map(|e| e as f64),
+            way_1_highway_type: row.way_1_highway_type,
+            way_2_highway_type: row.way_2_highway_type,
+            way_3_highway_type: row.way_3_highway_type,
+            way_1_category: row.way_1_category,
+            way_2_category: row.way_2_category,
+            way_3_category: row.way_3_category,
         }
     }
 }
@@ -176,6 +202,31 @@ fn add_elevation_filters(builder: &mut QueryBuilder<sqlx::Postgres>, filters: &F
     }
 }
 
+// ヘルパー関数: categoryフィルタを追加（OR条件: いずれか1本でも一致すればヒット）
+fn add_category_filter<'a>(
+    builder: &mut QueryBuilder<'a, sqlx::Postgres>,
+    categories: &'a [String],
+) {
+    if categories.is_empty() {
+        return;
+    }
+
+    builder.push(" AND (");
+    for (i, category) in categories.iter().enumerate() {
+        if i > 0 {
+            builder.push(" OR ");
+        }
+        builder.push("(way_1_category = ");
+        builder.push_bind(category);
+        builder.push(" OR way_2_category = ");
+        builder.push_bind(category);
+        builder.push(" OR way_3_category = ");
+        builder.push_bind(category);
+        builder.push(")");
+    }
+    builder.push(")");
+}
+
 // ヘルパー関数: 橋・トンネル除外フィルタを追加（常に除外）
 fn add_bridge_tunnel_filter(builder: &mut QueryBuilder<sqlx::Postgres>) {
     builder.push(
@@ -197,6 +248,8 @@ pub async fn find_by_bbox(
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
+         way_1_category, way_2_category, way_3_category, \
          COUNT(*) OVER() as total_count \
          FROM y_junctions ",
     );
@@ -224,6 +277,11 @@ pub async fn find_by_bbox(
         add_bridge_tunnel_filter(&mut query_builder);
     }
 
+    // category フィルタ
+    if let Some(ref categories) = filters.categories {
+        add_category_filter(&mut query_builder, categories);
+    }
+
     // LIMIT
     query_builder.push(" LIMIT ");
     query_builder.push_bind(limit);
@@ -243,7 +301,9 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
-         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
+         way_1_category, way_2_category, way_3_category \
          FROM y_junctions \
          WHERE id = $1",
     )
@@ -290,7 +350,9 @@ pub async fn find_all(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
-         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
+         way_1_category, way_2_category, way_3_category \
          FROM y_junctions",
     )
     .fetch_all(pool)
@@ -304,7 +366,9 @@ pub async fn find_without_elevation(pool: &PgPool) -> Result<Vec<Junction>, sqlx
         "SELECT id, osm_node_id, \
          ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
-         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
+         way_1_category, way_2_category, way_3_category \
          FROM y_junctions WHERE elevation IS NULL",
     )
     .fetch_all(pool)
