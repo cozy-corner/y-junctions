@@ -41,6 +41,10 @@ export async function fetchJunctions(
     if (filters?.max_angle_elevation_diff !== undefined) {
       params.append('max_angle_elevation_diff', filters.max_angle_elevation_diff.toString());
     }
+    if (filters?.category && filters.category.length > 0) {
+      // 配列形式で送信（?category=highway&category=major）
+      filters.category.forEach(cat => params.append('category', cat));
+    }
 
     const url = `${BASE_URL}/junctions?${params.toString()}`;
     const response = await fetch(url);
