@@ -286,20 +286,7 @@ async fn send_request(app: Router, uri: &str) -> (StatusCode, Value) {
 
     let status = response.status();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-
-    // Debug: レスポンスボディを出力
-    let body_str = String::from_utf8_lossy(&body);
-    if body_str.is_empty() {
-        eprintln!("ERROR: Empty response body for {}", uri);
-    } else if !status.is_success() {
-        eprintln!("ERROR response ({}): {}", status, body_str);
-    }
-
-    let json: Value = serde_json::from_slice(&body).unwrap_or_else(|e| {
-        eprintln!("Failed to parse JSON from response body: {}", e);
-        eprintln!("Raw body: {}", body_str);
-        panic!("JSON parse error");
-    });
+    let json: Value = serde_json::from_slice(&body).expect("Failed to parse JSON response");
 
     (status, json)
 }
