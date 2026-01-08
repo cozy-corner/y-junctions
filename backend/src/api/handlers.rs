@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
 };
+use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -46,7 +47,6 @@ impl IntoResponse for AppError {
     }
 }
 
-// GET /api/junctions のクエリパラメータ
 #[derive(Debug, Deserialize)]
 pub struct JunctionsQuery {
     pub bbox: String,               // "min_lon,min_lat,max_lon,max_lat"
@@ -58,6 +58,10 @@ pub struct JunctionsQuery {
     pub min_angle_elevation_diff: Option<f64>,
     // 最大角の高低差フィルタ（範囲検索用）
     pub max_angle_elevation_diff: Option<f64>,
+    // Category フィルタ（配列形式: ?category=highway&category=major）
+    // Note: Vec<T> + #[serde(default)] を使用（Option<Vec<T>>は単一値を扱えない）
+    #[serde(default)]
+    pub category: Vec<String>,
 }
 
 impl JunctionsQuery {
@@ -131,6 +135,13 @@ impl JunctionsQuery {
             }
         }
 
+        // category: 空のベクターはNoneとして扱う
+        let categories = if self.category.is_empty() {
+            None
+        } else {
+            Some(self.category.clone())
+        };
+
         Ok(FilterParams {
             angle_type: self.parse_angle_types()?,
             min_angle_lt: self.min_angle_lt,
@@ -138,6 +149,7 @@ impl JunctionsQuery {
             limit: self.limit,
             min_angle_elevation_diff: self.min_angle_elevation_diff,
             max_angle_elevation_diff: self.max_angle_elevation_diff,
+            categories,
         })
     }
 }
