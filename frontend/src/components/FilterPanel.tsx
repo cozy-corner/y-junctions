@@ -1,13 +1,15 @@
 import { memo } from 'react';
-import type { AngleType } from '../types';
+import type { AngleType, RoadCategory } from '../types';
 
 interface FilterPanelProps {
   angleTypes: AngleType[];
   minAngleRange: [number, number];
   elevationDiffRange: [number, number]; // 変更
+  categories: RoadCategory[]; // 道路カテゴリ
   onToggleAngleType: (type: AngleType) => void;
   onMinAngleRangeChange: (range: [number, number]) => void;
   onElevationDiffRangeChange: (range: [number, number]) => void; // 変更
+  onToggleCategory: (category: RoadCategory) => void; // 道路カテゴリトグル
   onReset: () => void;
 }
 
@@ -23,13 +25,22 @@ const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
   normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
 };
 
+const CATEGORY_LABELS: Record<RoadCategory, string> = {
+  highway: '高速道路級',
+  major: '主要道路',
+  local: '生活道路',
+  pedestrian: '歩道',
+};
+
 export const FilterPanel = memo(function FilterPanel({
   angleTypes,
   minAngleRange,
   elevationDiffRange,
+  categories,
   onToggleAngleType,
   onMinAngleRangeChange,
   onElevationDiffRangeChange,
+  onToggleCategory,
   onReset,
 }: FilterPanelProps) {
   const [minValue, maxValue] = minAngleRange;
@@ -175,6 +186,27 @@ export const FilterPanel = memo(function FilterPanel({
           >
             リセット
           </button>
+        </div>
+      </div>
+
+      {/* 道路カテゴリ */}
+      <div className="filter-section">
+        <h3>道路カテゴリ</h3>
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+          選択したカテゴリを1本でも含むY字路を表示
+        </p>
+        <div className="category-options">
+          {(['highway', 'major', 'local', 'pedestrian'] as RoadCategory[]).map(category => (
+            <label key={category} className="category-label">
+              <input
+                type="checkbox"
+                checked={categories.includes(category)}
+                onChange={() => onToggleCategory(category)}
+                className="category-checkbox"
+              />
+              <span>{CATEGORY_LABELS[category]}</span>
+            </label>
+          ))}
         </div>
       </div>
 

@@ -1,22 +1,30 @@
 import { useState, useCallback } from 'react';
-import type { AngleType, FilterParams } from '../types';
+import type { AngleType, RoadCategory, FilterParams } from '../types';
 
 export interface FilterState {
   angleTypes: AngleType[];
   minAngleRange: [number, number];
   elevationDiffRange: [number, number]; // 変更: number | null → [number, number]
+  categories: RoadCategory[]; // 道路カテゴリ
 }
 
 export function useFilters() {
   const [angleTypes, setAngleTypes] = useState<AngleType[]>(['verysharp', 'sharp', 'normal']);
   const [minAngleRange, setMinAngleRange] = useState<[number, number]>([0, 60]);
   const [elevationDiffRange, setElevationDiffRange] = useState<[number, number]>([0, 10]);
+  const [categories, setCategories] = useState<RoadCategory[]>([
+    'highway',
+    'major',
+    'local',
+    'pedestrian',
+  ]);
 
   // フィルタをリセット
   const resetFilters = useCallback(() => {
     setAngleTypes(['verysharp', 'sharp', 'normal']);
     setMinAngleRange([0, 60]);
     setElevationDiffRange([0, 10]);
+    setCategories(['highway', 'major', 'local', 'pedestrian']);
   }, []);
 
   // angle_typeの切り替え
@@ -26,6 +34,17 @@ export function useFilters() {
         return prev.filter(t => t !== type);
       } else {
         return [...prev, type];
+      }
+    });
+  }, []);
+
+  // categoryの切り替え
+  const toggleCategory = useCallback((category: RoadCategory) => {
+    setCategories(prev => {
+      if (prev.includes(category)) {
+        return prev.filter(c => c !== category);
+      } else {
+        return [...prev, category];
       }
     });
   }, []);
@@ -56,20 +75,28 @@ export function useFilters() {
       params.max_angle_elevation_diff = elevationDiffRange[1];
     }
 
+    // categoryを配列として送る（0個または4個の場合は送らない＝全選択扱い）
+    if (categories.length > 0 && categories.length < 4) {
+      params.category = categories;
+    }
+
     return params;
-  }, [angleTypes, minAngleRange, elevationDiffRange]);
+  }, [angleTypes, minAngleRange, elevationDiffRange, categories]);
 
   return {
     // 状態
     angleTypes,
     minAngleRange,
     elevationDiffRange,
+    categories,
 
     // セッター
     setAngleTypes,
     setMinAngleRange,
     setElevationDiffRange,
+    setCategories,
     toggleAngleType,
+    toggleCategory,
 
     // アクション
     resetFilters,
