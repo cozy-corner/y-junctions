@@ -24,6 +24,22 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 
 データインポート時、以下の条件でフィルタリングが行われます：
 
+#### 1. 道路種別（highway type）によるフィルタリング
+
+**対象となる道路種別**（以下の16種類のみ）：
+- 主要道路: motorway, trunk, primary, secondary, tertiary
+- 生活道路: residential, unclassified, service
+- 接続路: motorway_link, trunk_link, primary_link, secondary_link, tertiary_link
+- 歩行者道路: steps, pedestrian, path
+
+**除外される道路種別**：
+- footway（歩道）、cycleway（自転車道）、track（農道・林道）、bridleway（乗馬道）等
+- highway tagが無い道路
+
+**重要**: 3本の道路のうち1本でも除外対象が含まれる場合、そのY字路全体が保存されません。全ての道路が対象種別である必要があります。
+
+#### 2. 角度によるフィルタリング
+
 - **angle_1 ≥ 60°** の交差点は **T字路とみなして除外** されます
 - これにより、実際のY字路（3方向がほぼ均等に分岐する交差点）のみがデータベースに保存されます
 
