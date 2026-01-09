@@ -44,6 +44,14 @@ pub struct Junction {
     pub max_elevation_diff: Option<f64>,
     /// Elevation difference at the minimum angle
     pub min_angle_elevation_diff: Option<f64>,
+    /// Highway type for each of the three roads
+    pub way_1_highway_type: Option<String>,
+    pub way_2_highway_type: Option<String>,
+    pub way_3_highway_type: Option<String>,
+    /// Category for each of the three roads (generated from highway_type)
+    pub way_1_category: Option<String>,
+    pub way_2_category: Option<String>,
+    pub way_3_category: Option<String>,
 }
 
 impl Junction {
@@ -118,6 +126,12 @@ impl Junction {
                 "min_elevation_diff": self.min_elevation_diff,
                 "max_elevation_diff": self.max_elevation_diff,
                 "min_angle_elevation_diff": self.min_angle_elevation_diff,
+                "way_1_highway_type": self.way_1_highway_type,
+                "way_2_highway_type": self.way_2_highway_type,
+                "way_3_highway_type": self.way_3_highway_type,
+                "way_1_category": self.way_1_category,
+                "way_2_category": self.way_2_category,
+                "way_3_category": self.way_3_category,
             }
         })
     }
@@ -174,6 +188,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         assert_eq!(junction.angle_type(), AngleType::Sharp);
@@ -195,6 +215,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         assert_eq!(junction.angles(), [30, 150, 180]);
@@ -216,6 +242,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         let url = junction.streetview_url();
@@ -241,6 +273,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         let feature = junction.to_feature();
@@ -274,6 +312,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         let junction2 = Junction {
@@ -290,6 +334,12 @@ mod tests {
             min_elevation_diff: None,
             max_elevation_diff: None,
             min_angle_elevation_diff: None,
+            way_1_highway_type: None,
+            way_2_highway_type: None,
+            way_3_highway_type: None,
+            way_1_category: None,
+            way_2_category: None,
+            way_3_category: None,
         };
 
         let collection = Junction::to_feature_collection(vec![junction1, junction2], 2);

@@ -1,6 +1,9 @@
 // AngleType
 export type AngleType = 'verysharp' | 'sharp' | 'normal';
 
+// RoadCategory
+export type RoadCategory = 'highway' | 'major' | 'local' | 'pedestrian';
+
 // Junction (単体取得時のレスポンス)
 export interface Junction {
   id: number;
@@ -61,6 +64,7 @@ export interface FilterParams {
   min_angle_gt?: number;
   min_angle_elevation_diff?: number;
   max_angle_elevation_diff?: number; // 範囲検索用
+  category?: RoadCategory[]; // 道路カテゴリ
   limit?: number;
 }
 

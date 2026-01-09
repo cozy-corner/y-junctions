@@ -228,6 +228,11 @@ pub fn parse_pbf(
             let (way_2_bridge, way_2_tunnel) = (way_tags[1].bridge, way_tags[1].tunnel);
             let (way_3_bridge, way_3_tunnel) = (way_tags[2].bridge, way_tags[2].tunnel);
 
+            // Extract highway types from way tags
+            let way_1_highway_type = way_tags[0].highway_type.clone();
+            let way_2_highway_type = way_tags[1].highway_type.clone();
+            let way_3_highway_type = way_tags[2].highway_type.clone();
+
             // Create JunctionForInsert
             Some(JunctionForInsert {
                 osm_node_id: junction.node_id,
@@ -249,6 +254,9 @@ pub fn parse_pbf(
                 way_2_tunnel,
                 way_3_bridge,
                 way_3_tunnel,
+                way_1_highway_type,
+                way_2_highway_type,
+                way_3_highway_type,
             })
         })
         .collect();
