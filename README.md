@@ -416,7 +416,11 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 ローカルDBでインポート・検証済みのデータを本番DBに転送します。PostgreSQL COPYを使うことで高速に転送できます。
 
 ```bash
-# 1. ローカルDBから対象地域のデータをエクスポート（CSV形式）
+# 1. 本番DBの接続情報を取得
+cd terraform
+PROD_DB_URL=$(terraform output -raw neon_connection_uri)
+
+# 2. ローカルDBから全データをエクスポート（CSV形式）
 docker exec y-junctions-db psql -U y_junction -d y_junction -c "
 COPY (
   SELECT
@@ -425,23 +429,14 @@ COPY (
     elevation_diff_1, elevation_diff_2, elevation_diff_3,
     min_angle_index, min_elevation_diff, max_elevation_diff,
     way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+    way_1_highway_type, way_2_highway_type, way_3_highway_type,
     created_at
   FROM y_junctions
-  WHERE ST_X(location::geometry) BETWEEN <min_lon> AND <max_lon>
-    AND ST_Y(location::geometry) BETWEEN <min_lat> AND <max_lat>
 ) TO STDOUT WITH (FORMAT CSV, HEADER)
 " > ~/y-junctions-data/export.csv
 
-# 2. 本番DBの接続情報を取得
-cd terraform
-PROD_DB_URL=$(terraform output -raw neon_connection_uri)
-
-# 3. 本番DBから既存の対象地域データを削除（同じbboxで）
-docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "
-DELETE FROM y_junctions
-WHERE ST_X(location::geometry) BETWEEN <min_lon> AND <max_lon>
-  AND ST_Y(location::geometry) BETWEEN <min_lat> AND <max_lat>;
-"
+# 3. 本番DBから全データを削除
+docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "DELETE FROM y_junctions;"
 
 # 4. 本番DBに新データをCOPYでインポート
 cat ~/y-junctions-data/export.csv | docker run --rm -i postgres:15-alpine psql "$PROD_DB_URL" -c "
@@ -451,6 +446,7 @@ COPY y_junctions (
   elevation_diff_1, elevation_diff_2, elevation_diff_3,
   min_angle_index, min_elevation_diff, max_elevation_diff,
   way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+  way_1_highway_type, way_2_highway_type, way_3_highway_type,
   created_at
 ) FROM STDIN WITH (FORMAT CSV, HEADER);
 "
@@ -460,11 +456,6 @@ docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "
 SELECT COUNT(*) as total_records FROM y_junctions;
 "
 ```
-
-**注意事項:**
-- `<min_lon>`, `<max_lon>`, `<min_lat>`, `<max_lat>` は対象地域のbboxに置き換える
-- 削除とインポートで**必ず同じbbox**を使用すること（データ不整合を防ぐため）
-- bboxはGeofabrikのPBFファイル情報から取得できる: `osmium fileinfo <pbf-file>`
 
 ## ブランチ命名規則
 
