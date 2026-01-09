@@ -93,6 +93,9 @@ struct TestJunctionData {
     way_2_tunnel: bool,
     way_3_bridge: bool,
     way_3_tunnel: bool,
+    way_1_highway_type: String,
+    way_2_highway_type: String,
+    way_3_highway_type: String,
 }
 
 impl TestJunctionData {
@@ -117,6 +120,9 @@ impl TestJunctionData {
             way_2_tunnel: false,
             way_3_bridge: false,
             way_3_tunnel: false,
+            way_1_highway_type: "residential".to_string(),
+            way_2_highway_type: "residential".to_string(),
+            way_3_highway_type: "residential".to_string(),
         }
     }
 
@@ -141,6 +147,9 @@ impl TestJunctionData {
             way_2_tunnel: false,
             way_3_bridge: false,
             way_3_tunnel: false,
+            way_1_highway_type: "tertiary".to_string(),
+            way_2_highway_type: "tertiary".to_string(),
+            way_3_highway_type: "tertiary".to_string(),
         }
     }
 
@@ -165,6 +174,9 @@ impl TestJunctionData {
             way_2_tunnel: false,
             way_3_bridge: false,
             way_3_tunnel: false,
+            way_1_highway_type: "primary".to_string(),
+            way_2_highway_type: "primary".to_string(),
+            way_3_highway_type: "primary".to_string(),
         }
     }
 
@@ -191,6 +203,13 @@ impl TestJunctionData {
         self.way_3_tunnel = way_3_tunnel;
         self
     }
+
+    fn with_highway_types(mut self, way_1: &str, way_2: &str, way_3: &str) -> Self {
+        self.way_1_highway_type = way_1.to_string();
+        self.way_2_highway_type = way_2.to_string();
+        self.way_3_highway_type = way_3.to_string();
+        self
+    }
 }
 
 // テストヘルパー: テストデータ挿入
@@ -203,6 +222,7 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
             elevation_diff_1, elevation_diff_2, elevation_diff_3,
             min_angle_index, min_elevation_diff, max_elevation_diff,
             way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+            way_1_highway_type, way_2_highway_type, way_3_highway_type,
             created_at
         )
         VALUES (
@@ -211,6 +231,7 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
             $14, $15, $16,
             $17, $18, $19,
             $20, $21, $22, $23, $24, $25,
+            $26, $27, $28,
             NOW()
         )
         RETURNING id
@@ -241,6 +262,9 @@ async fn insert_test_junction(pool: &PgPool, data: TestJunctionData) -> i64 {
     .bind(data.way_2_tunnel)
     .bind(data.way_3_bridge)
     .bind(data.way_3_tunnel)
+    .bind(&data.way_1_highway_type)
+    .bind(&data.way_2_highway_type)
+    .bind(&data.way_3_highway_type)
     .fetch_one(pool)
     .await
     .expect("Failed to insert test junction");
@@ -262,7 +286,7 @@ async fn send_request(app: Router, uri: &str) -> (StatusCode, Value) {
 
     let status = response.status();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&body).unwrap();
+    let json: Value = serde_json::from_slice(&body).expect("Failed to parse JSON response");
 
     (status, json)
 }
@@ -742,4 +766,188 @@ async fn test_bridge_tunnel_included_without_elevation_filter() {
     let features = json["features"].as_array().unwrap();
     // All 3 junctions should be returned
     assert_eq!(features.len(), 3);
+}
+
+// ========== Category Filter のテスト ==========
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_single_category_filter() {
+    let pool = setup_test_db().await;
+
+    // highway category (motorway)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("motorway", "motorway", "motorway"),
+    )
+    .await;
+
+    // major category (primary)
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("primary", "primary", "primary"),
+    )
+    .await;
+
+    // local category (residential) - デフォルト
+    insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    let app = create_test_app(pool);
+
+    // category=highway でフィルタリング
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&category=highway",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // motorway のみ
+    let features = json["features"].as_array().unwrap();
+    assert_eq!(features.len(), 1);
+    assert_eq!(features[0]["properties"]["way_1_category"], "highway");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_multiple_categories_filter() {
+    let pool = setup_test_db().await;
+
+    // highway category
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("motorway", "trunk", "motorway_link"),
+    )
+    .await;
+
+    // major category
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("primary", "secondary", "tertiary"),
+    )
+    .await;
+
+    // local category
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("residential", "unclassified", "service"),
+    )
+    .await;
+
+    // pedestrian category
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("steps", "pedestrian", "path"),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // category=highway&category=major でフィルタリング（OR条件）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&category=highway&category=major",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 2); // highway + major
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_with_category_and_angle_type_filter() {
+    let pool = setup_test_db().await;
+
+    // sharp + highway
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("motorway", "motorway", "trunk"),
+    )
+    .await;
+
+    // verysharp + highway
+    insert_test_junction(
+        &pool,
+        TestJunctionData::verysharp_type().with_highway_types("motorway", "trunk", "trunk_link"),
+    )
+    .await;
+
+    // sharp + major
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("primary", "secondary", "tertiary"),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // category=highway AND angle_type=sharp で複合フィルタリング
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&category=highway&angle_type=sharp",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // sharp + highway のみ
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_category_response_fields() {
+    let pool = setup_test_db().await;
+
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("motorway", "primary", "residential"),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+
+    // highway_type と category がレスポンスに含まれることを確認
+    let properties = &json["properties"];
+    assert_eq!(properties["way_1_highway_type"], "motorway");
+    assert_eq!(properties["way_2_highway_type"], "primary");
+    assert_eq!(properties["way_3_highway_type"], "residential");
+    assert_eq!(properties["way_1_category"], "highway");
+    assert_eq!(properties["way_2_category"], "major");
+    assert_eq!(properties["way_3_category"], "local");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junctions_category_or_condition() {
+    let pool = setup_test_db().await;
+
+    // 1本だけhighwayカテゴリの道路を含むY字路（残り2本はlocal）
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("motorway", "residential", "residential"),
+    )
+    .await;
+
+    // 全てlocalカテゴリ
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_highway_types("residential", "unclassified", "service"),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    // category=highway で検索（OR条件: 3本のうち1本でもhighwayならヒット）
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&category=highway",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // 1本でもhighway を含むY字路のみ
 }

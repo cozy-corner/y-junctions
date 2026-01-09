@@ -16,9 +16,11 @@ function App() {
     angleTypes,
     minAngleRange,
     elevationDiffRange,
+    categories,
     toggleAngleType,
     setMinAngleRange,
     setElevationDiffRange,
+    toggleCategory,
     resetFilters,
     toFilterParams,
   } = useFilters();
@@ -65,9 +67,11 @@ function App() {
               angleTypes={angleTypes}
               minAngleRange={minAngleRange}
               elevationDiffRange={elevationDiffRange}
+              categories={categories}
               onToggleAngleType={toggleAngleType}
               onMinAngleRangeChange={setMinAngleRange}
               onElevationDiffRangeChange={setElevationDiffRange}
+              onToggleCategory={toggleCategory}
               onReset={resetFilters}
             />
           </div>
