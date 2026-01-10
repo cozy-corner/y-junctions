@@ -29,7 +29,7 @@ const CATEGORY_LABELS: Record<RoadCategory, string> = {
   highway: '高速道路級',
   major: '主要道路',
   local: '生活道路',
-  pedestrian: '歩道',
+  pedestrian: '歩行者系',
 };
 
 export const FilterPanel = memo(function FilterPanel({
