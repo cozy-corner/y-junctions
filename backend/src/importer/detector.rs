@@ -306,89 +306,120 @@ impl NodeConnectionCounter {
                 let node_id = *entry.key();
                 let way_ids = entry.value();
 
-                // Must have exactly 2 ways
-                if way_ids.len() != 2 {
-                    return None;
-                }
-
-                // Must have at least one core highway type
-                if !self.has_at_least_one_core_highway(node_id) {
-                    return None;
-                }
-
-                let way_ids_vec: Vec<i64> = way_ids.iter().copied().collect();
-                let way_a = way_ids_vec[0];
-                let way_b = way_ids_vec[1];
-
-                // Both ways must be valid highway types
-                let way_a_valid = self
-                    .way_highway_types
-                    .get(&way_a)
-                    .map(|ht| self.is_valid_highway_type(ht.value()))
-                    .unwrap_or(false);
-                let way_b_valid = self
-                    .way_highway_types
-                    .get(&way_b)
-                    .map(|ht| self.is_valid_highway_type(ht.value()))
-                    .unwrap_or(false);
-
-                if !way_a_valid || !way_b_valid {
-                    return None;
-                }
-
-                // Check if ways pass through or terminate at this node
-                let way_a_terminates = self.is_start_or_end_node(way_a, node_id);
-                let way_b_terminates = self.is_start_or_end_node(way_b, node_id);
-
-                // Exactly one way must pass through (terminate)
-                // If both pass through or both terminate, it's not a Y-junction candidate
-                if way_a_terminates == way_b_terminates {
-                    return None;
-                }
-
-                // Determine which way passes through and which connects
-                let (passing_way, connecting_way) = if !way_a_terminates {
-                    (way_a, way_b)
-                } else {
-                    (way_b, way_a)
-                };
-
-                // Get nodes for passing way
-                let passing_nodes = self.way_nodes.get(&passing_way)?;
-                let pos = passing_nodes.value().iter().position(|&id| id == node_id)?;
-
-                // Get previous and next nodes in passing way
-                if pos == 0 || pos + 1 >= passing_nodes.value().len() {
-                    return None; // Node must be in the middle of the way
-                }
-                let prev_node = passing_nodes.value()[pos - 1];
-                let next_node = passing_nodes.value()[pos + 1];
-
-                // Get neighbor node for connecting way
-                let connecting_nodes = self.way_nodes.get(&connecting_way)?;
-                let connecting_pos = connecting_nodes
-                    .value()
-                    .iter()
-                    .position(|&id| id == node_id)?;
-
-                let neighbor_node = if connecting_pos + 1 < connecting_nodes.value().len() {
-                    connecting_nodes.value()[connecting_pos + 1]
-                } else if connecting_pos > 0 {
-                    connecting_nodes.value()[connecting_pos - 1]
-                } else {
-                    return None;
-                };
-
-                Some(TwoWayJunctionCandidate {
-                    node_id,
-                    passing_way_id: passing_way,
-                    connecting_way_id: connecting_way,
-                    prev_node,
-                    next_node,
-                    neighbor_node,
-                })
+                self.try_build_two_way_candidate(node_id, way_ids)
             })
             .collect()
+    }
+
+    /// Try to build a 2-way junction candidate from a node and its connected ways
+    fn try_build_two_way_candidate(
+        &self,
+        node_id: i64,
+        way_ids: &HashSet<i64>,
+    ) -> Option<TwoWayJunctionCandidate> {
+        // Must have exactly 2 ways
+        if way_ids.len() != 2 {
+            return None;
+        }
+
+        // Must have at least one core highway type
+        if !self.has_at_least_one_core_highway(node_id) {
+            return None;
+        }
+
+        let way_ids_vec: Vec<i64> = way_ids.iter().copied().collect();
+        let way_a = way_ids_vec[0];
+        let way_b = way_ids_vec[1];
+
+        // Both ways must be valid highway types
+        if !self.are_ways_valid(way_a, way_b) {
+            return None;
+        }
+
+        // Determine which way passes through
+        let (passing_way, connecting_way) = self.identify_passing_way(way_a, way_b, node_id)?;
+
+        // Build the candidate with node positions
+        self.build_candidate_with_positions(node_id, passing_way, connecting_way)
+    }
+
+    /// Check if both ways have valid highway types
+    fn are_ways_valid(&self, way_a: i64, way_b: i64) -> bool {
+        let way_a_valid = self
+            .way_highway_types
+            .get(&way_a)
+            .map(|ht| self.is_valid_highway_type(ht.value()))
+            .unwrap_or(false);
+
+        let way_b_valid = self
+            .way_highway_types
+            .get(&way_b)
+            .map(|ht| self.is_valid_highway_type(ht.value()))
+            .unwrap_or(false);
+
+        way_a_valid && way_b_valid
+    }
+
+    /// Identify which way passes through the node (not terminating)
+    /// Returns (passing_way, connecting_way) if exactly one way passes through
+    fn identify_passing_way(&self, way_a: i64, way_b: i64, node_id: i64) -> Option<(i64, i64)> {
+        let way_a_terminates = self.is_start_or_end_node(way_a, node_id);
+        let way_b_terminates = self.is_start_or_end_node(way_b, node_id);
+
+        // Exactly one way must pass through
+        // If both pass through or both terminate, it's not a Y-junction candidate
+        if way_a_terminates == way_b_terminates {
+            return None;
+        }
+
+        Some(if !way_a_terminates {
+            (way_a, way_b)
+        } else {
+            (way_b, way_a)
+        })
+    }
+
+    /// Build candidate with node positions from ways
+    fn build_candidate_with_positions(
+        &self,
+        node_id: i64,
+        passing_way: i64,
+        connecting_way: i64,
+    ) -> Option<TwoWayJunctionCandidate> {
+        // Get nodes for passing way
+        let passing_nodes = self.way_nodes.get(&passing_way)?;
+        let pos = passing_nodes.value().iter().position(|&id| id == node_id)?;
+
+        // Get previous and next nodes in passing way
+        if pos == 0 || pos + 1 >= passing_nodes.value().len() {
+            return None; // Node must be in the middle of the way
+        }
+        let prev_node = passing_nodes.value()[pos - 1];
+        let next_node = passing_nodes.value()[pos + 1];
+
+        // Get neighbor node for connecting way
+        let connecting_nodes = self.way_nodes.get(&connecting_way)?;
+        let connecting_pos = connecting_nodes
+            .value()
+            .iter()
+            .position(|&id| id == node_id)?;
+
+        let neighbor_node = if connecting_pos + 1 < connecting_nodes.value().len() {
+            connecting_nodes.value()[connecting_pos + 1]
+        } else if connecting_pos > 0 {
+            connecting_nodes.value()[connecting_pos - 1]
+        } else {
+            return None;
+        };
+
+        Some(TwoWayJunctionCandidate {
+            node_id,
+            passing_way_id: passing_way,
+            connecting_way_id: connecting_way,
+            prev_node,
+            next_node,
+            neighbor_node,
+        })
     }
 
     /// Check if a node is the start or end of a way
