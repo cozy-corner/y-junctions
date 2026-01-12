@@ -25,6 +25,17 @@ pub struct YJunctionWithCoords {
     pub connected_ways: Vec<i64>,
 }
 
+/// Two-way junction candidate (node with 2 ways, one passing through)
+#[derive(Debug, Clone)]
+pub struct TwoWayJunctionCandidate {
+    pub node_id: i64,
+    pub passing_way_id: i64,
+    pub connecting_way_id: i64,
+    pub prev_node: i64,     // Previous node in passing way
+    pub next_node: i64,     // Next node in passing way
+    pub neighbor_node: i64, // Neighbor node in connecting way
+}
+
 /// Y-junction data ready for database insertion
 #[derive(Debug, Clone)]
 pub struct JunctionForInsert {
@@ -285,6 +296,114 @@ impl NodeConnectionCounter {
             .collect()
     }
 
+    /// Find all nodes that have exactly 2 way connections where one way passes through
+    /// This detects Y-junctions that OSM represents with 2 ways (one continuous, one connecting)
+    /// Filters to require at least one core highway type to avoid pure hiking trails
+    pub fn find_two_way_junction_candidates(&self) -> Vec<TwoWayJunctionCandidate> {
+        self.node_to_ways
+            .iter()
+            .filter_map(|entry| {
+                let node_id = *entry.key();
+                let way_ids = entry.value();
+
+                // Must have exactly 2 ways
+                if way_ids.len() != 2 {
+                    return None;
+                }
+
+                // Must have at least one core highway type
+                if !self.has_at_least_one_core_highway(node_id) {
+                    return None;
+                }
+
+                let way_ids_vec: Vec<i64> = way_ids.iter().copied().collect();
+                let way_a = way_ids_vec[0];
+                let way_b = way_ids_vec[1];
+
+                // Both ways must be valid highway types
+                let way_a_valid = self
+                    .way_highway_types
+                    .get(&way_a)
+                    .map(|ht| self.is_valid_highway_type(ht.value()))
+                    .unwrap_or(false);
+                let way_b_valid = self
+                    .way_highway_types
+                    .get(&way_b)
+                    .map(|ht| self.is_valid_highway_type(ht.value()))
+                    .unwrap_or(false);
+
+                if !way_a_valid || !way_b_valid {
+                    return None;
+                }
+
+                // Check if ways pass through or terminate at this node
+                let way_a_terminates = self.is_start_or_end_node(way_a, node_id);
+                let way_b_terminates = self.is_start_or_end_node(way_b, node_id);
+
+                // Exactly one way must pass through (terminate)
+                // If both pass through or both terminate, it's not a Y-junction candidate
+                if way_a_terminates == way_b_terminates {
+                    return None;
+                }
+
+                // Determine which way passes through and which connects
+                let (passing_way, connecting_way) = if !way_a_terminates {
+                    (way_a, way_b)
+                } else {
+                    (way_b, way_a)
+                };
+
+                // Get nodes for passing way
+                let passing_nodes = self.way_nodes.get(&passing_way)?;
+                let pos = passing_nodes.value().iter().position(|&id| id == node_id)?;
+
+                // Get previous and next nodes in passing way
+                if pos == 0 || pos + 1 >= passing_nodes.value().len() {
+                    return None; // Node must be in the middle of the way
+                }
+                let prev_node = passing_nodes.value()[pos - 1];
+                let next_node = passing_nodes.value()[pos + 1];
+
+                // Get neighbor node for connecting way
+                let connecting_nodes = self.way_nodes.get(&connecting_way)?;
+                let connecting_pos = connecting_nodes
+                    .value()
+                    .iter()
+                    .position(|&id| id == node_id)?;
+
+                let neighbor_node = if connecting_pos + 1 < connecting_nodes.value().len() {
+                    connecting_nodes.value()[connecting_pos + 1]
+                } else if connecting_pos > 0 {
+                    connecting_nodes.value()[connecting_pos - 1]
+                } else {
+                    return None;
+                };
+
+                Some(TwoWayJunctionCandidate {
+                    node_id,
+                    passing_way_id: passing_way,
+                    connecting_way_id: connecting_way,
+                    prev_node,
+                    next_node,
+                    neighbor_node,
+                })
+            })
+            .collect()
+    }
+
+    /// Check if a node is the start or end of a way
+    fn is_start_or_end_node(&self, way_id: i64, node_id: i64) -> bool {
+        if let Some(nodes) = self.way_nodes.get(&way_id) {
+            let nodes_vec = nodes.value();
+            if nodes_vec.is_empty() {
+                return false;
+            }
+            nodes_vec[0] == node_id || nodes_vec[nodes_vec.len() - 1] == node_id
+        } else {
+            false
+        }
+    }
+
     /// Get the number of unique nodes tracked
     pub fn node_count(&self) -> usize {
         self.node_to_ways.len()
@@ -325,6 +444,12 @@ impl NodeConnectionCounter {
         } else {
             Vec::new()
         }
+    }
+
+    /// Get tag information for a specific way
+    /// Returns WayTagInfo if the way exists, None otherwise
+    pub fn get_way_tag(&self, way_id: i64) -> Option<WayTagInfo> {
+        self.way_tags.get(&way_id).map(|tag| tag.clone())
     }
 }
 
@@ -656,6 +781,136 @@ mod tests {
             candidates.len(),
             0,
             "Should reject Y-junction with only pedestrian ways"
+        );
+    }
+
+    #[test]
+    fn test_two_way_junction_detection_passing_through() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20, 30] - passes through node 20
+        // Way 2: [20, 40] - connects at node 20 (terminates)
+        counter.add_way(1, &[10, 20, 30], "residential", false, false);
+        counter.add_way(2, &[20, 40], "service", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(candidates.len(), 1, "Should detect one 2-way Y-junction");
+
+        let candidate = &candidates[0];
+        assert_eq!(candidate.node_id, 20);
+        assert_eq!(candidate.passing_way_id, 1);
+        assert_eq!(candidate.connecting_way_id, 2);
+        assert_eq!(candidate.prev_node, 10);
+        assert_eq!(candidate.next_node, 30);
+        assert_eq!(candidate.neighbor_node, 40);
+    }
+
+    #[test]
+    fn test_two_way_junction_both_terminate() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20] - terminates at node 20
+        // Way 2: [30, 20] - terminates at node 20
+        // This is just a connection point, not a Y-junction
+        counter.add_way(1, &[10, 20], "residential", false, false);
+        counter.add_way(2, &[30, 20], "service", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should not detect Y-junction when both ways terminate"
+        );
+    }
+
+    #[test]
+    fn test_two_way_junction_both_pass_through() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20, 30] - passes through node 20
+        // Way 2: [40, 20, 50] - passes through node 20
+        // This is an X-junction or crossing, not a Y-junction
+        counter.add_way(1, &[10, 20, 30], "residential", false, false);
+        counter.add_way(2, &[40, 20, 50], "service", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should not detect Y-junction when both ways pass through"
+        );
+    }
+
+    #[test]
+    fn test_two_way_junction_invalid_highway_type() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20, 30] - passes through node 20, but invalid highway type
+        // Way 2: [20, 40] - connects at node 20
+        counter.add_way(1, &[10, 20, 30], "footway", false, false); // Invalid type
+        counter.add_way(2, &[20, 40], "service", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should not detect Y-junction with invalid highway type"
+        );
+    }
+
+    #[test]
+    fn test_two_way_junction_requires_core_highway() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20, 30] - passes through node 20, pedestrian way
+        // Way 2: [20, 40] - connects at node 20, pedestrian way
+        // Both are valid types but neither is a core highway → should reject
+        counter.add_way(1, &[10, 20, 30], "path", false, false);
+        counter.add_way(2, &[20, 40], "steps", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+        assert!(
+            !counter.has_at_least_one_core_highway(20),
+            "Should not have core highway (all pedestrian)"
+        );
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "Should reject 2-way junction without core highway"
+        );
+    }
+
+    #[test]
+    fn test_two_way_junction_with_one_core_highway() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1: [10, 20, 30] - passes through node 20, core highway
+        // Way 2: [20, 40] - connects at node 20, pedestrian way
+        // Has at least one core highway → should accept
+        counter.add_way(1, &[10, 20, 30], "residential", false, false);
+        counter.add_way(2, &[20, 40], "steps", false, false);
+
+        assert_eq!(counter.get_connection_count(20), 2);
+        assert!(
+            counter.has_at_least_one_core_highway(20),
+            "Should have at least one core highway (residential)"
+        );
+
+        let candidates = counter.find_two_way_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            1,
+            "Should accept 2-way junction with one core highway"
         );
     }
 }

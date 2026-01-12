@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-pub async fn import_osm_data(
+pub async fn import_three_way_junctions(
     pool: &PgPool,
     input_path: &str,
     min_lon: f64,
@@ -19,11 +19,33 @@ pub async fn import_osm_data(
 ) -> Result<usize> {
     tracing::info!("Opening PBF file: {}", input_path);
 
-    // Parse PBF and extract Y-junctions
-    let junctions = parser::parse_pbf(input_path, min_lon, min_lat, max_lon, max_lat)?;
+    // Parse PBF and extract 3-way Y-junctions only
+    let junctions = parser::parse_pbf_three_way(input_path, min_lon, min_lat, max_lon, max_lat)?;
 
     let count = junctions.len();
-    tracing::info!("Found {} Y-junctions to insert", count);
+    tracing::info!("Found {} 3-way Y-junctions to insert", count);
+
+    // Insert into database
+    inserter::insert_junctions(pool, junctions).await?;
+
+    Ok(count)
+}
+
+pub async fn import_two_way_junctions(
+    pool: &PgPool,
+    input_path: &str,
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+) -> Result<usize> {
+    tracing::info!("Opening PBF file: {}", input_path);
+
+    // Parse PBF and extract 2-way Y-junctions only
+    let junctions = parser::parse_pbf_two_way(input_path, min_lon, min_lat, max_lon, max_lat)?;
+
+    let count = junctions.len();
+    tracing::info!("Found {} 2-way Y-junctions to insert", count);
 
     // Insert into database
     inserter::insert_junctions(pool, junctions).await?;

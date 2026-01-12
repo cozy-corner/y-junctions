@@ -3,8 +3,8 @@ use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 
 #[derive(Parser, Debug)]
-#[command(name = "import")]
-#[command(about = "Import Y-junctions from OSM PBF file", long_about = None)]
+#[command(name = "import-two-way")]
+#[command(about = "Import 2-way Y-junctions from OSM PBF file", long_about = None)]
 struct Args {
     /// Path to OSM PBF file
     #[arg(short, long)]
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    tracing::info!("Starting import process");
+    tracing::info!("Starting 2-way junction import process");
     tracing::info!("Input file: {}", args.input);
     tracing::info!("Bounding box: {}", args.bbox);
 
@@ -59,8 +59,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("Database connection established");
 
-    // Import OSM data from PBF (3-way junctions only)
-    let count = y_junction_backend::importer::import_three_way_junctions(
+    // Import OSM data from PBF (2-way junctions only)
+    let count = y_junction_backend::importer::import_two_way_junctions(
         &pool,
         &args.input,
         min_lon,
@@ -70,7 +70,10 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    tracing::info!("Import process completed: {} junctions imported", count);
+    tracing::info!(
+        "2-way junction import completed: {} junctions imported",
+        count
+    );
 
     Ok(())
 }
