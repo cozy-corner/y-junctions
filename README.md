@@ -451,7 +451,7 @@ COPY (
 " > ~/y-junctions-data/export.csv
 
 # 3. 本番DBから全データを削除
-docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "DELETE FROM y_junctions;"
+docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "TRUNCATE TABLE y_junctions RESTART IDENTITY;"
 
 # 4. 本番DBに新データをCOPYでインポート
 cat ~/y-junctions-data/export.csv | docker run --rm -i postgres:15-alpine psql "$PROD_DB_URL" -c "

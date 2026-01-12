@@ -26,7 +26,7 @@ const ANGLE_TYPE_COLORS: Record<AngleType, string> = {
 };
 
 const CATEGORY_LABELS: Record<RoadCategory, string> = {
-  highway: '高速道路級',
+  highway: '幹線道路',
   major: '主要道路',
   local: '生活道路',
   pedestrian: '歩行者系',

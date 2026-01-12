@@ -124,8 +124,7 @@ impl NodeConnectionCounter {
         let mut valid_highway_types = HashSet::new();
 
         // Add common road types for Y-junction detection
-        // Primary roads
-        valid_highway_types.insert("motorway".to_string());
+        // Primary roads (excluding motorway - filtered out)
         valid_highway_types.insert("trunk".to_string());
         valid_highway_types.insert("primary".to_string());
         valid_highway_types.insert("secondary".to_string());
@@ -136,8 +135,7 @@ impl NodeConnectionCounter {
         valid_highway_types.insert("unclassified".to_string());
         valid_highway_types.insert("service".to_string());
 
-        // Links
-        valid_highway_types.insert("motorway_link".to_string());
+        // Links (excluding motorway_link - filtered out)
         valid_highway_types.insert("trunk_link".to_string());
         valid_highway_types.insert("primary_link".to_string());
         valid_highway_types.insert("secondary_link".to_string());
@@ -151,7 +149,6 @@ impl NodeConnectionCounter {
         // Core highway types (traditional roads, not pedestrian ways)
         // At least one core highway is required to avoid pure hiking trails
         let mut core_highway_types = HashSet::new();
-        core_highway_types.insert("motorway".to_string());
         core_highway_types.insert("trunk".to_string());
         core_highway_types.insert("primary".to_string());
         core_highway_types.insert("secondary".to_string());
@@ -159,7 +156,6 @@ impl NodeConnectionCounter {
         core_highway_types.insert("residential".to_string());
         core_highway_types.insert("unclassified".to_string());
         core_highway_types.insert("service".to_string());
-        core_highway_types.insert("motorway_link".to_string());
         core_highway_types.insert("trunk_link".to_string());
         core_highway_types.insert("primary_link".to_string());
         core_highway_types.insert("secondary_link".to_string());
@@ -526,8 +522,9 @@ mod tests {
         assert!(counter.is_valid_highway_type("residential"));
         assert!(counter.is_valid_highway_type("tertiary"));
         assert!(counter.is_valid_highway_type("primary"));
-        assert!(counter.is_valid_highway_type("motorway"));
 
+        assert!(!counter.is_valid_highway_type("motorway"));
+        assert!(!counter.is_valid_highway_type("motorway_link"));
         assert!(!counter.is_valid_highway_type("footway"));
         assert!(!counter.is_valid_highway_type("cycleway"));
 
