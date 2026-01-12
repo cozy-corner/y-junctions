@@ -429,7 +429,7 @@ pub fn parse_pbf_two_way(
     let failed = two_way_candidates.len() - successful;
 
     tracing::info!(
-        "2-way junction processing complete: {} successful, {} failed (angle < 60°)",
+        "2-way junction processing complete: {} successful, {} filtered (angle >= 60° or missing data)",
         successful,
         failed
     );
