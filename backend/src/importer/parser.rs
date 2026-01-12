@@ -38,31 +38,19 @@ impl LocalState {
     }
 }
 
-pub fn parse_pbf(
-    input_path: &str,
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
-) -> Result<Vec<JunctionForInsert>> {
-    tracing::info!(
-        "Parsing PBF file with bbox: ({}, {}) to ({}, {})",
-        min_lon,
-        min_lat,
-        max_lon,
-        max_lat
-    );
+/// Type alias for the shared cache and counter structure
+type CacheAndCounter = (Arc<DashMap<i64, (f64, f64)>>, NodeConnectionCounter);
 
-    // Single pass: Collect all data (ways, nodes, and coordinates) - PARALLEL
-    tracing::info!("Starting single-pass (parallel): collecting ways, nodes, and coordinates");
+/// Build node coordinates cache and NodeConnectionCounter from PBF file
+/// This is shared by both 3-way and 2-way detection
+fn build_cache_and_counter(input_path: &str) -> Result<CacheAndCounter> {
+    let file = File::open(input_path)?;
+    let reader = osmpbf::ElementReader::new(file);
 
     // Create valid highway types set for filtering (shared across threads)
     let temp_counter = NodeConnectionCounter::new();
     let valid_highway_types: Arc<HashSet<String>> =
         Arc::new(temp_counter.valid_highway_types().iter().cloned().collect());
-
-    let file = File::open(input_path)?;
-    let reader = osmpbf::ElementReader::new(file);
 
     // Parallel map-reduce to collect ways and nodes
     let valid_types = Arc::clone(&valid_highway_types);
@@ -141,6 +129,29 @@ pub fn parse_pbf(
     );
     tracing::info!("  Total node coordinates cached: {}", node_coords.len());
 
+    Ok((Arc::new(node_coords), counter))
+}
+
+/// Parse PBF file and extract 3-way Y-junctions only
+pub fn parse_pbf_three_way(
+    input_path: &str,
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+) -> Result<Vec<JunctionForInsert>> {
+    tracing::info!(
+        "Parsing PBF file (3-way only) with bbox: ({}, {}) to ({}, {})",
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat
+    );
+
+    // Build cache and counter
+    tracing::info!("Starting single-pass (parallel): collecting ways, nodes, and coordinates");
+    let (node_coords, counter) = build_cache_and_counter(input_path)?;
+
     // Find Y-junction candidates (nodes with exactly 3 way connections)
     let candidates = counter.find_y_junction_candidates();
     tracing::info!("Found {} Y-junction candidates", candidates.len());
@@ -187,7 +198,7 @@ pub fn parse_pbf(
     // In-memory processing: Calculate angles for Y-junctions - PARALLEL
     tracing::info!("Processing angles: calculating bearings and angles from cached coordinates");
 
-    let junctions_for_insert: Vec<JunctionForInsert> = y_junctions
+    let junctions: Vec<JunctionForInsert> = y_junctions
         .par_iter()
         .filter_map(|junction| {
             // Get neighboring nodes with their way tags in consistent order
@@ -261,11 +272,11 @@ pub fn parse_pbf(
         })
         .collect();
 
-    let successful_calculations = junctions_for_insert.len();
+    let successful_calculations = junctions.len();
     let failed_calculations = y_junctions.len() - successful_calculations;
 
     // Log first 10 junctions for verification (after parallel processing)
-    for junction in junctions_for_insert.iter().take(10) {
+    for junction in junctions.iter().take(10) {
         let mut sorted_angles = [junction.angle_1, junction.angle_2, junction.angle_3];
         sorted_angles.sort_unstable();
         let angle_type =
@@ -290,7 +301,160 @@ pub fn parse_pbf(
         failed_calculations
     );
 
-    Ok(junctions_for_insert)
+    Ok(junctions)
+}
+
+/// Parse PBF file and extract 2-way Y-junctions only
+pub fn parse_pbf_two_way(
+    input_path: &str,
+    min_lon: f64,
+    min_lat: f64,
+    max_lon: f64,
+    max_lat: f64,
+) -> Result<Vec<JunctionForInsert>> {
+    tracing::info!(
+        "Parsing PBF file (2-way only) with bbox: ({}, {}) to ({}, {})",
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat
+    );
+
+    // Build cache and counter
+    tracing::info!("Starting single-pass (parallel): collecting ways, nodes, and coordinates");
+    let (node_coords, counter) = build_cache_and_counter(input_path)?;
+
+    // Process 2-way junctions
+    tracing::info!("Processing 2-way junction candidates");
+
+    let two_way_candidates = counter.find_two_way_junction_candidates();
+    tracing::info!(
+        "Found {} 2-way junction candidates",
+        two_way_candidates.len()
+    );
+
+    if two_way_candidates.is_empty() {
+        tracing::warn!("No 2-way junction candidates found");
+        return Ok(Vec::new());
+    }
+
+    // Process 2-way candidates - PARALLEL
+    let junctions: Vec<JunctionForInsert> = two_way_candidates
+        .par_iter()
+        .filter_map(|candidate| {
+            // Get coordinates for the junction node
+            let (junction_lat, junction_lon) = *node_coords.get(&candidate.node_id)?;
+
+            // Check if node is within bounding box
+            if junction_lon < min_lon
+                || junction_lon > max_lon
+                || junction_lat < min_lat
+                || junction_lat > max_lat
+            {
+                return None;
+            }
+
+            // Get coordinates for the three points
+            let prev_coords = *node_coords.get(&candidate.prev_node)?;
+            let next_coords = *node_coords.get(&candidate.next_node)?;
+            let neighbor_coords = *node_coords.get(&candidate.neighbor_node)?;
+
+            let points = [prev_coords, next_coords, neighbor_coords];
+
+            // Calculate angles and bearings
+            let (angles, bearings) =
+                calculate_junction_angles(junction_lat, junction_lon, &points)?;
+
+            // Find minimum angle for filtering
+            let min_angle = *angles.iter().min().unwrap();
+
+            // Filter out T-junctions (minimum angle >= 60°)
+            if min_angle >= 60 {
+                tracing::debug!(
+                    "2-way REJECTED (min_angle={}°): node {} at ({:.7}, {:.7}), angles=[{}°, {}°, {}°]",
+                    min_angle, candidate.node_id, junction_lat, junction_lon,
+                    angles[0], angles[1], angles[2]
+                );
+                return None;
+            }
+
+            // Get way tags for the two ways
+            // For 2-way junctions: way_1 = passing way (entry), way_2 = passing way (exit), way_3 = connecting way
+            let passing_tag = counter.get_way_tag(candidate.passing_way_id)?;
+            let connecting_tag = counter.get_way_tag(candidate.connecting_way_id)?;
+
+            // Map the three directions to way information
+            // Direction 0 (bearing[0]) = prev_node direction = way_1 (passing entry)
+            // Direction 1 (bearing[1]) = next_node direction = way_2 (passing exit)
+            // Direction 2 (bearing[2]) = neighbor_node direction = way_3 (connecting)
+            let way_1_bridge = passing_tag.bridge;
+            let way_1_tunnel = passing_tag.tunnel;
+            let way_2_bridge = passing_tag.bridge; // Same way as way_1
+            let way_2_tunnel = passing_tag.tunnel;
+            let way_3_bridge = connecting_tag.bridge;
+            let way_3_tunnel = connecting_tag.tunnel;
+
+            let way_1_highway_type = passing_tag.highway_type.clone();
+            let way_2_highway_type = passing_tag.highway_type.clone(); // Same way as way_1
+            let way_3_highway_type = connecting_tag.highway_type.clone();
+
+            Some(JunctionForInsert {
+                osm_node_id: candidate.node_id,
+                lat: junction_lat,
+                lon: junction_lon,
+                angle_1: angles[0],
+                angle_2: angles[1],
+                angle_3: angles[2],
+                bearings,
+                elevation: None,
+                neighbor_elevations: None,
+                elevation_diffs: None,
+                min_angle_index: None,
+                min_elevation_diff: None,
+                max_elevation_diff: None,
+                way_1_bridge,
+                way_1_tunnel,
+                way_2_bridge,
+                way_2_tunnel,
+                way_3_bridge,
+                way_3_tunnel,
+                way_1_highway_type,
+                way_2_highway_type,
+                way_3_highway_type,
+            })
+        })
+        .collect();
+
+    let successful = junctions.len();
+    let failed = two_way_candidates.len() - successful;
+
+    tracing::info!(
+        "2-way junction processing complete: {} successful, {} filtered (angle >= 60° or missing data)",
+        successful,
+        failed
+    );
+
+    // Log first 5 two-way junctions
+    for junction in junctions.iter().take(5) {
+        let mut sorted_angles = [junction.angle_1, junction.angle_2, junction.angle_3];
+        sorted_angles.sort_unstable();
+        let angle_type =
+            AngleType::from_angles(sorted_angles[0], sorted_angles[1], sorted_angles[2]);
+
+        tracing::info!(
+            "2-way Node {}: [{}°, {}°, {}°] type={:?}, bearings=[{:.1}°, {:.1}°, {:.1}°]",
+            junction.osm_node_id,
+            junction.angle_1,
+            junction.angle_2,
+            junction.angle_3,
+            angle_type,
+            junction.bearings[0],
+            junction.bearings[1],
+            junction.bearings[2]
+        );
+    }
+
+    Ok(junctions)
 }
 
 #[cfg(test)]

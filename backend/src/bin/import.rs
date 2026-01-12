@@ -59,8 +59,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("Database connection established");
 
-    // Import OSM data from PBF
-    let count = y_junction_backend::importer::import_osm_data(
+    // Import OSM data from PBF (3-way junctions only)
+    let count = y_junction_backend::importer::import_three_way_junctions(
         &pool,
         &args.input,
         min_lon,
