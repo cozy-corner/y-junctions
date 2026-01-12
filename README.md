@@ -118,16 +118,7 @@ docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_tes
 
 ```bash
 # インポートツールをリリースモードでビルド
-(cd backend && cargo build --release --bin import --bin import-elevation)
-```
-
-**5-1. Y字路データのインポート**
-
-```bash
-# 四国全域のデータをインポート（約1分）
-(cd backend && ./target/release/import \
-  --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
-  --bbox 132,33,135,35)
+(cd backend && cargo build --release --bin import --bin import_two_way --bin import-elevation)
 ```
 
 **PBFファイルの準備:**
@@ -135,7 +126,31 @@ docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_tes
 - 例: 四国データ `https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf`
 - `~/y-junctions-data/osm/` に配置
 
-**5-2. 標高データの追加**
+**5-1. 3-way Y字路データのインポート**
+
+3つの異なるOSM wayが接続するY字路をインポートします。
+
+```bash
+# 四国全域の3-wayデータをインポート
+(cd backend && ./target/release/import \
+  --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
+  --bbox 132,33,135,35)
+```
+
+**5-2. 2-way Y字路データのインポート**
+
+1つのwayが通過し、もう1つのwayが接続するY字路をインポートします。
+
+```bash
+# 四国全域の2-wayデータをインポート
+(cd backend && ./target/release/import_two_way \
+  --input ~/y-junctions-data/osm/shikoku-latest.osm.pbf \
+  --bbox 132,33,135,35)
+```
+
+**注意:** 2-wayは3-wayの約4倍のデータ量になります。
+
+**5-3. 標高データの追加**
 
 ```bash
 (cd backend && ./target/release/import-elevation \
