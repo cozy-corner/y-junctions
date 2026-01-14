@@ -191,7 +191,7 @@ pub async fn find_by_bbox(
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
     filters: FilterParams,
 ) -> Result<(Vec<Junction>, i64), sqlx::Error> {
-    let limit = filters.limit.unwrap_or(500).min(1000);
+    let limit = filters.limit.unwrap_or(500).clamp(1, 1000);
 
     let mut query_builder = QueryBuilder::new(
         "SELECT id, osm_node_id, \
