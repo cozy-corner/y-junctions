@@ -57,58 +57,8 @@ struct JunctionRow {
     way_3_category: Option<String>,
 }
 
-#[derive(Debug, FromRow)]
-struct JunctionRowWithCount {
-    id: i64,
-    osm_node_id: i64,
-    lat: f64,
-    lon: f64,
-    angle_1: i16,
-    angle_2: i16,
-    angle_3: i16,
-    bearings: Vec<f32>,
-    created_at: DateTime<Utc>,
-    elevation: Option<f32>,
-    min_elevation_diff: Option<f32>,
-    max_elevation_diff: Option<f32>,
-    min_angle_elevation_diff: Option<f32>,
-    way_1_highway_type: Option<String>,
-    way_2_highway_type: Option<String>,
-    way_3_highway_type: Option<String>,
-    way_1_category: Option<String>,
-    way_2_category: Option<String>,
-    way_3_category: Option<String>,
-    total_count: i64,
-}
-
 impl From<JunctionRow> for Junction {
     fn from(row: JunctionRow) -> Self {
-        Junction {
-            id: row.id,
-            osm_node_id: row.osm_node_id,
-            lat: row.lat,
-            lon: row.lon,
-            angle_1: row.angle_1,
-            angle_2: row.angle_2,
-            angle_3: row.angle_3,
-            bearings: row.bearings,
-            created_at: row.created_at,
-            elevation: row.elevation.map(|e| e as f64),
-            min_elevation_diff: row.min_elevation_diff.map(|e| e as f64),
-            max_elevation_diff: row.max_elevation_diff.map(|e| e as f64),
-            min_angle_elevation_diff: row.min_angle_elevation_diff.map(|e| e as f64),
-            way_1_highway_type: row.way_1_highway_type,
-            way_2_highway_type: row.way_2_highway_type,
-            way_3_highway_type: row.way_3_highway_type,
-            way_1_category: row.way_1_category,
-            way_2_category: row.way_2_category,
-            way_3_category: row.way_3_category,
-        }
-    }
-}
-
-impl From<JunctionRowWithCount> for Junction {
-    fn from(row: JunctionRowWithCount) -> Self {
         Junction {
             id: row.id,
             osm_node_id: row.osm_node_id,
@@ -241,7 +191,7 @@ pub async fn find_by_bbox(
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
     filters: FilterParams,
 ) -> Result<(Vec<Junction>, i64), sqlx::Error> {
-    let limit = filters.limit.unwrap_or(500).min(1000);
+    let limit = filters.limit.unwrap_or(500).clamp(1, 1000);
 
     let mut query_builder = QueryBuilder::new(
         "SELECT id, osm_node_id, \
@@ -249,8 +199,7 @@ pub async fn find_by_bbox(
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
-         way_1_category, way_2_category, way_3_category, \
-         COUNT(*) OVER() as total_count \
+         way_1_category, way_2_category, way_3_category \
          FROM y_junctions ",
     );
 
@@ -286,10 +235,11 @@ pub async fn find_by_bbox(
     query_builder.push(" LIMIT ");
     query_builder.push_bind(limit);
 
-    let rows: Vec<JunctionRowWithCount> = query_builder.build_query_as().fetch_all(pool).await?;
+    let rows: Vec<JunctionRow> = query_builder.build_query_as().fetch_all(pool).await?;
 
-    // total_count を最初の行から取得（全行同じ値）
-    let total_count = rows.first().map(|r| r.total_count).unwrap_or(0);
+    // total_countは返した件数を設定
+    // Note: limitに達している場合、さらに多くのデータがある可能性がある
+    let total_count = rows.len() as i64;
 
     let junctions: Vec<Junction> = rows.into_iter().map(Junction::from).collect();
 
