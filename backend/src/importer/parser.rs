@@ -229,6 +229,10 @@ pub fn parse_pbf_three_way(
             // Find minimum angle for filtering and type classification
             let min_angle = *angles.iter().min().unwrap();
 
+            if min_angle < 10 {
+                return None;
+            }
+
             // 最小角度が60度以上の場合はT字路とみなして除外
             if min_angle >= 60 {
                 return None;
@@ -367,6 +371,10 @@ pub fn parse_pbf_two_way(
 
             // Find minimum angle for filtering
             let min_angle = *angles.iter().min().unwrap();
+
+            if min_angle < 10 {
+                return None;
+            }
 
             // Filter out T-junctions (minimum angle >= 60°)
             if min_angle >= 60 {
