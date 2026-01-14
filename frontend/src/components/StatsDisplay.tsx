@@ -10,6 +10,10 @@ const MARKER_WARNING_THRESHOLD = 1000;
 export const StatsDisplay = memo(function StatsDisplay({ count, isLoading }: StatsDisplayProps) {
   const showWarning = !isLoading && count >= MARKER_WARNING_THRESHOLD;
 
+  // limitに達している場合は「+」を表示（500件または1000件の場合）
+  const isLimitReached = count === 500 || count === 1000;
+  const displayCount = isLimitReached ? `${count}+` : `${count}`;
+
   return (
     <div>
       <div className="stats-display">
@@ -17,7 +21,7 @@ export const StatsDisplay = memo(function StatsDisplay({ count, isLoading }: Sta
           <span className="stats-loading">読み込み中...</span>
         ) : (
           <span className="stats-count">
-            <strong>{count}</strong> 件のY字路が見つかりました
+            <strong>{displayCount}</strong> 件のY字路が見つかりました
           </span>
         )}
       </div>
