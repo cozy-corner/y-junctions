@@ -382,7 +382,7 @@ async fn test_get_junctions_with_limit() {
         send_request(app, "/api/junctions?bbox=138.0,34.0,140.0,36.0&limit=2").await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["total_count"], 3); // 全体件数
+    assert_eq!(json["total_count"], 2); // 返された件数（パフォーマンス改善のため全体件数は返さない）
     assert_eq!(json["features"].as_array().unwrap().len(), 2); // 取得件数
 }
 
