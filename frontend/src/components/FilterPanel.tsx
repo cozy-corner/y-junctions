@@ -151,10 +151,10 @@ export const FilterPanel = memo(function FilterPanel({
               type="range"
               min="0"
               max="10"
-              step="0.5"
+              step="0.1"
               value={elevationDiffRange[0]}
               onChange={e => {
-                const newMin = Math.min(Number(e.target.value), elevationDiffRange[1] - 0.5);
+                const newMin = Math.min(Number(e.target.value), elevationDiffRange[1] - 0.1);
                 onElevationDiffRangeChange([newMin, elevationDiffRange[1]]);
               }}
               className="angle-range-slider"
@@ -170,10 +170,10 @@ export const FilterPanel = memo(function FilterPanel({
               type="range"
               min="0"
               max="10"
-              step="0.5"
+              step="0.1"
               value={elevationDiffRange[1]}
               onChange={e => {
-                const newMax = Math.max(Number(e.target.value), elevationDiffRange[0] + 0.5);
+                const newMax = Math.max(Number(e.target.value), elevationDiffRange[0] + 0.1);
                 onElevationDiffRangeChange([elevationDiffRange[0], newMax]);
               }}
               className="angle-range-slider"
