@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      backend-deploy: ${{ steps.filter.outputs.backend-deploy }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - name: Checkout code
@@ -26,9 +27,20 @@ jobs:
         id: filter
         with:
           filters: |
+            # backend: Triggers tests for any backend changes
             backend:
               - 'backend/**'
               - '.github/workflows/deploy.yml'
+            # backend-deploy: Triggers deployment, excluding CLI import tools
+            backend-deploy:
+              - 'backend/src/**'
+              - '!backend/src/bin/import*.rs'  # Import tools are CLI-only, not deployed
+              - 'backend/Cargo.toml'
+              - 'backend/Cargo.lock'
+              - 'backend/Dockerfile'
+              - 'backend/migrations/**'
+              - '.github/workflows/deploy.yml'
+            # frontend: Triggers tests and deployment for frontend changes
             frontend:
               - 'frontend/**'
               - '.github/workflows/deploy.yml'
@@ -158,7 +170,7 @@ jobs:
     needs: [changes, backend-test]
     if: |
       always() &&
-      needs.changes.outputs.backend == 'true' &&
+      needs.changes.outputs.backend-deploy == 'true' &&
       needs.backend-test.result == 'success'
 
     permissions:
