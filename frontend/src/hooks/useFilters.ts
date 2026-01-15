@@ -10,7 +10,7 @@ export interface FilterState {
 
 export function useFilters() {
   const [angleTypes, setAngleTypes] = useState<AngleType[]>(['verysharp', 'sharp', 'normal']);
-  const [minAngleRange, setMinAngleRange] = useState<[number, number]>([0, 60]);
+  const [minAngleRange, setMinAngleRange] = useState<[number, number]>([10, 60]);
   const [elevationDiffRange, setElevationDiffRange] = useState<[number, number]>([0, 10]);
   const [categories, setCategories] = useState<RoadCategory[]>([
     'highway',
@@ -22,7 +22,7 @@ export function useFilters() {
   // フィルタをリセット
   const resetFilters = useCallback(() => {
     setAngleTypes(['verysharp', 'sharp', 'normal']);
-    setMinAngleRange([0, 60]);
+    setMinAngleRange([10, 60]);
     setElevationDiffRange([0, 10]);
     setCategories(['highway', 'major', 'local', 'pedestrian']);
   }, []);
@@ -58,8 +58,8 @@ export function useFilters() {
       params.angle_type = angleTypes;
     }
 
-    // minAngleRangeが初期値(0, 60)でない場合のみ送信
-    if (minAngleRange[0] > 0) {
+    // minAngleRangeが初期値(10, 60)でない場合のみ送信
+    if (minAngleRange[0] > 10) {
       params.min_angle_gt = minAngleRange[0];
     }
 

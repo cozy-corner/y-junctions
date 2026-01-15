@@ -101,7 +101,7 @@ export const FilterPanel = memo(function FilterPanel({
             <label style={{ fontSize: 12, color: '#666' }}>最小値: {minValue}°</label>
             <input
               type="range"
-              min="0"
+              min="10"
               max="60"
               value={minValue}
               onChange={e => handleMinChange(Number(e.target.value))}
@@ -114,7 +114,7 @@ export const FilterPanel = memo(function FilterPanel({
             <label style={{ fontSize: 12, color: '#666' }}>最大値: {maxValue}°</label>
             <input
               type="range"
-              min="0"
+              min="10"
               max="60"
               value={maxValue}
               onChange={e => handleMaxChange(Number(e.target.value))}
@@ -123,7 +123,7 @@ export const FilterPanel = memo(function FilterPanel({
           </div>
 
           <button
-            onClick={() => onMinAngleRangeChange([0, 60])}
+            onClick={() => onMinAngleRangeChange([10, 60])}
             className="angle-range-clear-button"
           >
             リセット
