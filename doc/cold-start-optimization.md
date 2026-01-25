@@ -146,7 +146,7 @@ Phase 1で十分な改善を達成したため、追加対策の優先度は低�
 | 対策 | 効果 | コスト | 優先度 | 状態 |
 |-----|-----|--------|--------|------|
 | Autosuspend延長 | 頻度削減のみ | 月19-24ドル | **低** | 未実施 |
-| Connection Pooler | 不明 | 要調査 | **低** | 未調査 |
+| Connection Pooler | アクセス頻度依存 | 0円（推定） | **低** | 未実施 |
 | connect_lazy() | 可用性向上 | 0円 | **低** | 未実施 |
 
 **推奨:** Phase 1（月3円）のみで運用し、追加対策は不要
@@ -184,7 +184,7 @@ default_endpoint_settings {
 
 ---
 
-### Connection Pooler（効果不明 ❓）
+### Connection Pooler（アクセス頻度依存 🔄）
 
 ```hcl
 # terraform/neon.tf
@@ -197,19 +197,38 @@ default_endpoint_settings {
 **仕組み:**
 - NeonのPgBouncer経由で接続
 - TCP/TLS/認証をプールして再利用
+- Serverless環境で推奨される機能
 
-**効果:**
-- **Phase 1実施前の想定:** TCP/TLS/認証オーバーヘッド削減（不明）
-- **Phase 1実施後の状況:** DB接続時間は既に1.2秒まで改善済み
-- **推定:** さらなる改善効果は限定的
+参考: [Neon Connection Pooling](https://neon.com/docs/connect/connection-pooling)
+
+**効果（アクセスパターンによって変わる）:**
+
+| Cloud Runインスタンス | Neon compute | Connection Poolerの効果 |
+|-------------------|-------------|---------------------|
+| ❄️ コールドスタート | ❄️ suspend中 | **限定的**（両方の起動が必要） |
+| ✅ 起動中 | ❄️ suspend中 | **あり**（Pooler経由でcompute起動後の接続が速い） |
+| ❄️ コールドスタート | ✅ 起動中 | **あり**（Pooler経由で新規接続が速い） |
+| ✅ 起動中 | ✅ 起動中 | **大きい**（接続がプールされている） |
+
+**現在の設定での効果:**
+- **低頻度アクセス（1時間に1回など）:** 効果限定的（毎回両方コールドスタート）
+- **中頻度アクセス（5-15分間隔）:** 効果あり（Cloud Runのみコールドスタート）
+- **高頻度アクセス（数分間隔）:** 大きな効果（両方起動中）
+
+**Phase 1実施後の状況:**
+- DB接続時間は既に1.2秒まで改善済み
+- この1.2秒の内訳は不明（Neon compute起動時間を含む可能性あり）
+- Connection Poolerで接続確立部分は高速化できるが、compute起動（500ms〜数秒）は変わらない
 
 **制限:**
-- コールドスタート時は毎回Cloud Run → Pooler間の接続が必要
-- Neon compute起動時間（500ms〜数秒）は変わらない
+- Neon compute起動時間（500ms〜数秒）は削減できない
+- 低頻度アクセスでは効果が薄い
 
-**コスト要件:** 要調査（無料プランで利用可能か不明）
+**コスト:** 0円（推定、無料プランでの利用可否は要確認）
 
-**評価:** 効果が限定的、Phase 1で既に改善済み
+**評価:** アクセス頻度が高ければ効果あり。現状のアクセスパターンが不明なため、試験的に有効化して効果測定する価値はある
+
+参考: [Neon Postgres Deep Dive: Serverless SQL](https://dev.to/dataformathub/neon-postgres-deep-dive-why-the-2025-updates-change-serverless-sql-5o0)
 
 ---
 
