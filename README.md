@@ -438,7 +438,8 @@ terraform login
 
 ```bash
 # 1. mainブランチのworktreeから terraform.tfvars をコピー
-cp ~/code/y-junctions/terraform/terraform.tfvars terraform/
+# <main-worktree-path> は実際のmainブランチのworktreeパスに置き換えてください
+cp <main-worktree-path>/terraform/terraform.tfvars terraform/
 
 # 2. Terraform初期化
 cd terraform
