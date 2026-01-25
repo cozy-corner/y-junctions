@@ -423,9 +423,39 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 ## 本番環境デプロイ
 
 ### インフラ管理
-- Terraform（`terraform/`ディレクトリ）で管理
-- Terraform Cloudでstate管理（`terraform login`が必要）
-- mainブランチへのpush時、GitHub Actionsで自動デプロイ
+
+Terraform（`terraform/`ディレクトリ）で管理。Terraform Cloudでstate管理。
+
+#### Terraform Cloud認証（マシン単位で1回のみ）
+
+```bash
+terraform login
+# ブラウザでログインしてトークンを取得
+# ~/.terraform.d/credentials.tfrc.json に保存される
+```
+
+#### git worktreeでの準備（worktree作成時に毎回）
+
+```bash
+# 1. mainブランチのworktreeから terraform.tfvars をコピー
+cp ~/code/y-junctions/terraform/terraform.tfvars terraform/
+
+# 2. Terraform初期化
+cd terraform
+terraform init
+```
+
+**注意:** `terraform.tfvars` には機密情報（Neon API key）が含まれるため、gitignoreで除外されています。
+
+#### Terraform実行
+
+```bash
+cd terraform
+terraform plan    # 変更内容を確認
+terraform apply   # 変更を適用
+```
+
+**注意:** アプリケーションのデプロイ（backend/frontend）はmainブランチへのpush時にGitHub Actionsで自動実行されますが、Terraformの変更は手動で`terraform apply`を実行する必要があります。
 
 ### データインポート（本番環境）
 
