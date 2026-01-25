@@ -146,7 +146,7 @@ Phase 1で十分な改善を達成したため、追加対策の優先度は低�
 | 対策 | 効果 | コスト | 優先度 | 状態 |
 |-----|-----|--------|--------|------|
 | Autosuspend延長 | 頻度削減のみ | 月19-24ドル | **低** | 未実施 |
-| Connection Pooler | アクセス頻度依存 | 0円（推定） | **低** | 未実施 |
+| Connection Pooler | アクセス頻度依存 | 0円 | **低** | 未実施 |
 | connect_lazy() | 可用性向上 | 0円 | **低** | 未実施 |
 
 **推奨:** Phase 1（月3円）のみで運用し、追加対策は不要
@@ -224,9 +224,12 @@ default_endpoint_settings {
 - Neon compute起動時間（500ms〜数秒）は削減できない
 - 低頻度アクセスでは効果が薄い
 
-**コスト:** 0円（推定、無料プランでの利用可否は要確認）
+**コスト:** 0円（無料プランでも利用可能、追加料金なし）
+- 全Neonプランでサポート（Free tier含む）
+- 10,000同時接続まで対応
+- 参考: [Neon plans](https://neon.com/docs/introduction/plans)
 
-**評価:** アクセス頻度が高ければ効果あり。現状のアクセスパターンが不明なため、試験的に有効化して効果測定する価値はある
+**評価:** アクセス頻度が高ければ効果あり。コスト0円のため、試験的に有効化して効果測定する価値はある
 
 参考: [Neon Postgres Deep Dive: Serverless SQL](https://dev.to/dataformathub/neon-postgres-deep-dive-why-the-2025-updates-change-serverless-sql-5o0)
 
