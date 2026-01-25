@@ -31,10 +31,6 @@ resource "google_cloud_run_v2_service" "backend" {
   deletion_protection = true
 
   template {
-    annotations = {
-      "run.googleapis.com/startup-cpu-boost" = "true"
-    }
-
     containers {
       image = var.backend_image
 
@@ -57,6 +53,7 @@ resource "google_cloud_run_v2_service" "backend" {
           cpu    = "1"
           memory = "512Mi"
         }
+        startup_cpu_boost = true
       }
     }
 
