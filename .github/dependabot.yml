@@ -8,16 +8,13 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "backend"
       - "rust"
     groups:
-      security-updates:
-        update-types:
-          - "security"
-      all-dependencies:
+      backend-dependencies:
         patterns:
           - "*"
 
@@ -29,15 +26,12 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "frontend"
     groups:
-      security-updates:
-        update-types:
-          - "security"
-      all-dependencies:
+      frontend-dependencies:
         patterns:
           - "*"
 
@@ -54,10 +48,7 @@ updates:
       - "dependencies"
       - "devtools"
     groups:
-      security-updates:
-        update-types:
-          - "security"
-      all-dependencies:
+      devtools-dependencies:
         patterns:
           - "*"
 
@@ -74,9 +65,6 @@ updates:
       - "dependencies"
       - "github-actions"
     groups:
-      security-updates:
-        update-types:
-          - "security"
-      all-actions:
+      actions-dependencies:
         patterns:
           - "*"
