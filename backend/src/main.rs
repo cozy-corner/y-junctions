@@ -13,13 +13,18 @@ async fn main() {
 
     // データベース接続プール作成
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let start = std::time::Instant::now();
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&database_url)
-        .await
-        .expect("Failed to connect to database");
+        .connect_lazy(&database_url)
+        .expect("Failed to create connection pool");
+    let pool_create_duration = start.elapsed();
 
-    tracing::info!("Connected to database");
+    tracing::info!(
+        "Connection pool created (lazy) in {:?}",
+        pool_create_duration
+    );
 
     // CORS設定
     let cors = CorsLayer::new()
