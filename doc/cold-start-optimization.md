@@ -175,7 +175,7 @@ default_endpoint_settings {
 - **Neon有料プラン（Launch以上）へのアップグレード（必須）**
   - Freeプランではautosuspend設定が5分固定で変更不可
   - Launch/Scaleプランは使用量ベース課金（月額最低料金なし）
-  - 出典: [Neon Pricing](https://neon.com/pricing), [Neon Scale to Zero](https://neon.com/docs/guides/auto-suspend-compute)
+  - 出典: [Neon Pricing](https://neon.com/pricing), [Neon Scale to Zero](https://neon.com/docs/guides/scale-to-zero-guide)
 - **推定月額コスト（2026年1月時点の使用量ベース料金）:**
   - Launchプラン基本使用: 約5ドル/月〜（コンピュート時間次第）
   - Autosuspend延長による追加compute使用: 0-5ドル/月程度（アクセスパターン次第）
