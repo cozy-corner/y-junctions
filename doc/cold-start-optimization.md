@@ -145,7 +145,7 @@ Phase 1で十分な改善を達成したため、追加対策の優先度は低�
 
 | 対策 | 効果 | コスト | 優先度 | 状態 |
 |-----|-----|--------|--------|------|
-| Autosuspend延長 | 頻度削減のみ | 月19-24ドル | **低** | 未実施 |
+| Autosuspend延長 | 頻度削減のみ | 月5-10ドル（推定） | **低** | 未実施 |
 | Connection Pooler | アクセス頻度依存 | 0円 | **低** | 未実施 |
 | connect_lazy() | 可用性向上 | 0円 | **低** | 未実施 |
 
@@ -172,13 +172,17 @@ default_endpoint_settings {
 - **制限:** 発生した場合の遅延時間は変わらない（Phase 1実施後でも1.2秒のDB接続は必要）
 
 **コスト:**
-- **Neon有料プラン（Neon Pro以上）へのアップグレード: 月19ドル〜（必須）**
-  - 無料プランではautosuspend設定の変更不可
-  - 出典: [Neon Scale to Zero](https://neon.com/docs/guides/auto-suspend-compute)
-- compute使用時間増加による追加費用: 0-5ドル/月程度（アクセスパターン次第）
-- **合計推定コスト: 月19-24ドル**
+- **Neon有料プラン（Launch以上）へのアップグレード（必須）**
+  - Freeプランではautosuspend設定が5分固定で変更不可
+  - Launch/Scaleプランは使用量ベース課金（月額最低料金なし）
+  - 出典: [Neon Pricing](https://neon.com/pricing), [Neon Scale to Zero](https://neon.com/docs/guides/auto-suspend-compute)
+- **推定月額コスト（2026年1月時点の使用量ベース料金）:**
+  - Launchプラン基本使用: 約5ドル/月〜（コンピュート時間次第）
+  - Autosuspend延長による追加compute使用: 0-5ドル/月程度（アクセスパターン次第）
+  - **合計推定: 月5-10ドル**（アクセス頻度が低ければ5ドル未満の可能性もあり）
+- **注意:** 上記は使用量ベース課金の概算。実際のコストはcompute使用時間により変動
 
-**評価:** Phase 1で既に1.2秒まで改善済みのため、費用対効果が悪い
+**評価:** Phase 1で既に1.2秒まで改善済みのため、月5-10ドルのコストに対して費用対効果が低い
 
 参考: [Neon Compute Lifecycle](https://neon.com/docs/introduction/compute-lifecycle)
 
