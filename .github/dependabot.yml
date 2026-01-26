@@ -15,7 +15,6 @@ updates:
       - "rust"
     groups:
       backend-dependencies:
-        applies-to: security-updates
         patterns:
           - "*"
 
@@ -33,7 +32,6 @@ updates:
       - "frontend"
     groups:
       frontend-dependencies:
-        applies-to: security-updates
         patterns:
           - "*"
 
@@ -51,7 +49,6 @@ updates:
       - "devtools"
     groups:
       devtools-dependencies:
-        applies-to: security-updates
         patterns:
           - "*"
 
@@ -69,6 +66,5 @@ updates:
       - "github-actions"
     groups:
       actions-dependencies:
-        applies-to: security-updates
         patterns:
           - "*"
