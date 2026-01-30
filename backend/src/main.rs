@@ -8,8 +8,13 @@ async fn main() {
     // .envファイル読み込み
     dotenvy::dotenv().ok();
 
-    // ログ初期化
-    tracing_subscriber::fmt::init();
+    // プロジェクトIDを環境変数から取得
+    let project_id =
+        std::env::var("GCP_PROJECT_ID").unwrap_or_else(|_| "y-junctions-prod".to_string());
+
+    // Google Cloud Logging形式のログ初期化
+    y_junction_backend::logging::init_google_cloud_logging(project_id)
+        .expect("Failed to initialize logging");
 
     // データベース接続プール作成
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -37,9 +42,12 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Y-Junction API" }))
-        .route("/health", get(|| async { "OK" }))
+        .route("/health", get(health_handler))
         .merge(api_router)
-        .layer(cors);
+        .layer(cors)
+        .layer(axum::middleware::from_fn(
+            y_junction_backend::middleware::trace_context_middleware,
+        ));
 
     // サーバー起動
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
@@ -47,4 +55,9 @@ async fn main() {
     tracing::info!("Server listening on {}", listener.local_addr().unwrap());
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn health_handler() -> &'static str {
+    tracing::info!("Health check endpoint called");
+    "OK"
 }
