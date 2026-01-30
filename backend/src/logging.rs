@@ -202,18 +202,21 @@ impl TraceContext {
             return None;
         }
 
-        let trace_id = parts[0].to_string();
+        // trace_idのバリデーション: 空文字列を拒否
+        let trace_id = parts[0].trim();
+        if trace_id.is_empty() {
+            return None;
+        }
+        let trace_id = trace_id.to_string();
 
         // SPAN_ID;o=OPTIONS の部分をパース
         let span_parts: Vec<&str> = parts[1].split(';').collect();
-        let span_id = span_parts[0].to_string();
+        let span_id_raw = span_parts[0].trim();
 
         // span_idを16進数形式に変換（10進数から16進数へ）
-        let span_id_hex = if let Ok(span_decimal) = span_id.parse::<u64>() {
-            format!("{:016x}", span_decimal)
-        } else {
-            span_id
-        };
+        // パースに失敗した場合はNoneを返す（不正な入力を拒否）
+        let span_decimal = span_id_raw.parse::<u64>().ok()?;
+        let span_id_hex = format!("{:016x}", span_decimal);
 
         // trace_sampledをパース（o=1 なら true）
         let trace_sampled = span_parts
@@ -327,5 +330,32 @@ mod tests {
         );
         assert_eq!(ctx.span_id, Some("000000000000007b".to_string()));
         assert_eq!(ctx.trace_sampled, Some(false));
+    }
+
+    #[test]
+    fn test_parse_trace_context_empty_trace_id() {
+        // 空のtrace_idは拒否される
+        let header = "/123;o=1";
+        let ctx = TraceContext::from_header(header);
+        assert!(ctx.is_none());
+    }
+
+    #[test]
+    fn test_parse_trace_context_invalid_span_id() {
+        // 非10進数のspan_idは拒否される
+        let header = "abc123/xyz;o=1";
+        let ctx = TraceContext::from_header(header);
+        assert!(ctx.is_none());
+    }
+
+    #[test]
+    fn test_parse_trace_context_with_whitespace() {
+        // 空白はtrimされる
+        let header = " abc123 / 456 ;o=1";
+        let ctx = TraceContext::from_header(header).unwrap();
+
+        assert_eq!(ctx.trace_id, Some("abc123".to_string()));
+        assert_eq!(ctx.span_id, Some("00000000000001c8".to_string())); // 456 in hex
+        assert_eq!(ctx.trace_sampled, Some(true));
     }
 }
