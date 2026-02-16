@@ -59,12 +59,15 @@ async fn setup_test_db() -> PgPool {
         .expect("Failed to connect to test database");
 
     // マイグレーション実行（テストDB初回実行時にスキーマを作成）
+    // CockroachDB用にアドバイザリロックを無効化（pg_advisory_lock非対応のため）
     sqlx::migrate!("./migrations")
+        .set_locking(false)
         .run(&pool)
         .await
         .expect("Failed to run migrations");
 
-    sqlx::query("TRUNCATE TABLE y_junctions RESTART IDENTITY CASCADE")
+    // CockroachDBはRESTART IDENTITYをサポートしていないため削除
+    sqlx::query("TRUNCATE TABLE y_junctions CASCADE")
         .execute(&pool)
         .await
         .expect("Failed to truncate table");
