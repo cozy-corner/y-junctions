@@ -1,4 +1,4 @@
-use geo::{HaversineBearing, HaversineDestination, Point};
+use geo::{Bearing, Destination, Haversine, Point};
 
 /// Calculate a coordinate at a given bearing and distance from a starting point
 ///
@@ -17,7 +17,7 @@ pub fn calculate_neighbor_coord(
     distance_meters: f64,
 ) -> (f64, f64) {
     let point: Point<f64> = Point::new(lon, lat);
-    let destination = point.haversine_destination(bearing, distance_meters);
+    let destination = Haversine.destination(point, bearing, distance_meters);
     (destination.y(), destination.x()) // (lat, lon)
 }
 
@@ -27,7 +27,7 @@ fn calculate_bearing(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let point1: Point<f64> = Point::new(lon1, lat1);
     let point2: Point<f64> = Point::new(lon2, lat2);
 
-    let bearing = point1.haversine_bearing(point2);
+    let bearing = Haversine.bearing(point1, point2);
 
     // Normalize to 0-360 range
     if bearing < 0.0 {
