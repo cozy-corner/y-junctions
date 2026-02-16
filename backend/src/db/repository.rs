@@ -85,7 +85,7 @@ impl From<JunctionRow> for Junction {
 
 // ヘルパー関数: bboxフィルタを追加
 fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, f64, f64)) {
-    builder.push("WHERE location && ST_MakeEnvelope(");
+    builder.push("WHERE ST_Intersects(location::geometry, ST_MakeEnvelope(");
     builder.push_bind(bbox.0);
     builder.push(", ");
     builder.push_bind(bbox.1);
@@ -93,7 +93,7 @@ fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, 
     builder.push_bind(bbox.2);
     builder.push(", ");
     builder.push_bind(bbox.3);
-    builder.push(", 4326)");
+    builder.push(", 4326))");
 }
 
 // ヘルパー関数: angle_typeフィルタを追加
