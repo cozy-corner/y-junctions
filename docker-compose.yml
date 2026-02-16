@@ -12,5 +12,16 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  cockroachdb:
+    container_name: y-junctions-cockroachdb
+    image: cockroachdb/cockroach:latest
+    command: start-single-node --insecure --spatial-libs=/cockroach/lib.docker_amd64
+    ports:
+      - "26257:26257"  # SQL port
+      - "8081:8080"    # Web UI (changed from 8080 to avoid conflict)
+    volumes:
+      - cockroachdata:/cockroach/cockroach-data
+
 volumes:
   pgdata:
+  cockroachdata:
