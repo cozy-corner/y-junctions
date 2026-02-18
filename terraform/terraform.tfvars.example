@@ -14,3 +14,7 @@ frontend_bucket_name = "y-junctions-prod-frontend"
 
 # GitHub Actions settings
 github_repository = "your-username/y-junctions"
+
+# CockroachDB settings (get API key from https://cockroachlabs.cloud/access)
+cockroachdb_api_key      = "your-cockroachdb-api-key-here"
+cockroachdb_sql_password = "your-cockroachdb-sql-password-here"
