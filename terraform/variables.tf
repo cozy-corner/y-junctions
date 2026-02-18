@@ -38,3 +38,15 @@ variable "github_repository" {
   description = "GitHub repository in the format 'owner/repo'"
   type        = string
 }
+
+variable "cockroachdb_api_key" {
+  description = "CockroachDB Cloud API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "cockroachdb_sql_password" {
+  description = "CockroachDB SQL user password"
+  type        = string
+  sensitive   = true
+}
