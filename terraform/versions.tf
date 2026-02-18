@@ -18,6 +18,10 @@ terraform {
       source  = "kislerdm/neon"
       version = "~> 0.6"
     }
+    cockroach = {
+      source  = "cockroachdb/cockroach"
+      version = "~> 1.0"
+    }
   }
 }
 
@@ -28,4 +32,8 @@ provider "google" {
 
 provider "neon" {
   api_key = var.neon_api_key
+}
+
+provider "cockroach" {
+  apikey = var.cockroachdb_api_key
 }
