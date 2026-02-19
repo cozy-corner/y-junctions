@@ -114,10 +114,10 @@ export const MapView = memo(function MapView({
   const markers = useMemo(() => {
     return data?.features.map(feature => {
       const [lon, lat] = feature.geometry.coordinates;
-      const { id, angle_type } = feature.properties;
+      const { osm_node_id, angle_type } = feature.properties;
 
       return (
-        <Marker key={id} position={[lat, lon]} icon={getMarkerIcon(angle_type)}>
+        <Marker key={osm_node_id} position={[lat, lon]} icon={getMarkerIcon(angle_type)}>
           <Popup>
             <JunctionPopup properties={feature.properties} />
           </Popup>
