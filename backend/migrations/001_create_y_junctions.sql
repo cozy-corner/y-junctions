@@ -8,9 +8,9 @@ CREATE TABLE y_junctions (
     location GEOGRAPHY(POINT, 4326) NOT NULL,
 
     -- 角度（度数法、小さい順にソート済み）
-    angle_1 SMALLINT NOT NULL CHECK (angle_1 BETWEEN 0 AND 180),
-    angle_2 SMALLINT NOT NULL CHECK (angle_2 BETWEEN 0 AND 180),
-    angle_3 SMALLINT NOT NULL CHECK (angle_3 BETWEEN 0 AND 360),
+    angle_1 SMALLINT NOT NULL CONSTRAINT y_junctions_angle_1_check CHECK (angle_1 BETWEEN 0 AND 180),
+    angle_2 SMALLINT NOT NULL CONSTRAINT y_junctions_angle_2_check CHECK (angle_2 BETWEEN 0 AND 180),
+    angle_3 SMALLINT NOT NULL CONSTRAINT y_junctions_angle_3_check CHECK (angle_3 BETWEEN 0 AND 360),
 
     -- メタデータ
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
