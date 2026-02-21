@@ -41,6 +41,6 @@ output "service_account_email" {
 
 output "cockroachdb_connection_uri" {
   description = "CockroachDB Serverless connection URI"
-  value       = "postgresql://${cockroach_sql_user.main.name}:${urlencode(var.cockroachdb_sql_password)}@${cockroach_cluster.main.regions[0].sql_dns}:26257/${cockroach_database.main.name}?sslmode=require"
+  value       = local.cockroachdb_connection_uri
   sensitive   = true
 }
