@@ -36,7 +36,7 @@ resource "google_cloud_run_v2_service" "backend" {
 
       env {
         name  = "DATABASE_URL"
-        value = neon_project.main.connection_uri
+        value = local.cockroachdb_connection_uri
       }
 
       env {
