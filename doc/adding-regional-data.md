@@ -168,4 +168,30 @@ gh pr create --title "data: <地域名>のY字路データを追加"
 
 - `COPY` 系（psql の `\copy` / `COPY FROM STDIN`）は CockroachDB Cloud と互換性がなく使用不可。必ず `IMPORT INTO` を使うこと。
 - `gs://` スキームは CockroachDB 側に認証情報が必要なため使用不可。`https://storage.googleapis.com/` を使うこと。
-- `IMPORT INTO` はテーブルに既存データがあるとキー衝突エラーになる。**全データの差し替えになる**ため、インポート前にローカル DB に全地域のデータが揃っていることを確認すること。
+- `IMPORT INTO` は**追記（additive）**であり、既存データを置き換えない。ただし `osm_node_id`（主キー）が重複するとキー衝突エラーで失敗する。
+
+### IMPORT INTO を使う際の2つのパターン
+
+**パターン A: 新規地域のみをエクスポートして追記する（推奨）**
+
+本番 DB に既存データがある場合はこちら。ローカル DB から新規地域のデータのみを抽出してエクスポートする。
+
+```bash
+# Step 3 のエクスポートを新規地域に絞る
+docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
+  psql "postgresql://root@host.docker.internal:26257/y_junction?sslmode=disable" -c "\copy (
+    SELECT ... FROM y_junctions
+    WHERE <新規地域の条件（例: bboxによるフィルタ）>
+  ) TO '/data/local_export.csv' WITH CSV HEADER"
+```
+
+**パターン B: 本番 DB を全件置き換える**
+
+本番 DB を一度空にしてから全データをインポートする。ローカル DB に全地域のデータが揃っていることを確認してから実施すること。
+
+```bash
+# 本番 DB を空にする
+psql "$PROD_CRDB_URI" -c "DELETE FROM y_junctions;"
+
+# Step 3 以降を通常通り実行（全データをエクスポート → IMPORT INTO）
+```
