@@ -5,8 +5,8 @@ echo "Setting up worktree environment..."
 
 # 共有DBを使用する設定
 cat > backend/.env <<EOF
-DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
-TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
+DATABASE_URL=postgresql://root@localhost:26257/y_junction?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
 EOF
 
 echo "✅ Setup complete!"
