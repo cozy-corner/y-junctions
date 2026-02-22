@@ -148,8 +148,8 @@ CREATE INDEX idx_y_junctions_category_flags ON y_junctions (category_flags);
 
 クエリ変更例（local または pedestrian を含む場合）:
 ```sql
--- マスク: local(4+64+1024) | pedestrian(8+128+2048) = 2276
-WHERE category_flags & 2276 != 0
+-- マスク: local(4+64+1024) | pedestrian(8+128+2048) = 3276
+WHERE category_flags & 3276 != 0
 ```
 
 **効果**: 3 カラムの OR 条件が単一カラムのビット演算に変わる。
