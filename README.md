@@ -4,7 +4,7 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 
 ## 技術スタック
 
-- **Backend**: Rust + Axum + PostgreSQL/PostGIS + SQLx
+- **Backend**: Rust + Axum + CockroachDB + SQLx
 - **Frontend**: TypeScript + React + Leaflet
 - **Import**: Rust + osmpbf
 
@@ -58,7 +58,7 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 - Docker & Docker Compose
 - Rust (最新版)
 - Node.js 18+
-- PostgreSQL クライアント（psql）
+- CockroachDB CLI（`cockroach sql` コマンド）または psql
 
 ### セットアップ手順
 
@@ -72,20 +72,24 @@ cd y-junctions
 #### 2. データベースの起動
 
 ```bash
-# PostgreSQL + PostGISコンテナを起動
+# CockroachDB（メインDB）+ PostgreSQL（テスト用）コンテナを起動
 docker-compose up -d
 
 # データベースが起動するまで数秒待つ
 sleep 5
 ```
 
+ローカル環境では以下の2つのコンテナが起動します：
+- `y-junctions-cockroachdb`: CockroachDB（ポート26257、Web UI: http://localhost:8081）← アプリが使用するDB
+- `y-junctions-db`: PostgreSQL+PostGIS（ポート5432）← 現在は未使用
+
 #### 3. 環境変数の設定（メインworktree用）
 
 ```bash
 # backend/.envファイルを作成
 cat > backend/.env <<EOF
-DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
-TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
+DATABASE_URL=postgresql://root@localhost:26257/y_junction?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
 EOF
 ```
 
@@ -95,7 +99,7 @@ EOF
 
 ```bash
 # テスト用DBを作成
-docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_test;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "CREATE DATABASE IF NOT EXISTS y_junction_test;"
 
 # 開発用DBにマイグレーションを実行
 (cd backend && sqlx migrate run)
@@ -321,11 +325,11 @@ cd ../y-junctions-feature-xxx
 
 ```bash
 # 専用DB作成
-docker exec y-junctions-db psql -U y_junction -c \
-  "CREATE DATABASE my_feature_db TEMPLATE y_junction;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure \
+  --execute "CREATE DATABASE my_feature_db;"
 
 # .env書き換えとマイグレーション実行
-echo "DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/my_feature_db" > backend/.env
+echo "DATABASE_URL=postgresql://root@localhost:26257/my_feature_db?sslmode=disable" > backend/.env
 (cd backend && sqlx migrate run)
 ```
 
@@ -348,8 +352,8 @@ npm run lint
 ### データベースの接続
 
 ```bash
-# psqlでデータベースに接続
-docker exec -it y-junctions-db psql -U y_junction -d y_junction
+# CockroachDB CLIでデータベースに接続
+docker exec -it y-junctions-cockroachdb ./cockroach sql --insecure --database y_junction
 ```
 
 ### テーブル構造の確認
