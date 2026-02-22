@@ -85,7 +85,7 @@ impl From<JunctionRow> for Junction {
 
 // ヘルパー関数: bboxフィルタを追加
 fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, f64, f64)) {
-    builder.push("WHERE ST_Intersects(location::geometry, ST_MakeEnvelope(");
+    builder.push("WHERE ST_Intersects(location, ST_MakeEnvelope(");
     builder.push_bind(bbox.0);
     builder.push(", ");
     builder.push_bind(bbox.1);
@@ -93,7 +93,7 @@ fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, 
     builder.push_bind(bbox.2);
     builder.push(", ");
     builder.push_bind(bbox.3);
-    builder.push(", 4326))");
+    builder.push(", 4326)::geography)");
 }
 
 // ヘルパー関数: angle_typeフィルタを追加
@@ -109,13 +109,13 @@ fn add_angle_type_filter(builder: &mut QueryBuilder<sqlx::Postgres>, angle_types
         }
         match angle_type {
             AngleType::VerySharp => {
-                builder.push("LEAST(angle_1, angle_2, angle_3) < 30");
+                builder.push("angle_1 < 30");
             }
             AngleType::Sharp => {
-                builder.push("(LEAST(angle_1, angle_2, angle_3) >= 30 AND LEAST(angle_1, angle_2, angle_3) < 45)");
+                builder.push("(angle_1 >= 30 AND angle_1 < 45)");
             }
             AngleType::Normal => {
-                builder.push("LEAST(angle_1, angle_2, angle_3) >= 45");
+                builder.push("angle_1 >= 45");
             }
         }
     }
@@ -129,12 +129,12 @@ fn add_min_angle_filters(
     min_angle_gt: Option<i16>,
 ) {
     if let Some(lt) = min_angle_lt {
-        builder.push(" AND LEAST(angle_1, angle_2, angle_3) < ");
+        builder.push(" AND angle_1 < ");
         builder.push_bind(lt);
     }
 
     if let Some(gt) = min_angle_gt {
-        builder.push(" AND LEAST(angle_1, angle_2, angle_3) > ");
+        builder.push(" AND angle_1 > ");
         builder.push_bind(gt);
     }
 }
