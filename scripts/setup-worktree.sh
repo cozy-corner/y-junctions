@@ -5,8 +5,8 @@ echo "Setting up worktree environment..."
 
 # 共有DBを使用する設定
 cat > backend/.env <<EOF
-DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
-TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
+DATABASE_URL=postgresql://root@localhost:26257/y_junction?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
 EOF
 
 echo "✅ Setup complete!"
@@ -16,5 +16,8 @@ echo "- No import needed (uses main worktree's data)"
 echo "- Run: cd backend && cargo test"
 echo ""
 echo "If you need a separate DB for schema changes, create one manually:"
-echo "  docker exec y-junctions-db psql -U y_junction -c 'CREATE DATABASE my_feature_db TEMPLATE y_junction;'"
-echo "  echo 'DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/my_feature_db' > backend/.env"
+echo "  docker exec y-junctions-cockroachdb ./cockroach sql --insecure -e 'CREATE DATABASE my_feature_db;'"
+echo "  cat > backend/.env <<EOF"
+echo "  DATABASE_URL=postgresql://root@localhost:26257/my_feature_db?sslmode=disable"
+echo "  TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable"
+echo "  EOF"
