@@ -4,7 +4,7 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 
 ## 技術スタック
 
-- **Backend**: Rust + Axum + PostgreSQL/PostGIS + SQLx
+- **Backend**: Rust + Axum + CockroachDB + SQLx
 - **Frontend**: TypeScript + React + Leaflet
 - **Import**: Rust + osmpbf
 
@@ -58,7 +58,7 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 - Docker & Docker Compose
 - Rust (最新版)
 - Node.js 18+
-- PostgreSQL クライアント（psql）
+- CockroachDB CLI（`cockroach sql` コマンド）または psql
 
 ### セットアップ手順
 
@@ -72,20 +72,23 @@ cd y-junctions
 #### 2. データベースの起動
 
 ```bash
-# PostgreSQL + PostGISコンテナを起動
+# CockroachDBコンテナを起動
 docker-compose up -d
 
 # データベースが起動するまで数秒待つ
 sleep 5
 ```
 
+起動するコンテナ：
+- `y-junctions-cockroachdb`: CockroachDB（ポート26257、Web UI: http://localhost:8081）
+
 #### 3. 環境変数の設定（メインworktree用）
 
 ```bash
 # backend/.envファイルを作成
 cat > backend/.env <<EOF
-DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction
-TEST_DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/y_junction_test
+DATABASE_URL=postgresql://root@localhost:26257/y_junction?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
 EOF
 ```
 
@@ -95,7 +98,7 @@ EOF
 
 ```bash
 # テスト用DBを作成
-docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_test;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "CREATE DATABASE IF NOT EXISTS y_junction_test;"
 
 # 開発用DBにマイグレーションを実行
 (cd backend && sqlx migrate run)
@@ -166,7 +169,7 @@ docker exec y-junctions-db psql -U y_junction -c "CREATE DATABASE y_junction_tes
 
 ```bash
 # データ件数を確認
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT COUNT(*) FROM y_junctions;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --database y_junction --execute "SELECT COUNT(*) FROM y_junctions;"
 ```
 
 #### 6. バックエンドの起動
@@ -321,11 +324,14 @@ cd ../y-junctions-feature-xxx
 
 ```bash
 # 専用DB作成
-docker exec y-junctions-db psql -U y_junction -c \
-  "CREATE DATABASE my_feature_db TEMPLATE y_junction;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure \
+  --execute "CREATE DATABASE my_feature_db;"
 
 # .env書き換えとマイグレーション実行
-echo "DATABASE_URL=postgres://y_junction:y_junction@localhost:5432/my_feature_db" > backend/.env
+cat > backend/.env <<EOF
+DATABASE_URL=postgresql://root@localhost:26257/my_feature_db?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
+EOF
 (cd backend && sqlx migrate run)
 ```
 
@@ -348,8 +354,8 @@ npm run lint
 ### データベースの接続
 
 ```bash
-# psqlでデータベースに接続
-docker exec -it y-junctions-db psql -U y_junction -d y_junction
+# CockroachDB CLIでデータベースに接続
+docker exec -it y-junctions-cockroachdb ./cockroach sql --insecure --database y_junction
 ```
 
 ### テーブル構造の確認
@@ -380,7 +386,7 @@ docker stop <container-id>
 ```bash
 # データベースコンテナの状態確認
 docker ps
-docker logs y-junctions-db
+docker logs y-junctions-cockroachdb
 
 # 環境変数の確認
 cat backend/.env
@@ -393,7 +399,7 @@ cat backend/.env
 ls -la backend/.env
 
 # データベースが起動しているか確認
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "SELECT 1;"
 ```
 
 ## プロジェクト構成
@@ -417,7 +423,7 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 │   │   ├── api/          # APIクライアント
 │   │   └── hooks/        # カスタムフック
 │   └── package.json
-└── docker-compose.yml    # PostgreSQL設定
+└── docker-compose.yml    # CockroachDB設定
 ```
 
 ## 本番環境デプロイ
@@ -460,49 +466,9 @@ terraform apply   # 変更を適用
 
 ### データインポート（本番環境）
 
-ローカルDBでインポート・検証済みのデータを本番DBに転送します。PostgreSQL COPYを使うことで高速に転送できます。
+ローカルDBの全データを本番DBに反映するには `/deploy-data` スキルを使用してください。
 
-```bash
-# 1. 本番DBの接続情報を取得
-cd terraform
-PROD_DB_URL=$(terraform output -raw neon_connection_uri)
-
-# 2. ローカルDBから全データをエクスポート（CSV形式）
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "
-COPY (
-  SELECT
-    osm_node_id, location, angle_1, angle_2, angle_3, bearings,
-    elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
-    elevation_diff_1, elevation_diff_2, elevation_diff_3,
-    min_angle_index, min_elevation_diff, max_elevation_diff,
-    way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
-    way_1_highway_type, way_2_highway_type, way_3_highway_type,
-    created_at
-  FROM y_junctions
-) TO STDOUT WITH (FORMAT CSV, HEADER)
-" > ~/y-junctions-data/export.csv
-
-# 3. 本番DBから全データを削除
-docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "TRUNCATE TABLE y_junctions RESTART IDENTITY;"
-
-# 4. 本番DBに新データをCOPYでインポート
-cat ~/y-junctions-data/export.csv | docker run --rm -i postgres:15-alpine psql "$PROD_DB_URL" -c "
-COPY y_junctions (
-  osm_node_id, location, angle_1, angle_2, angle_3, bearings,
-  elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
-  elevation_diff_1, elevation_diff_2, elevation_diff_3,
-  min_angle_index, min_elevation_diff, max_elevation_diff,
-  way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
-  way_1_highway_type, way_2_highway_type, way_3_highway_type,
-  created_at
-) FROM STDIN WITH (FORMAT CSV, HEADER);
-"
-
-# 5. インポート結果を確認
-docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "
-SELECT COUNT(*) as total_records FROM y_junctions;
-"
-```
+新規地域のデータを追加して本番に反映するには `/add-region` スキルを使用してください。
 
 ## ブランチ命名規則
 
