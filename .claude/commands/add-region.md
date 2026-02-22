@@ -1,5 +1,5 @@
 ---
-syntax: add-region [region] [bbox] [display-name]
+syntax: add-region [region] [display-name]
 description: 新規地域のY字路データをローカルDBに追加し、本番DBに反映する
 allowed-tools: Bash
 ---
@@ -7,10 +7,10 @@ allowed-tools: Bash
 新規地域のY字路データを追加する。以下の手順を順番に実行すること。
 
 - region: ${1} （例: taiwan）
-- bbox: ${2} （例: 119.9,21.9,122.1,25.4）
-- display-name: ${3:-${1}} （例: 台湾全土）
+- display-name: ${2:-${1}} （例: 台湾全土）
 
-引数が不足している場合は作業前に確認すること。
+作業開始前に、対象地域のbboxをユーザーに確認すること（例: `119.9,21.9,122.1,25.4`）。
+regionが指定されていない場合も確認すること。
 
 ## Step 1: インポートバイナリのビルド
 
@@ -75,11 +75,11 @@ URLはGeofabrikのサイトで確認して正しいパスを使うこと。
 ```bash
 cd backend && ./target/release/import \
   --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
-  --bbox ${2}
+  --bbox <bbox>
 
 cd backend && ./target/release/import_two_way \
   --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
-  --bbox ${2}
+  --bbox <bbox>
 ```
 
 件数が増えていることを確認する:
@@ -154,9 +154,9 @@ gsutil rm -r gs://y-junctions-import-tmp/
 以下の形式で履歴の先頭に追記する。3-wayと2-wayの件数はStep 4のインポートログから確認する。
 
 ```
-- YYYY-MM-DD: **${3:-${1}}データ追加**
+- YYYY-MM-DD: **${2:-${1}}データ追加**
   - 総件数: X件（前回Y件から+Z件）
-  - 追加地域: ${3:-${1}}（bbox: ${2}）
+  - 追加地域: ${2:-${1}}（bbox: <bbox>）
   - 内訳:
     - 3-way Y字路: X件
     - 2-way Y字路: Y件
@@ -167,6 +167,6 @@ gsutil rm -r gs://y-junctions-import-tmp/
 ```bash
 git checkout -b data/${1}
 git add doc/data-updates.md
-git commit -m "data: Add ${3:-${1}} Y-junction data"
-gh pr create --title "data: ${3:-${1}}のY字路データを追加"
+git commit -m "data: Add ${2:-${1}} Y-junction data"
+gh pr create --title "data: ${2:-${1}}のY字路データを追加"
 ```
