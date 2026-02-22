@@ -328,7 +328,10 @@ docker exec y-junctions-cockroachdb ./cockroach sql --insecure \
   --execute "CREATE DATABASE my_feature_db;"
 
 # .env書き換えとマイグレーション実行
-echo "DATABASE_URL=postgresql://root@localhost:26257/my_feature_db?sslmode=disable" > backend/.env
+cat > backend/.env <<EOF
+DATABASE_URL=postgresql://root@localhost:26257/my_feature_db?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
+EOF
 (cd backend && sqlx migrate run)
 ```
 
