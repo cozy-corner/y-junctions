@@ -72,7 +72,7 @@ cd y-junctions
 #### 2. データベースの起動
 
 ```bash
-# CockroachDB（メインDB）+ PostgreSQL（テスト用）コンテナを起動
+# CockroachDB（メインDB）+ PostgreSQL（未使用）コンテナを起動
 docker-compose up -d
 
 # データベースが起動するまで数秒待つ
