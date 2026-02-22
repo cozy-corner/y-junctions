@@ -68,7 +68,7 @@ interface UseJunctionsOptions {
 export function useJunctions({
   bounds,
   filters,
-  debounceMs = 300,
+  debounceMs = 600,
   useMockData = false,
 }: UseJunctionsOptions) {
   const [data, setData] = useState<JunctionFeatureCollection | null>(null);
