@@ -72,16 +72,15 @@ cd y-junctions
 #### 2. データベースの起動
 
 ```bash
-# CockroachDB（メインDB）+ PostgreSQL（未使用）コンテナを起動
+# CockroachDBコンテナを起動
 docker-compose up -d
 
 # データベースが起動するまで数秒待つ
 sleep 5
 ```
 
-ローカル環境では以下の2つのコンテナが起動します：
-- `y-junctions-cockroachdb`: CockroachDB（ポート26257、Web UI: http://localhost:8081）← アプリが使用するDB
-- `y-junctions-db`: PostgreSQL+PostGIS（ポート5432）← 現在は未使用
+起動するコンテナ：
+- `y-junctions-cockroachdb`: CockroachDB（ポート26257、Web UI: http://localhost:8081）
 
 #### 3. 環境変数の設定（メインworktree用）
 
@@ -421,7 +420,7 @@ docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "SELECT
 │   │   ├── api/          # APIクライアント
 │   │   └── hooks/        # カスタムフック
 │   └── package.json
-└── docker-compose.yml    # CockroachDB・PostgreSQL設定
+└── docker-compose.yml    # CockroachDB設定
 ```
 
 ## 本番環境デプロイ

@@ -1,17 +1,5 @@
 version: '3.8'
 services:
-  db:
-    container_name: y-junctions-db
-    image: postgis/postgis:16-3.4
-    environment:
-      POSTGRES_USER: y_junction
-      POSTGRES_PASSWORD: y_junction
-      POSTGRES_DB: y_junction
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
   cockroachdb:
     container_name: y-junctions-cockroachdb
     image: cockroachdb/cockroach:latest
@@ -23,5 +11,4 @@ services:
       - cockroachdata:/cockroach/cockroach-data
 
 volumes:
-  pgdata:
   cockroachdata:
