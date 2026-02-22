@@ -170,7 +170,7 @@ docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "CREATE
 
 ```bash
 # データ件数を確認
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT COUNT(*) FROM y_junctions;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --database y_junction --execute "SELECT COUNT(*) FROM y_junctions;"
 ```
 
 #### 6. バックエンドの起動
@@ -384,7 +384,7 @@ docker stop <container-id>
 ```bash
 # データベースコンテナの状態確認
 docker ps
-docker logs y-junctions-db
+docker logs y-junctions-cockroachdb
 
 # 環境変数の確認
 cat backend/.env
@@ -397,7 +397,7 @@ cat backend/.env
 ls -la backend/.env
 
 # データベースが起動しているか確認
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "SELECT 1;"
 ```
 
 ## プロジェクト構成
@@ -421,7 +421,7 @@ docker exec y-junctions-db psql -U y_junction -d y_junction -c "SELECT 1;"
 │   │   ├── api/          # APIクライアント
 │   │   └── hooks/        # カスタムフック
 │   └── package.json
-└── docker-compose.yml    # PostgreSQL設定
+└── docker-compose.yml    # CockroachDB・PostgreSQL設定
 ```
 
 ## 本番環境デプロイ
@@ -464,27 +464,28 @@ terraform apply   # 変更を適用
 
 ### データインポート（本番環境）
 
-ローカルDBでインポート・検証済みのデータを本番DBに転送します。PostgreSQL COPYを使うことで高速に転送できます。
+ローカルDBでインポート・検証済みのデータを本番DBに転送します。
 
 ```bash
 # 1. 本番DBの接続情報を取得
 cd terraform
-PROD_DB_URL=$(terraform output -raw neon_connection_uri)
+PROD_DB_URL=$(terraform output -raw cockroachdb_connection_uri)
 
-# 2. ローカルDBから全データをエクスポート（CSV形式）
-docker exec y-junctions-db psql -U y_junction -d y_junction -c "
-COPY (
-  SELECT
-    osm_node_id, location, angle_1, angle_2, angle_3, bearings,
-    elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
-    elevation_diff_1, elevation_diff_2, elevation_diff_3,
-    min_angle_index, min_elevation_diff, max_elevation_diff,
-    way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
-    way_1_highway_type, way_2_highway_type, way_3_highway_type,
-    created_at
-  FROM y_junctions
-) TO STDOUT WITH (FORMAT CSV, HEADER)
+# 2. ローカルCockroachDBから全データをエクスポート（CSV形式）
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure --database y_junction --format csv --execute "
+SELECT
+  osm_node_id, location, angle_1, angle_2, angle_3, bearings,
+  elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
+  elevation_diff_1, elevation_diff_2, elevation_diff_3,
+  min_angle_index, min_elevation_diff, max_elevation_diff,
+  way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel,
+  way_1_highway_type, way_2_highway_type, way_3_highway_type,
+  created_at
+FROM y_junctions
 " > ~/y-junctions-data/export.csv
+
+# エクスポート結果を確認（空でないことを確認してから次へ進む）
+wc -l ~/y-junctions-data/export.csv
 
 # 3. 本番DBから全データを削除
 docker run --rm postgres:15-alpine psql "$PROD_DB_URL" -c "TRUNCATE TABLE y_junctions RESTART IDENTITY;"
