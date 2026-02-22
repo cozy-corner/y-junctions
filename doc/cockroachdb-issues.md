@@ -175,3 +175,25 @@ CockroachDB の空間インデックスは inverted GIN インデックスとし
 ### 教訓
 
 CockroachDB で空間インデックスを使用するには、**インデックスが貼られているカラムをキャストせずにそのまま `ST_Intersects` の第一引数に渡す**こと。比較対象（エンベロープ等）をカラムの型に合わせてキャストする。
+
+---
+
+### 補足: ST_MakeEnvelope とは
+
+```sql
+ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, srid)
+```
+
+指定した4座標から矩形（バウンディングボックス）のポリゴンを作成する PostGIS 関数。
+
+```
+max_lat ┌─────────────┐
+        │             │
+        │  この矩形内の │
+        │  Y字路を返す  │
+        │             │
+min_lat └─────────────┘
+       min_lon     max_lon
+```
+
+フロントエンドが地図の表示範囲を `bbox=min_lon,min_lat,max_lon,max_lat` として送信し、バックエンドがそれを `ST_MakeEnvelope` で矩形ポリゴンに変換して `ST_Intersects` の比較対象として使う。SRID 4326 は WGS84（GPS と同じ緯度経度座標系）。
