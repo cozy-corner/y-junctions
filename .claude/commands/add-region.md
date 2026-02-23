@@ -20,44 +20,7 @@ cd backend && cargo build --release --bin import --bin import_two_way
 
 ## Step 2: 本番DBの全データをローカルに取り込む
 
-```bash
-PROD_CRDB_URI=$(cd terraform && terraform output -raw cockroachdb_connection_uri)
-
-docker exec y-junctions-cockroachdb ./cockroach sql \
-  --insecure --database=y_junction \
-  -e "DELETE FROM y_junctions;"
-
-docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
-  psql "$PROD_CRDB_URI" -c "\copy (
-    SELECT
-      osm_node_id,
-      ST_AsEWKT(location::geometry) AS location,
-      angle_1, angle_2, angle_3,
-      bearings, elevation,
-      neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3,
-      elevation_diff_1, elevation_diff_2, elevation_diff_3,
-      min_angle_index, min_elevation_diff, max_elevation_diff,
-      way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel,
-      way_3_bridge, way_3_tunnel,
-      way_1_highway_type, way_2_highway_type, way_3_highway_type,
-      created_at
-    FROM y_junctions
-  ) TO '/data/prod_export.csv' WITH CSV HEADER"
-
-docker cp ~/y-junctions-data/prod_export.csv y-junctions-cockroachdb:/tmp/prod_export.csv
-
-docker exec y-junctions-cockroachdb ./cockroach sql \
-  --insecure --database=y_junction \
-  -e "\copy y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, elevation_diff_1, elevation_diff_2, elevation_diff_3, min_angle_index, min_elevation_diff, max_elevation_diff, way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel, way_1_highway_type, way_2_highway_type, way_3_highway_type, created_at) FROM '/tmp/prod_export.csv' CSV"
-```
-
-件数を確認する:
-
-```bash
-docker exec y-junctions-cockroachdb ./cockroach sql \
-  --insecure --database=y_junction \
-  -e "SELECT COUNT(*) FROM y_junctions;"
-```
+`/sync-from-prod` スキルを実行する。
 
 ## Step 3: OSMデータのダウンロード
 
@@ -85,9 +48,8 @@ cd backend && ./target/release/import_two_way \
 件数が増えていることを確認する:
 
 ```bash
-docker exec y-junctions-cockroachdb ./cockroach sql \
-  --insecure --database=y_junction \
-  -e "SELECT COUNT(*) FROM y_junctions;"
+cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
+  --execute "SELECT COUNT(*) FROM y_junctions;"
 ```
 
 ## Step 5: 本番DBに反映
