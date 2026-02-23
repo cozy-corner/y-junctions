@@ -213,6 +213,21 @@ impl TestJunctionData {
         self.way_3_highway_type = way_3.to_string();
         self
     }
+
+    fn with_angles(mut self, angle_1: i16, angle_2: i16, angle_3: i16) -> Self {
+        self.angle_1 = angle_1;
+        self.angle_2 = angle_2;
+        self.angle_3 = angle_3;
+        // min_angle_index も実際の最小角に合わせて更新
+        let min_idx = [angle_1, angle_2, angle_3]
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, &a)| a)
+            .map(|(i, _)| (i + 1) as i16)
+            .unwrap();
+        self.min_angle_index = Some(min_idx);
+        self
+    }
 }
 
 // テストヘルパー: テストデータ挿入
@@ -769,6 +784,59 @@ async fn test_bridge_tunnel_included_without_elevation_filter() {
     let features = json["features"].as_array().unwrap();
     // All 3 junctions should be returned
     assert_eq!(features.len(), 3);
+}
+
+// ========== angle_1 が最小角でないケースのテスト ==========
+// 台湾カレン付近のY字路: angle_1=179, angle_2=30, angle_3=151
+// 時計回りで最初の角度が 179° だが、実際の最小角は angle_2=30°（Sharp）
+
+#[tokio::test]
+#[serial]
+async fn test_angle_type_filter_sharp_includes_junction_where_min_is_not_angle_1() {
+    let pool = setup_test_db().await;
+
+    // angle_1=179, angle_2=30, angle_3=151: 最小角は 30°（Sharp）
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_angles(179, 30, 151),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&angle_type=sharp",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 1); // Sharp としてヒットするはず
+}
+
+#[tokio::test]
+#[serial]
+async fn test_angle_type_filter_normal_excludes_junction_where_min_is_not_angle_1() {
+    let pool = setup_test_db().await;
+
+    // angle_1=179, angle_2=30, angle_3=151: 最小角は 30°（Sharp）
+    // Normal フィルタ（最小角 >= 45°）にはヒットしないはず
+    insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_angles(179, 30, 151),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(
+        app,
+        "/api/junctions?bbox=138.0,34.0,140.0,36.0&angle_type=normal",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["total_count"], 0); // Normal としてヒットしないはず
 }
 
 // ========== Category Filter のテスト ==========
