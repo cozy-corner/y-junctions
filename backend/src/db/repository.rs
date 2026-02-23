@@ -85,15 +85,14 @@ impl From<JunctionRow> for Junction {
 
 // ヘルパー関数: bboxフィルタを追加
 fn add_bbox_filter(builder: &mut QueryBuilder<sqlx::Postgres>, bbox: (f64, f64, f64, f64)) {
-    builder.push("WHERE ST_Intersects(location, ST_MakeEnvelope(");
-    builder.push_bind(bbox.0);
-    builder.push(", ");
-    builder.push_bind(bbox.1);
-    builder.push(", ");
-    builder.push_bind(bbox.2);
-    builder.push(", ");
-    builder.push_bind(bbox.3);
-    builder.push(", 4326)::geography)");
+    builder.push("WHERE lon BETWEEN ");
+    builder.push_bind(bbox.0); // min_lon
+    builder.push(" AND ");
+    builder.push_bind(bbox.2); // max_lon
+    builder.push(" AND lat BETWEEN ");
+    builder.push_bind(bbox.1); // min_lat
+    builder.push(" AND ");
+    builder.push_bind(bbox.3); // max_lat
 }
 
 // ヘルパー関数: angle_typeフィルタを追加
@@ -195,7 +194,7 @@ pub async fn find_by_bbox(
 
     let mut query_builder = QueryBuilder::new(
         "SELECT id, osm_node_id, \
-         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         lat, lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
@@ -249,7 +248,7 @@ pub async fn find_by_bbox(
 pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx::Error> {
     let row: Option<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
-         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         lat, lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
@@ -298,7 +297,7 @@ pub async fn count_total(pool: &PgPool) -> Result<i64, sqlx::Error> {
 pub async fn find_all(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
     let rows: Vec<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
-         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         lat, lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
@@ -314,7 +313,7 @@ pub async fn find_all(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
 pub async fn find_without_elevation(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
     let rows: Vec<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
-         ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, \
+         lat, lon, \
          angle_1, angle_2, angle_3, bearings, created_at, \
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
