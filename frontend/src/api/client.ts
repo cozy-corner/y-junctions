@@ -17,7 +17,8 @@ export class ApiError extends Error {
 // Y字路一覧を取得
 export async function fetchJunctions(
   bbox: string,
-  filters?: Omit<FilterParams, 'bbox'>
+  filters?: Omit<FilterParams, 'bbox'>,
+  signal?: AbortSignal
 ): Promise<JunctionFeatureCollection> {
   try {
     const params = new URLSearchParams({ bbox });
@@ -47,7 +48,7 @@ export async function fetchJunctions(
     }
 
     const url = `${BASE_URL}/junctions?${params.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
 
     if (!response.ok) {
       throw new ApiError(`Failed to fetch junctions: ${response.statusText}`, response.status);
