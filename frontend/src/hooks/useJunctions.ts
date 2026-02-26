@@ -75,6 +75,7 @@ export function useJunctions({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const timeoutRef = useRef<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // boundsがない場合は何もしない
@@ -89,6 +90,13 @@ export function useJunctions({
 
     // デバウンス処理
     timeoutRef.current = window.setTimeout(async () => {
+      // 古いフェッチをキャンセル
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setIsLoading(true);
       setError(null);
 
@@ -100,10 +108,13 @@ export function useJunctions({
         } else {
           // 実際のAPIを呼び出し
           const bbox = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`;
-          const result = await fetchJunctions(bbox, filters);
+          const result = await fetchJunctions(bbox, filters, controller.signal);
           setData(result);
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return; // キャンセルされた場合は何もしない
+        }
         console.error('Failed to fetch junctions:', err);
         setError(err instanceof Error ? err : new Error('Unknown error'));
         // エラー時はモックデータにフォールバック
@@ -120,6 +131,9 @@ export function useJunctions({
     return () => {
       if (timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, [bounds, filters, debounceMs, useMockData]);
