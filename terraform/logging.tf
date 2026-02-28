@@ -4,7 +4,7 @@ resource "google_bigquery_dataset" "cloud_run_logs" {
   description   = "Logs from Cloud Run services for analytics"
   location      = var.region
 
-  default_table_expiration_ms = 90 * 24 * 60 * 60 * 1000
+  default_partition_expiration_ms = 90 * 24 * 60 * 60 * 1000
 }
 
 resource "google_logging_project_sink" "cloud_run_requests" {
