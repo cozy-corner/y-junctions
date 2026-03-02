@@ -122,7 +122,6 @@ const JunctionMarker = memo(function JunctionMarker({
   }, [isSelected]);
 
   const handleClick = useCallback(() => {
-    window.history.pushState(null, '', `/node/${osm_node_id}`);
     onSelect(osm_node_id.toString());
   }, [osm_node_id, onSelect]);
 
