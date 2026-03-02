@@ -99,23 +99,6 @@ function InitialBounds({ onBoundsChange }: { onBoundsChange: (bounds: LatLngBoun
   return null;
 }
 
-// 選択されたY字路に地図を移動させるコンポーネント
-function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!selectedOsmNodeId) return;
-
-    fetchJunctionByOsmNodeId(selectedOsmNodeId)
-      .then(({ lat, lon }) => {
-        map.flyTo([lat, lon], Math.max(map.getZoom(), 16));
-      })
-      .catch(err => console.error('Failed to fetch junction for fly-to:', err));
-  }, [selectedOsmNodeId, map]);
-
-  return null;
-}
-
 // 個別マーカーコンポーネント
 interface JunctionMarkerProps {
   feature: JunctionFeature;
@@ -176,6 +159,20 @@ export const MapView = memo(function MapView({
 }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
+  // URL直接アクセス時の初期位置（MapContainerはマウント後にcenterを無視するため、事前に解決する）
+  const initialOsmNodeId = useRef(selectedOsmNodeId);
+  const [initialCenter, setInitialCenter] = useState<[number, number] | null>(
+    selectedOsmNodeId ? null : INITIAL_CENTER
+  );
+  const initialZoom = selectedOsmNodeId !== undefined ? 16 : INITIAL_ZOOM;
+
+  useEffect(() => {
+    if (!initialOsmNodeId.current) return;
+    fetchJunctionByOsmNodeId(initialOsmNodeId.current)
+      .then(({ lat, lon }) => setInitialCenter([lat, lon]))
+      .catch(() => setInitialCenter(INITIAL_CENTER));
+  }, []);
+
   // Y字路データを取得
   const { data, isLoading } = useJunctions({
     bounds,
@@ -198,11 +195,13 @@ export const MapView = memo(function MapView({
     setBounds(newBounds);
   }, []);
 
+  if (!initialCenter) return null;
+
   return (
     <div style={{ height: '100%', width: '100%' }}>
       <MapContainer
-        center={INITIAL_CENTER}
-        zoom={INITIAL_ZOOM}
+        center={initialCenter}
+        zoom={initialZoom}
         style={{ height: '100%', width: '100%' }}
       >
         {/* OpenStreetMap タイル */}
@@ -216,9 +215,6 @@ export const MapView = memo(function MapView({
 
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
-
-        {/* 選択マーカーへの移動 */}
-        <MapFlyTo selectedOsmNodeId={selectedOsmNodeId} />
 
         {/* マーカー表示 */}
         {data?.features.map(feature => (
