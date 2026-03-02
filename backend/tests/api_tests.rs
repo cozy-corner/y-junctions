@@ -509,6 +509,39 @@ async fn test_get_junction_by_id_not_found() {
     assert_eq!(json["error"], "Resource not found");
 }
 
+// ========== GET /api/junctions/node/:osm_node_id のテスト ==========
+
+#[tokio::test]
+#[serial]
+async fn test_get_junction_by_osm_node_id_success() {
+    let pool = setup_test_db().await;
+
+    let data = TestJunctionData::sharp_type();
+    let osm_node_id = data.osm_node_id;
+    insert_test_junction(&pool, data).await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, &format!("/api/junctions/node/{}", osm_node_id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["type"], "Feature");
+    assert_eq!(json["properties"]["osm_node_id"], osm_node_id);
+    assert_eq!(json["geometry"]["type"], "Point");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_get_junction_by_osm_node_id_not_found() {
+    let pool = setup_test_db().await;
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, "/api/junctions/node/99999").await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(json["error"], "Resource not found");
+}
+
 // ========== GET /api/stats のテスト ==========
 
 #[tokio::test]

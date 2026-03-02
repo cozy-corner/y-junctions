@@ -263,6 +263,27 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx
     Ok(row.map(Junction::from))
 }
 
+pub async fn find_by_osm_node_id(
+    pool: &PgPool,
+    osm_node_id: i64,
+) -> Result<Option<Junction>, sqlx::Error> {
+    let row: Option<JunctionRow> = sqlx::query_as(
+        "SELECT id, osm_node_id, \
+         lat, lon, \
+         angle_1, angle_2, angle_3, bearings, created_at, \
+         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
+         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
+         way_1_category, way_2_category, way_3_category \
+         FROM y_junctions \
+         WHERE osm_node_id = $1",
+    )
+    .bind(osm_node_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(Junction::from))
+}
+
 pub async fn count_by_type(pool: &PgPool) -> Result<HashMap<String, i64>, sqlx::Error> {
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
