@@ -12,16 +12,20 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // URLパスから osm_node_id を取得（例: /node/123456）
-  const [selectedOsmNodeId, setSelectedOsmNodeId] = useState<string | undefined>(() => {
+  const parseOsmNodeId = () => {
     const match = window.location.pathname.match(/^\/node\/(\d+)$/);
     return match?.[1];
-  });
+  };
+  const [selectedOsmNodeId, setSelectedOsmNodeId] = useState<string | undefined>(parseOsmNodeId);
+  // MapFlyTo用: URL直接アクセスと戻る/進む時のみ更新する（マーカークリックでは更新しない）
+  const [flyToOsmNodeId, setFlyToOsmNodeId] = useState<string | undefined>(parseOsmNodeId);
 
-  // ブラウザの戻る/進む時にselectedOsmNodeIdを同期
+  // ブラウザの戻る/進む時にselectedOsmNodeIdとflyToOsmNodeIdを同期
   useEffect(() => {
     const handlePopState = () => {
-      const match = window.location.pathname.match(/^\/node\/(\d+)$/);
-      setSelectedOsmNodeId(match?.[1]);
+      const id = parseOsmNodeId();
+      setSelectedOsmNodeId(id);
+      setFlyToOsmNodeId(id);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -101,6 +105,7 @@ function App() {
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
             selectedOsmNodeId={selectedOsmNodeId}
+            flyToOsmNodeId={flyToOsmNodeId}
             onSelectOsmNodeId={setSelectedOsmNodeId}
           />
         </div>

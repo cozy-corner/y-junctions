@@ -163,6 +163,7 @@ interface MapViewProps {
   onLoadingChange?: (isLoading: boolean) => void;
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
   selectedOsmNodeId?: string;
+  flyToOsmNodeId?: string;
   onSelectOsmNodeId?: (id: string) => void;
 }
 
@@ -172,6 +173,7 @@ export const MapView = memo(function MapView({
   onLoadingChange,
   onDataChange,
   selectedOsmNodeId,
+  flyToOsmNodeId,
   onSelectOsmNodeId,
 }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
@@ -217,8 +219,8 @@ export const MapView = memo(function MapView({
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
 
-        {/* 選択マーカーへの移動 */}
-        <MapFlyTo selectedOsmNodeId={selectedOsmNodeId} />
+        {/* 選択マーカーへの移動（URL直接アクセスと戻る/進む時のみ） */}
+        <MapFlyTo selectedOsmNodeId={flyToOsmNodeId} />
 
         {/* マーカー表示 */}
         {data?.features.map(feature => (
