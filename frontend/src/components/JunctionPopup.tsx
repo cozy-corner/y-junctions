@@ -64,8 +64,10 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
           Street Viewで見る
         </a>
         <button
+          type="button"
           onClick={handleCopyUrl}
           title={copied ? 'コピーしました!' : 'URLをコピー'}
+          aria-label={copied ? 'コピーしました' : 'URLをコピー'}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
