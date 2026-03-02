@@ -12,7 +12,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // URLパスから osm_node_id を取得（例: /node/123456）
-  const [selectedOsmNodeId] = useState<string | undefined>(() => {
+  const [selectedOsmNodeId, setSelectedOsmNodeId] = useState<string | undefined>(() => {
     const match = window.location.pathname.match(/^\/node\/(\d+)$/);
     return match?.[1];
   });
@@ -91,6 +91,7 @@ function App() {
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
             selectedOsmNodeId={selectedOsmNodeId}
+            onSelectOsmNodeId={setSelectedOsmNodeId}
           />
         </div>
       </main>

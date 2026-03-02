@@ -120,9 +120,14 @@ function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
 interface JunctionMarkerProps {
   feature: JunctionFeature;
   isSelected: boolean;
+  onSelect: (osmNodeId: string) => void;
 }
 
-const JunctionMarker = memo(function JunctionMarker({ feature, isSelected }: JunctionMarkerProps) {
+const JunctionMarker = memo(function JunctionMarker({
+  feature,
+  isSelected,
+  onSelect,
+}: JunctionMarkerProps) {
   const markerRef = useRef<LeafletMarker | null>(null);
   const [lon, lat] = feature.geometry.coordinates;
   const { osm_node_id, angle_type } = feature.properties;
@@ -135,7 +140,8 @@ const JunctionMarker = memo(function JunctionMarker({ feature, isSelected }: Jun
 
   const handleClick = useCallback(() => {
     window.history.pushState(null, '', `/node/${osm_node_id}`);
-  }, [osm_node_id]);
+    onSelect(osm_node_id.toString());
+  }, [osm_node_id, onSelect]);
 
   return (
     <Marker
@@ -157,6 +163,7 @@ interface MapViewProps {
   onLoadingChange?: (isLoading: boolean) => void;
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
   selectedOsmNodeId?: string;
+  onSelectOsmNodeId?: (osmNodeId: string) => void;
 }
 
 export const MapView = memo(function MapView({
@@ -165,6 +172,7 @@ export const MapView = memo(function MapView({
   onLoadingChange,
   onDataChange,
   selectedOsmNodeId,
+  onSelectOsmNodeId,
 }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
@@ -218,6 +226,7 @@ export const MapView = memo(function MapView({
             key={feature.properties.osm_node_id}
             feature={feature}
             isSelected={feature.properties.osm_node_id.toString() === selectedOsmNodeId}
+            onSelect={onSelectOsmNodeId ?? (() => {})}
           />
         ))}
       </MapContainer>
