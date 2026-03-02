@@ -108,7 +108,7 @@ function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
 
     fetchJunctionByOsmNodeId(selectedOsmNodeId)
       .then(({ lat, lon }) => {
-        map.setView([lat, lon], Math.max(map.getZoom(), 16), { animate: false });
+        map.flyTo([lat, lon], Math.max(map.getZoom(), 16));
       })
       .catch(err => console.error('Failed to fetch junction for fly-to:', err));
   }, [selectedOsmNodeId, map]);
@@ -120,14 +120,9 @@ function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
 interface JunctionMarkerProps {
   feature: JunctionFeature;
   isSelected: boolean;
-  onSelect: (id: string) => void;
 }
 
-const JunctionMarker = memo(function JunctionMarker({
-  feature,
-  isSelected,
-  onSelect,
-}: JunctionMarkerProps) {
+const JunctionMarker = memo(function JunctionMarker({ feature, isSelected }: JunctionMarkerProps) {
   const markerRef = useRef<LeafletMarker | null>(null);
   const [lon, lat] = feature.geometry.coordinates;
   const { osm_node_id, angle_type } = feature.properties;
@@ -140,8 +135,7 @@ const JunctionMarker = memo(function JunctionMarker({
 
   const handleClick = useCallback(() => {
     window.history.pushState(null, '', `/node/${osm_node_id}`);
-    onSelect(osm_node_id.toString());
-  }, [osm_node_id, onSelect]);
+  }, [osm_node_id]);
 
   return (
     <Marker
@@ -163,8 +157,6 @@ interface MapViewProps {
   onLoadingChange?: (isLoading: boolean) => void;
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
   selectedOsmNodeId?: string;
-  flyToOsmNodeId?: string;
-  onSelectOsmNodeId?: (id: string) => void;
 }
 
 export const MapView = memo(function MapView({
@@ -173,8 +165,6 @@ export const MapView = memo(function MapView({
   onLoadingChange,
   onDataChange,
   selectedOsmNodeId,
-  flyToOsmNodeId,
-  onSelectOsmNodeId,
 }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
@@ -219,8 +209,8 @@ export const MapView = memo(function MapView({
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
 
-        {/* 選択マーカーへの移動（URL直接アクセスと戻る/進む時のみ） */}
-        <MapFlyTo selectedOsmNodeId={flyToOsmNodeId} />
+        {/* 選択マーカーへの移動 */}
+        <MapFlyTo selectedOsmNodeId={selectedOsmNodeId} />
 
         {/* マーカー表示 */}
         {data?.features.map(feature => (
@@ -228,7 +218,6 @@ export const MapView = memo(function MapView({
             key={feature.properties.osm_node_id}
             feature={feature}
             isSelected={feature.properties.osm_node_id.toString() === selectedOsmNodeId}
-            onSelect={onSelectOsmNodeId ?? (() => {})}
           />
         ))}
       </MapContainer>

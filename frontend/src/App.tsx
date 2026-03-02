@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
@@ -12,24 +12,10 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // URLパスから osm_node_id を取得（例: /node/123456）
-  const parseOsmNodeId = () => {
+  const [selectedOsmNodeId] = useState<string | undefined>(() => {
     const match = window.location.pathname.match(/^\/node\/(\d+)$/);
     return match?.[1];
-  };
-  const [selectedOsmNodeId, setSelectedOsmNodeId] = useState<string | undefined>(parseOsmNodeId);
-  // MapFlyTo用: URL直接アクセスと戻る/進む時のみ更新する（マーカークリックでは更新しない）
-  const [flyToOsmNodeId, setFlyToOsmNodeId] = useState<string | undefined>(parseOsmNodeId);
-
-  // ブラウザの戻る/進む時にselectedOsmNodeIdとflyToOsmNodeIdを同期
-  useEffect(() => {
-    const handlePopState = () => {
-      const id = parseOsmNodeId();
-      setSelectedOsmNodeId(id);
-      setFlyToOsmNodeId(id);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  });
 
   // フィルタ状態管理
   const {
@@ -105,8 +91,6 @@ function App() {
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
             selectedOsmNodeId={selectedOsmNodeId}
-            flyToOsmNodeId={flyToOsmNodeId}
-            onSelectOsmNodeId={setSelectedOsmNodeId}
           />
         </div>
       </main>
