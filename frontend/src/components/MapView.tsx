@@ -108,7 +108,7 @@ function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
 
     fetchJunctionByOsmNodeId(selectedOsmNodeId)
       .then(({ lat, lon }) => {
-        map.flyTo([lat, lon], Math.max(map.getZoom(), 16));
+        map.setView([lat, lon], Math.max(map.getZoom(), 16), { animate: false });
       })
       .catch(err => console.error('Failed to fetch junction for fly-to:', err));
   }, [selectedOsmNodeId, map]);
