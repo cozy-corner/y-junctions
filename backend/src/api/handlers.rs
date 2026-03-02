@@ -188,6 +188,18 @@ pub async fn get_junction_by_id(
     Ok(Json(junction.to_feature()))
 }
 
+// ハンドラー: GET /api/junctions/node/:osm_node_id
+pub async fn get_junction_by_osm_node_id(
+    State(pool): State<PgPool>,
+    Path(osm_node_id): Path<i64>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let junction = repository::find_by_osm_node_id(&pool, osm_node_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    Ok(Json(junction.to_feature()))
+}
+
 // ハンドラー: GET /api/stats
 pub async fn get_stats(State(pool): State<PgPool>) -> Result<Json<StatsResponse>, AppError> {
     let total_count = repository::count_total(&pool).await?;

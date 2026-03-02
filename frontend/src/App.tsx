@@ -11,6 +11,12 @@ function App() {
   const [totalCount, setTotalCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // URLパスから osm_node_id を取得（例: /node/123456）
+  const [selectedOsmNodeId] = useState<string | undefined>(() => {
+    const match = window.location.pathname.match(/^\/node\/(\d+)$/);
+    return match?.[1];
+  });
+
   // フィルタ状態管理
   const {
     angleTypes,
@@ -84,6 +90,7 @@ function App() {
             filters={filterParams}
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
+            selectedOsmNodeId={selectedOsmNodeId}
           />
         </div>
       </main>

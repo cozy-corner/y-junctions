@@ -1,9 +1,17 @@
-import { useState, useCallback, useMemo, useEffect, memo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { useState, useCallback, useRef, useEffect, memo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet';
-import type { LatLngBounds, AngleType, FilterParams, JunctionFeatureCollection } from '../types';
+import type { Marker as LeafletMarker } from 'leaflet';
+import type {
+  LatLngBounds,
+  AngleType,
+  FilterParams,
+  JunctionFeatureCollection,
+  JunctionFeature,
+} from '../types';
 import { useJunctions } from '../hooks/useJunctions';
 import { JunctionPopup } from './JunctionPopup';
+import { fetchJunctionByOsmNodeId } from '../api/client';
 
 // 初期位置: 東京駅
 const INITIAL_CENTER: [number, number] = [35.6812, 139.7671];
@@ -73,11 +81,82 @@ const MapEventsHandler = memo(function MapEventsHandler({ onBoundsChange }: MapE
   return null;
 });
 
+// マウント時に初期boundsを設定するコンポーネント
+// （LeafletはuseEffectよりも前にmoveendを発火するため、初期boundsを手動でセットする）
+function InitialBounds({ onBoundsChange }: { onBoundsChange: (bounds: LatLngBounds) => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const b = map.getBounds();
+    onBoundsChange({
+      north: b.getNorth(),
+      south: b.getSouth(),
+      east: b.getEast(),
+      west: b.getWest(),
+    });
+  }, [map, onBoundsChange]);
+
+  return null;
+}
+
+// 選択されたY字路に地図を移動させるコンポーネント
+function MapFlyTo({ selectedOsmNodeId }: { selectedOsmNodeId?: string }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedOsmNodeId) return;
+
+    fetchJunctionByOsmNodeId(selectedOsmNodeId)
+      .then(({ lat, lon }) => {
+        map.flyTo([lat, lon], Math.max(map.getZoom(), 16));
+      })
+      .catch(err => console.error('Failed to fetch junction for fly-to:', err));
+  }, [selectedOsmNodeId, map]);
+
+  return null;
+}
+
+// 個別マーカーコンポーネント
+interface JunctionMarkerProps {
+  feature: JunctionFeature;
+  isSelected: boolean;
+}
+
+const JunctionMarker = memo(function JunctionMarker({ feature, isSelected }: JunctionMarkerProps) {
+  const markerRef = useRef<LeafletMarker | null>(null);
+  const [lon, lat] = feature.geometry.coordinates;
+  const { osm_node_id, angle_type } = feature.properties;
+
+  useEffect(() => {
+    if (isSelected && markerRef.current) {
+      markerRef.current.openPopup();
+    }
+  }, [isSelected]);
+
+  const handleClick = useCallback(() => {
+    window.history.pushState(null, '', `/node/${osm_node_id}`);
+  }, [osm_node_id]);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={[lat, lon]}
+      icon={getMarkerIcon(angle_type)}
+      eventHandlers={{ click: handleClick }}
+    >
+      <Popup>
+        <JunctionPopup properties={feature.properties} />
+      </Popup>
+    </Marker>
+  );
+});
+
 interface MapViewProps {
   useMockData?: boolean;
   filters?: Omit<FilterParams, 'bbox'>;
   onLoadingChange?: (isLoading: boolean) => void;
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
+  selectedOsmNodeId?: string;
 }
 
 export const MapView = memo(function MapView({
@@ -85,6 +164,7 @@ export const MapView = memo(function MapView({
   filters,
   onLoadingChange,
   onDataChange,
+  selectedOsmNodeId,
 }: MapViewProps) {
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
 
@@ -95,36 +175,20 @@ export const MapView = memo(function MapView({
     useMockData,
   });
 
-  // ローディング状態の変化を通知（useCallbackで最適化）
+  // ローディング状態の変化を通知
   useEffect(() => {
     onLoadingChange?.(isLoading);
   }, [isLoading, onLoadingChange]);
 
-  // データの変化を通知（useCallbackで最適化）
+  // データの変化を通知
   useEffect(() => {
     onDataChange?.(data);
   }, [data, onDataChange]);
 
-  // boundsの変更ハンドラ（useCallbackで最適化）
+  // boundsの変更ハンドラ
   const handleBoundsChange = useCallback((newBounds: LatLngBounds) => {
     setBounds(newBounds);
   }, []);
-
-  // マーカーリストをメモ化（データが変わった時のみ再計算）
-  const markers = useMemo(() => {
-    return data?.features.map(feature => {
-      const [lon, lat] = feature.geometry.coordinates;
-      const { osm_node_id, angle_type } = feature.properties;
-
-      return (
-        <Marker key={osm_node_id} position={[lat, lon]} icon={getMarkerIcon(angle_type)}>
-          <Popup>
-            <JunctionPopup properties={feature.properties} />
-          </Popup>
-        </Marker>
-      );
-    });
-  }, [data]);
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
@@ -139,11 +203,23 @@ export const MapView = memo(function MapView({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        {/* 初期bounds設定 */}
+        <InitialBounds onBoundsChange={handleBoundsChange} />
+
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
 
+        {/* 選択マーカーへの移動 */}
+        <MapFlyTo selectedOsmNodeId={selectedOsmNodeId} />
+
         {/* マーカー表示 */}
-        {markers}
+        {data?.features.map(feature => (
+          <JunctionMarker
+            key={feature.properties.osm_node_id}
+            feature={feature}
+            isSelected={feature.properties.osm_node_id.toString() === selectedOsmNodeId}
+          />
+        ))}
       </MapContainer>
     </div>
   );

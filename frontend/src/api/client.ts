@@ -66,6 +66,32 @@ export async function fetchJunctions(
   }
 }
 
+// osm_node_idでY字路の座標を取得（URLリンク用）
+export async function fetchJunctionByOsmNodeId(
+  osmNodeId: string
+): Promise<{ lat: number; lon: number }> {
+  try {
+    const url = `${BASE_URL}/junctions/node/${osmNodeId}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new ApiError(`Failed to fetch junction: ${response.statusText}`, response.status);
+    }
+
+    // GeoJSON Feature形式: geometry.coordinates = [lon, lat]
+    const data = await response.json();
+    const [lon, lat] = data.geometry.coordinates as [number, number];
+    return { lat, lon };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 // 特定のY字路詳細を取得
 export async function fetchJunctionById(id: number): Promise<Junction> {
   try {

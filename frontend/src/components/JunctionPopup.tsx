@@ -1,3 +1,5 @@
+import { useCallback, useState } from 'react';
+import { Link2, Check } from 'lucide-react';
 import type { JunctionProperties } from '../types';
 
 interface JunctionPopupProps {
@@ -11,7 +13,16 @@ const ANGLE_TYPE_LABELS: Record<string, string> = {
 };
 
 export function JunctionPopup({ properties }: JunctionPopupProps) {
-  const { angles, angle_type, streetview_url, min_angle_elevation_diff } = properties;
+  const { osm_node_id, angles, angle_type, streetview_url, min_angle_elevation_diff } = properties;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyUrl = useCallback(() => {
+    const url = `${window.location.origin}/node/${osm_node_id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [osm_node_id]);
 
   return (
     <div style={{ minWidth: 200 }}>
@@ -33,8 +44,8 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
         </div>
       </div>
 
-      {/* Street Viewリンク */}
-      <div>
+      {/* Street Viewリンク + URLコピーボタン */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <a
           href={streetview_url}
           target="_blank"
@@ -52,6 +63,25 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
         >
           Street Viewで見る
         </a>
+        <button
+          onClick={handleCopyUrl}
+          title={copied ? 'コピーしました!' : 'URLをコピー'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 32,
+            height: 32,
+            padding: 0,
+            color: copied ? '#22c55e' : '#6b7280',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          {copied ? <Check size={16} /> : <Link2 size={16} />}
+        </button>
       </div>
     </div>
   );
