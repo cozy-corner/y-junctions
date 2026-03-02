@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
@@ -12,10 +12,20 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // URLパスから osm_node_id を取得（例: /node/123456）
-  const [selectedOsmNodeId] = useState<string | undefined>(() => {
+  const [selectedOsmNodeId, setSelectedOsmNodeId] = useState<string | undefined>(() => {
     const match = window.location.pathname.match(/^\/node\/(\d+)$/);
     return match?.[1];
   });
+
+  // ブラウザの戻る/進む時にselectedOsmNodeIdを同期
+  useEffect(() => {
+    const handlePopState = () => {
+      const match = window.location.pathname.match(/^\/node\/(\d+)$/);
+      setSelectedOsmNodeId(match?.[1]);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // フィルタ状態管理
   const {
@@ -91,6 +101,7 @@ function App() {
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
             selectedOsmNodeId={selectedOsmNodeId}
+            onSelectOsmNodeId={setSelectedOsmNodeId}
           />
         </div>
       </main>
