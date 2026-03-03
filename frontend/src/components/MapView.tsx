@@ -11,6 +11,10 @@ import { JunctionPopup } from './JunctionPopup';
 const DEFAULT_CENTER: [number, number] = [35.6812, 139.7671];
 const INITIAL_ZOOM = 14;
 
+// URLアクセス時のフォーカスアニメーション設定
+const FOCUS_START_ZOOM = 5;
+const FOCUS_TARGET_ZOOM = 16;
+
 // angle_typeごとのマーカー色（Y字路書籍をイメージした紫、青、黄色のパレット）
 const MARKER_COLORS: Record<AngleType, string> = {
   verysharp: '#8B5CF6', // 紫（violet-500） - 最小角度が最も小さい
@@ -92,6 +96,24 @@ const InitialBounds = memo(function InitialBounds({
       west: bounds.getWest(),
     });
   }, [map, onBoundsChange]);
+
+  return null;
+});
+
+// URLアクセス時に上空からズームインするアニメーションコンポーネント
+interface FocusAnimationProps {
+  target: [number, number];
+}
+
+const FocusAnimation = memo(function FocusAnimation({ target }: FocusAnimationProps) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(target, FOCUS_TARGET_ZOOM, {
+      animate: true,
+      duration: 5,
+    });
+  }, [map, target]);
 
   return null;
 });
@@ -214,7 +236,7 @@ export const MapView = memo(function MapView({
     <div style={{ height: '100%', width: '100%' }}>
       <MapContainer
         center={initialCenter}
-        zoom={urlOsmNodeId ? 16 : INITIAL_ZOOM}
+        zoom={urlOsmNodeId ? FOCUS_START_ZOOM : INITIAL_ZOOM}
         style={{ height: '100%', width: '100%' }}
       >
         {/* OpenStreetMap タイル */}
@@ -222,6 +244,9 @@ export const MapView = memo(function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {/* URLアクセス時のフォーカスアニメーション */}
+        {urlOsmNodeId && initialCenter && <FocusAnimation target={initialCenter} />}
 
         {/* 初期bounds設定 */}
         <InitialBounds onBoundsChange={handleBoundsChange} />
