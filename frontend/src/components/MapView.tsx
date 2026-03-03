@@ -1,12 +1,14 @@
-import { useState, useCallback, useMemo, useEffect, memo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { useState, useCallback, useMemo, useEffect, useRef, memo, type ReactNode } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet';
+import type { Marker as LeafletMarker } from 'leaflet';
 import type { LatLngBounds, AngleType, FilterParams, JunctionFeatureCollection } from '../types';
 import { useJunctions } from '../hooks/useJunctions';
+import { fetchJunctionByOsmNodeId } from '../api/client';
 import { JunctionPopup } from './JunctionPopup';
 
 // 初期位置: 東京駅
-const INITIAL_CENTER: [number, number] = [35.6812, 139.7671];
+const DEFAULT_CENTER: [number, number] = [35.6812, 139.7671];
 const INITIAL_ZOOM = 14;
 
 // angle_typeごとのマーカー色（Y字路書籍をイメージした紫、青、黄色のパレット）
@@ -73,6 +75,56 @@ const MapEventsHandler = memo(function MapEventsHandler({ onBoundsChange }: MapE
   return null;
 });
 
+// マウント時に初期boundsを設定するコンポーネント
+const InitialBounds = memo(function InitialBounds({
+  onBoundsChange,
+}: {
+  onBoundsChange: (bounds: LatLngBounds) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const bounds = map.getBounds();
+    onBoundsChange({
+      north: bounds.getNorth(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      west: bounds.getWest(),
+    });
+  }, [map, onBoundsChange]);
+
+  return null;
+});
+
+// isSelected=true のときポップアップを自動で開くマーカー
+interface JunctionMarkerProps {
+  position: [number, number];
+  icon: Icon;
+  isSelected: boolean;
+  children: ReactNode;
+}
+
+const JunctionMarker = memo(function JunctionMarker({
+  position,
+  icon,
+  isSelected,
+  children,
+}: JunctionMarkerProps) {
+  const markerRef = useRef<LeafletMarker>(null);
+
+  useEffect(() => {
+    if (isSelected && markerRef.current) {
+      markerRef.current.openPopup();
+    }
+  }, [isSelected]);
+
+  return (
+    <Marker ref={markerRef} position={position} icon={icon}>
+      <Popup>{children}</Popup>
+    </Marker>
+  );
+});
+
 interface MapViewProps {
   useMockData?: boolean;
   filters?: Omit<FilterParams, 'bbox'>;
@@ -86,7 +138,30 @@ export const MapView = memo(function MapView({
   onLoadingChange,
   onDataChange,
 }: MapViewProps) {
+  // URLから osm_node_id を取得（文字列のまま扱う）
+  const urlOsmNodeId = useMemo(() => {
+    const match = window.location.pathname.match(/^\/node\/(\d+)$/);
+    return match?.[1] ?? null;
+  }, []);
+
+  // URL指定がない場合は即座にデフォルト中心を設定、ある場合はAPIで取得するまでnull
+  const [initialCenter, setInitialCenter] = useState<[number, number] | null>(() =>
+    urlOsmNodeId ? null : DEFAULT_CENTER
+  );
   const [bounds, setBounds] = useState<LatLngBounds | null>(null);
+
+  // URL指定がある場合、マウント時に座標を取得して initialCenter を設定
+  useEffect(() => {
+    if (!urlOsmNodeId) return;
+
+    fetchJunctionByOsmNodeId(urlOsmNodeId)
+      .then(({ lat, lon }) => {
+        setInitialCenter([lat, lon]);
+      })
+      .catch(() => {
+        setInitialCenter(DEFAULT_CENTER);
+      });
+  }, [urlOsmNodeId]);
 
   // Y字路データを取得
   const { data, isLoading } = useJunctions({
@@ -95,42 +170,51 @@ export const MapView = memo(function MapView({
     useMockData,
   });
 
-  // ローディング状態の変化を通知（useCallbackで最適化）
+  // ローディング状態の変化を通知
   useEffect(() => {
     onLoadingChange?.(isLoading);
   }, [isLoading, onLoadingChange]);
 
-  // データの変化を通知（useCallbackで最適化）
+  // データの変化を通知
   useEffect(() => {
     onDataChange?.(data);
   }, [data, onDataChange]);
 
-  // boundsの変更ハンドラ（useCallbackで最適化）
+  // boundsの変更ハンドラ
   const handleBoundsChange = useCallback((newBounds: LatLngBounds) => {
     setBounds(newBounds);
   }, []);
 
-  // マーカーリストをメモ化（データが変わった時のみ再計算）
+  // マーカーリストをメモ化
   const markers = useMemo(() => {
     return data?.features.map(feature => {
       const [lon, lat] = feature.geometry.coordinates;
       const { osm_node_id, angle_type } = feature.properties;
+      const isSelected = urlOsmNodeId !== null && String(osm_node_id) === urlOsmNodeId;
 
       return (
-        <Marker key={osm_node_id} position={[lat, lon]} icon={getMarkerIcon(angle_type)}>
-          <Popup>
-            <JunctionPopup properties={feature.properties} />
-          </Popup>
-        </Marker>
+        <JunctionMarker
+          key={osm_node_id}
+          position={[lat, lon]}
+          icon={getMarkerIcon(angle_type)}
+          isSelected={isSelected}
+        >
+          <JunctionPopup properties={feature.properties} />
+        </JunctionMarker>
       );
     });
-  }, [data]);
+  }, [data, urlOsmNodeId]);
+
+  // initialCenter が決まるまで描画しない（東京経由のflyToを防ぐ）
+  if (initialCenter === null) {
+    return null;
+  }
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
       <MapContainer
-        center={INITIAL_CENTER}
-        zoom={INITIAL_ZOOM}
+        center={initialCenter}
+        zoom={urlOsmNodeId ? 16 : INITIAL_ZOOM}
         style={{ height: '100%', width: '100%' }}
       >
         {/* OpenStreetMap タイル */}
@@ -138,6 +222,9 @@ export const MapView = memo(function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {/* 初期bounds設定 */}
+        <InitialBounds onBoundsChange={handleBoundsChange} />
 
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
