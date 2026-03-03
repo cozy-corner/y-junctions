@@ -88,6 +88,32 @@ export async function fetchJunctionById(id: number): Promise<Junction> {
   }
 }
 
+// osm_node_id でY字路を取得
+export async function fetchJunctionByOsmNodeId(
+  osmNodeId: string
+): Promise<{ lat: number; lon: number }> {
+  try {
+    const url = `${BASE_URL}/junctions/node/${osmNodeId}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new ApiError(`Failed to fetch junction: ${response.statusText}`, response.status);
+    }
+
+    // GeoJSON Feature形式: geometry.coordinates = [lon, lat]
+    const data = await response.json();
+    const [lon, lat] = data.geometry.coordinates as [number, number];
+    return { lat, lon };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 // 統計情報を取得
 export async function fetchStats(): Promise<Stats> {
   try {
