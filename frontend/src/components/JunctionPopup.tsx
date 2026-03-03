@@ -17,7 +17,7 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopyUrl = useCallback(() => {
-    const url = `${window.location.origin}/node/${osm_node_id}`;
+    const url = `${window.location.origin}${window.location.pathname}#node=${osm_node_id}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
