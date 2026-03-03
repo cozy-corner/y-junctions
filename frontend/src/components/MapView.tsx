@@ -162,7 +162,7 @@ export const MapView = memo(function MapView({
 }: MapViewProps) {
   // URLから osm_node_id を取得（文字列のまま扱う）
   const urlOsmNodeId = useMemo(() => {
-    const match = window.location.pathname.match(/^\/node\/(\d+)$/);
+    const match = window.location.hash.match(/^#node=(\d+)$/);
     return match?.[1] ?? null;
   }, []);
 
