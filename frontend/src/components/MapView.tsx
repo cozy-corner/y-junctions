@@ -22,31 +22,34 @@ const MARKER_COLORS: Record<AngleType, string> = {
   normal: '#F59E0B', // 濃い黄色（琥珀色） - 通常
 };
 
-// カスタムマーカーアイコンを作成（メモ化用に外部で定義）
-const markerIconCache: Partial<Record<AngleType, Icon>> = {};
-
-function getMarkerIcon(angleType: AngleType): Icon {
-  if (markerIconCache[angleType]) {
-    return markerIconCache[angleType]!;
-  }
-
+// Y字路形状のSVGマーカーアイコンを生成する
+function getMarkerIcon(angleType: AngleType, bearings: number[]): Icon {
   const color = MARKER_COLORS[angleType];
-  const svg = `
-    <svg width="25" height="41" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 8.4 12.5 28.5 12.5 28.5S25 20.9 25 12.5C25 5.6 19.4 0 12.5 0z"
-            fill="${color}" stroke="#fff" stroke-width="1.5"/>
-      <circle cx="12.5" cy="12.5" r="6" fill="#fff"/>
-    </svg>
-  `;
+  const size = 38;
+  const center = size / 2;
+  const bgRadius = center - 1;
+  const lineLen = bgRadius - 5;
 
-  const icon = new Icon({
+  const lines = bearings
+    .map(bearing => {
+      const rad = (bearing * Math.PI) / 180;
+      const x = (center + lineLen * Math.sin(rad)).toFixed(1);
+      const y = (center - lineLen * Math.cos(rad)).toFixed(1);
+      return `<line x1="${center}" y1="${center}" x2="${x}" y2="${y}" stroke="white" stroke-width="3" stroke-linecap="round"/>`;
+    })
+    .join('');
+
+  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="${center}" cy="${center}" r="${bgRadius}" fill="${color}" stroke="white" stroke-width="2"/>
+    ${lines}
+    <circle cx="${center}" cy="${center}" r="3" fill="white"/>
+  </svg>`;
+
+  return new Icon({
     iconUrl: `data:image/svg+xml;base64,${btoa(svg)}`,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
+    iconSize: [size, size],
+    iconAnchor: [center, center],
   });
-
-  markerIconCache[angleType] = icon;
-  return icon;
 }
 
 // 地図のイベントハンドリング用コンポーネント（メモ化）
@@ -211,14 +214,14 @@ export const MapView = memo(function MapView({
   const markers = useMemo(() => {
     return data?.features.map(feature => {
       const [lon, lat] = feature.geometry.coordinates;
-      const { osm_node_id, angle_type } = feature.properties;
+      const { osm_node_id, angle_type, bearings = [] } = feature.properties;
       const isSelected = urlOsmNodeId !== null && String(osm_node_id) === urlOsmNodeId;
 
       return (
         <JunctionMarker
           key={osm_node_id}
           position={[lat, lon]}
-          icon={getMarkerIcon(angle_type)}
+          icon={getMarkerIcon(angle_type, bearings)}
           isSelected={isSelected}
         >
           <JunctionPopup properties={feature.properties} />
