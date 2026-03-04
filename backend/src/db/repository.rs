@@ -230,8 +230,9 @@ pub async fn find_by_bbox(
         add_category_filter(&mut query_builder, categories);
     }
 
-    // LIMIT
-    query_builder.push(" LIMIT ");
+    // id 順ソート + LIMIT（B-tree スキャンの lon 昇順偏りを防ぐ）
+    query_builder.push(" ORDER BY id LIMIT ");
+
     query_builder.push_bind(limit);
 
     let rows: Vec<JunctionRow> = query_builder.build_query_as().fetch_all(pool).await?;
