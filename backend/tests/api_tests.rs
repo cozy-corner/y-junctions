@@ -643,6 +643,30 @@ async fn test_get_junctions_response_includes_elevation_data() {
 
 #[tokio::test]
 #[serial]
+async fn test_get_junctions_response_includes_bearings() {
+    let pool = setup_test_db().await;
+
+    let id = insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    let app = create_test_app(pool);
+
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+
+    // bearings がレスポンスに含まれ、挿入した値と一致することを確認
+    let bearings = &json["properties"]["bearings"];
+    assert!(bearings.is_array(), "bearings should be an array");
+    let arr = bearings.as_array().unwrap();
+    assert_eq!(arr.len(), 3, "bearings should have 3 elements");
+    // sharp_type のbearings: [10.0, 45.0, 190.0]
+    assert_eq!(arr[0].as_f64().unwrap(), 10.0_f64, "bearing[0] mismatch");
+    assert_eq!(arr[1].as_f64().unwrap(), 45.0_f64, "bearing[1] mismatch");
+    assert_eq!(arr[2].as_f64().unwrap(), 190.0_f64, "bearing[2] mismatch");
+}
+
+#[tokio::test]
+#[serial]
 async fn test_get_junctions_combined_filters_with_elevation() {
     let pool = setup_test_db().await;
 

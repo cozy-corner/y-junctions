@@ -132,6 +132,7 @@ impl Junction {
                 "way_1_category": self.way_1_category,
                 "way_2_category": self.way_2_category,
                 "way_3_category": self.way_3_category,
+                "bearings": self.bearings,
             }
         })
     }
