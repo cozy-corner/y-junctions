@@ -1,3 +1,4 @@
+pub mod baidu;
 pub mod calculator;
 pub mod detector;
 pub mod elevation;
@@ -8,6 +9,9 @@ use anyhow::Result;
 use rayon::prelude::*;
 use sqlx::PgPool;
 use std::sync::Arc;
+use std::time::Duration;
+
+use crate::domain::china;
 
 pub async fn import_three_way_junctions(
     pool: &PgPool,
@@ -160,6 +164,80 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
         crate::db::repository::bulk_update_elevations(pool, &elevation_updates).await?;
 
     tracing::info!("Updated {} Y-junctions with elevation data", updated_count);
+
+    Ok(updated_count)
+}
+
+/// Fetch Baidu panoids for every mainland-China Y-junction missing one.
+/// Sequential HTTP at ~10 req/s (100ms spacing) — adequate for the Shanghai
+/// pilot scale. Full-country rollout will need bounded concurrency; deferred
+/// out of this PR. Out-of-China rows are skipped in-process without hitting
+/// Baidu. Transport failures log and continue so a single outage does not
+/// abort the whole batch.
+pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<usize> {
+    let junctions = if refresh {
+        crate::db::baidu_repository::find_all_for_refresh(pool).await?
+    } else {
+        crate::db::baidu_repository::find_without_baidu_panoid(pool).await?
+    };
+
+    let china_junctions: Vec<_> = junctions
+        .into_iter()
+        .filter(|j| china::is_in_china_mainland(j.lon, j.lat))
+        .collect();
+
+    tracing::info!(
+        "Found {} mainland-China Y-junctions to query Baidu",
+        china_junctions.len()
+    );
+
+    let client = baidu::build_client()?;
+    let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> = Vec::new();
+    let mut missed = 0usize;
+    let mut errored = 0usize;
+
+    for (idx, junction) in china_junctions.iter().enumerate() {
+        if idx > 0 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        match baidu::fetch_nearest_panorama(&client, junction.lon, junction.lat).await {
+            Ok(Some(pano)) => updates.push((junction.id, pano)),
+            Ok(None) => missed += 1,
+            Err(e) => {
+                errored += 1;
+                tracing::warn!(
+                    "Baidu qsdata failed for junction {} ({}, {}): {}",
+                    junction.id,
+                    junction.lat,
+                    junction.lon,
+                    e
+                );
+            }
+        }
+
+        if (idx + 1) % 100 == 0 {
+            tracing::info!(
+                "Progress: {}/{} (ok={}, none={}, err={})",
+                idx + 1,
+                china_junctions.len(),
+                updates.len(),
+                missed,
+                errored
+            );
+        }
+    }
+
+    tracing::info!(
+        "Baidu panoid fetch complete: total={}, ok={}, none={}, err={}",
+        china_junctions.len(),
+        updates.len(),
+        missed,
+        errored
+    );
+
+    let updated_count = crate::db::baidu_repository::bulk_update_baidu(pool, &updates).await?;
+    tracing::info!("Updated {} Y-junctions with Baidu panoid", updated_count);
 
     Ok(updated_count)
 }

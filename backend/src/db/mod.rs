@@ -1,3 +1,4 @@
+pub mod baidu_repository;
 pub mod repository;
 
 use sqlx::postgres::PgPoolOptions;

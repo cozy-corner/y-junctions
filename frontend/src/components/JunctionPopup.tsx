@@ -46,23 +46,25 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
 
       {/* Street Viewリンク + URLコピーボタン */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <a
-          href={streetview_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-block',
-            padding: '8px 12px',
-            fontSize: 13,
-            fontWeight: 600,
-            color: 'white',
-            background: '#4285f4',
-            textDecoration: 'none',
-            borderRadius: 4,
-          }}
-        >
-          Street Viewで見る
-        </a>
+        {streetview_url && (
+          <a
+            href={streetview_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-block',
+              padding: '8px 12px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'white',
+              background: '#4285f4',
+              textDecoration: 'none',
+              borderRadius: 4,
+            }}
+          >
+            Street Viewで見る
+          </a>
+        )}
         <button
           type="button"
           onClick={handleCopyUrl}
