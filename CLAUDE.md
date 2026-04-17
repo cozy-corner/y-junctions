@@ -1,13 +1,40 @@
-# 【最優先】作業開始時の確認
+# 【最優先】プロジェクトの基盤情報
 
-**作業を開始する前に、必ずREADME.mdを読むこと。**
+## 技術スタック
 
-README.mdには以下の重要な情報が含まれています：
-- プロジェクトの構成
-- データの配置場所（`~/y-junctions-data/osm/`）
-- 環境変数の設定方法
-- インポート手順
-- API仕様
+- **Backend**: Rust + Axum + SQLx + **CockroachDB** (PostgreSQL ではない)
+- **Frontend**: TypeScript + React + Leaflet
+
+CockroachDB の含意:
+- `pg_advisory_lock` 非対応 → sqlx migrate は `.set_locking(false)` で実行
+- `RESTART IDENTITY` 非対応 → TRUNCATE 時に指定しない
+- sqlx は `postgres://` ドライバで動作するが、一部の PG 機能は使えない
+
+## ローカル環境起動
+
+```bash
+# DB (コンテナ名: y-junctions-cockroachdb, port 26257)
+docker-compose up -d
+
+# 初回のみ: テスト DB を作成
+docker exec y-junctions-cockroachdb ./cockroach sql --insecure \
+  --execute "CREATE DATABASE IF NOT EXISTS y_junction_test;"
+```
+
+## 環境変数 (backend/.env)
+
+```
+DATABASE_URL=postgresql://root@localhost:26257/y_junction?sslmode=disable
+TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disable
+```
+
+worktree 運用では `scripts/setup-worktree.sh` が自動生成する。
+
+## README.md
+
+**作業開始前に必ず README.md を Read ツールで読むこと。**
+上記の基盤情報は要約であり、README.md にはデータインポート手順、
+API 仕様、本番デプロイ手順等の詳細が記載されている。
 
 ---
 
