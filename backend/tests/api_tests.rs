@@ -8,6 +8,7 @@ use serde_json::Value;
 use serial_test::serial;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 use tower::util::ServiceExt;
 
 // テスト用のosm_node_id自動生成
@@ -54,6 +55,7 @@ async fn setup_test_db() -> PgPool {
 
     let pool = PgPoolOptions::new()
         .max_connections(1)
+        .acquire_timeout(Duration::from_secs(2))
         .connect(&database_url)
         .await
         .expect("Failed to connect to test database");
@@ -1078,4 +1080,259 @@ async fn test_get_junctions_category_or_condition() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["total_count"], 1); // 1本でもhighway を含むY字路のみ
+}
+
+// ========== baidu_repository: direct repository layer ==========
+
+use y_junction_backend::db::baidu_repository;
+use y_junction_backend::domain::china::BaiduPanorama;
+
+/// Shanghai center — confirmed inside `is_in_china_mainland`.
+const SHANGHAI_LAT: f64 = 31.2304;
+const SHANGHAI_LON: f64 = 121.4737;
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_find_by_junction_ids_empty_input() {
+    let pool = setup_test_db().await;
+    let result = baidu_repository::find_by_junction_ids(&pool, &[])
+        .await
+        .expect("query failed");
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_find_by_junction_ids_skips_rows_without_panoid() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+        .await
+        .expect("query failed");
+    assert!(
+        result.is_empty(),
+        "junction without panoid must not appear in the map"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_update_and_find_roundtrip() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    let pano = BaiduPanorama {
+        panoid: "TEST_PANOID_001".to_string(),
+        pano_mc_x: 13_523_770.0,
+        pano_mc_y: 3_640_859.0,
+    };
+    let updated = baidu_repository::bulk_update_baidu(&pool, &[(id, pano.clone())])
+        .await
+        .expect("bulk update failed");
+    assert_eq!(updated, 1);
+
+    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+        .await
+        .expect("query failed");
+    assert_eq!(result.len(), 1);
+    let got = result.get(&id).expect("id missing from map");
+    assert_eq!(got, &pano);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_update_overwrites_existing() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    let first = BaiduPanorama {
+        panoid: "OLD_PANOID".to_string(),
+        pano_mc_x: 13_000_000.0,
+        pano_mc_y: 3_600_000.0,
+    };
+    baidu_repository::bulk_update_baidu(&pool, &[(id, first)])
+        .await
+        .unwrap();
+
+    let second = BaiduPanorama {
+        panoid: "NEW_PANOID".to_string(),
+        pano_mc_x: 13_523_770.0,
+        pano_mc_y: 3_640_859.0,
+    };
+    baidu_repository::bulk_update_baidu(&pool, &[(id, second.clone())])
+        .await
+        .unwrap();
+
+    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+        .await
+        .unwrap();
+    assert_eq!(result.get(&id), Some(&second));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_update_empty_is_noop() {
+    let pool = setup_test_db().await;
+    let updated = baidu_repository::bulk_update_baidu(&pool, &[])
+        .await
+        .expect("bulk update failed");
+    assert_eq!(updated, 0);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_find_all_for_refresh_returns_every_row() {
+    let pool = setup_test_db().await;
+    let id_with = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    let id_without = insert_test_junction(
+        &pool,
+        TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
+    )
+    .await;
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id_with,
+            BaiduPanorama {
+                panoid: "EXISTING".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let all = baidu_repository::find_all_for_refresh(&pool)
+        .await
+        .expect("query failed");
+    let ids: Vec<i64> = all.iter().map(|j| j.id).collect();
+    assert!(ids.contains(&id_with));
+    assert!(ids.contains(&id_without));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_find_without_panoid_returns_only_null_rows() {
+    let pool = setup_test_db().await;
+    let id_with = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    let id_without = insert_test_junction(
+        &pool,
+        TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
+    )
+    .await;
+
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id_with,
+            BaiduPanorama {
+                panoid: "HAS_PANOID".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let pending = baidu_repository::find_without_baidu_panoid(&pool)
+        .await
+        .expect("query failed");
+    let pending_ids: Vec<i64> = pending.iter().map(|j| j.id).collect();
+    assert!(pending_ids.contains(&id_without));
+    assert!(!pending_ids.contains(&id_with));
+}
+
+// ========== streetview_url region dispatch via handler ==========
+
+#[tokio::test]
+#[serial]
+async fn test_china_junction_with_baidu_returns_baidu_url() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id,
+            BaiduPanorama {
+                panoid: "SHANGHAI_TEST".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let app = create_test_app(pool);
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let url = json["properties"]["streetview_url"].as_str().unwrap();
+    assert!(
+        url.contains("map.baidu.com"),
+        "expected baidu URL, got: {url}"
+    );
+    assert!(url.contains("SHANGHAI_TEST"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_china_junction_without_baidu_returns_empty_streetview_url() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    let app = create_test_app(pool);
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["properties"]["streetview_url"], "");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_non_china_junction_still_uses_google_url() {
+    // Existing Tokyo-latitude fixtures must not regress to an empty URL.
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(&pool, TestJunctionData::sharp_type()).await;
+
+    let app = create_test_app(pool);
+    let (status, json) = send_request(app, &format!("/api/junctions/{}", id)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let url = json["properties"]["streetview_url"].as_str().unwrap();
+    assert!(
+        url.contains("google.com/maps"),
+        "expected google URL, got: {url}"
+    );
 }

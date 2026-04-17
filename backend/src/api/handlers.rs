@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 
+use crate::api::streetview_enricher;
 use crate::db::repository::{self, FilterParams};
-use crate::domain::{AngleType, Junction};
+use crate::domain::AngleType;
 
 // エラー型
 #[derive(Debug)]
@@ -171,7 +172,8 @@ pub async fn get_junctions(
 
     let (junctions, total_count) = repository::find_by_bbox(&pool, bbox, filters).await?;
 
-    let feature_collection = Junction::to_feature_collection(junctions, total_count);
+    let feature_collection =
+        streetview_enricher::enrich_collection(&pool, junctions, total_count).await?;
 
     Ok(Json(feature_collection))
 }
@@ -185,7 +187,9 @@ pub async fn get_junction_by_id(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    Ok(Json(junction.to_feature()))
+    Ok(Json(
+        streetview_enricher::enrich_feature(&pool, junction).await?,
+    ))
 }
 
 // ハンドラー: GET /api/junctions/node/:osm_node_id
@@ -197,7 +201,9 @@ pub async fn get_junction_by_osm_node_id(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    Ok(Json(junction.to_feature()))
+    Ok(Json(
+        streetview_enricher::enrich_feature(&pool, junction).await?,
+    ))
 }
 
 // ハンドラー: GET /api/stats
