@@ -30,10 +30,11 @@ TEST_DATABASE_URL=postgresql://root@localhost:26257/y_junction_test?sslmode=disa
 
 worktree 運用では `scripts/setup-worktree.sh` が自動生成する。
 
-## その他の詳細
+## README.md
 
-README.md にデータインポート手順、API 仕様、本番デプロイ手順あり。
-必要時に Read ツールで参照する。
+**作業開始前に必ず README.md を Read ツールで読むこと。**
+上記の基盤情報は要約であり、README.md にはデータインポート手順、
+API 仕様、本番デプロイ手順等の詳細が記載されている。
 
 ---
 
