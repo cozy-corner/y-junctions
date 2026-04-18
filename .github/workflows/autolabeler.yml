@@ -1,0 +1,22 @@
+name: Auto Label
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autolabeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto_label:
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter/autolabeler@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
