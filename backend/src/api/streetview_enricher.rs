@@ -11,12 +11,10 @@ use sqlx::PgPool;
 pub async fn enrich_collection(
     pool: &PgPool,
     junctions: Vec<Junction>,
-    total_count: i64,
 ) -> Result<serde_json::Value, sqlx::Error> {
     let ids: Vec<i64> = junctions.iter().map(|j| j.id).collect();
     let baidu_map = baidu_repository::find_by_junction_ids(pool, &ids).await?;
 
-    let original_count = junctions.len() as i64;
     let features: Vec<serde_json::Value> = junctions
         .iter()
         .filter_map(|j| {
@@ -31,15 +29,10 @@ pub async fn enrich_collection(
         })
         .collect();
 
-    // total_count は bbox 全体での件数（ページング用）。中国 panoid 欠落で
-    // ドロップした数だけ減算し、クライアントの「表示件数」と整合させる。
-    let dropped = original_count - features.len() as i64;
-    let adjusted_total = total_count - dropped;
-
     Ok(serde_json::json!({
         "type": "FeatureCollection",
         "features": features,
-        "total_count": adjusted_total,
+        "total_count": features.len() as i64,
     }))
 }
 
