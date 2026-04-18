@@ -75,7 +75,7 @@ cd backend && ./target/release/import-baidu-panoid
 
 対象地域のbboxを引数として `/deploy-data` スキルを実行する。
 
-```
+```text
 /deploy-data <bbox>
 ```
 
