@@ -1,11 +1,3 @@
-# Release Drafter Workflow (releaser only)
-#
-# Trigger:
-# - push to main: Updates the GitHub Release draft based on merged PRs
-#
-# Autolabeling is handled by .github/workflows/autolabeler.yml.
-# See: https://github.com/release-drafter/release-drafter#usage
-
 name: Release Drafter
 
 on:
@@ -13,20 +5,20 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  pull-requests: read
+
 concurrency:
   group: release-drafter
   cancel-in-progress: false
 
 jobs:
   update_release_draft:
-    permissions:
-      contents: write
-      pull-requests: read
     runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v7
         with:
           publish: false
-          disable-autolabeler: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
