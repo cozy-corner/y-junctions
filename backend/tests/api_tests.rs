@@ -1308,6 +1308,59 @@ async fn test_baidu_bulk_mark_queried_empty_is_noop() {
 
 #[tokio::test]
 #[serial]
+async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
+    let pool = setup_test_db().await;
+    let id_with_panoid = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    let id_without = insert_test_junction(
+        &pool,
+        TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
+    )
+    .await;
+
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id_with_panoid,
+            BaiduPanorama {
+                panoid: "EXISTING".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let original_queried_at: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
+            .bind(id_with_panoid)
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
+
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[id_with_panoid, id_without])
+        .await
+        .expect("bulk mark failed");
+    assert_eq!(marked, 1, "only the panoid-less row should be tombstoned");
+
+    let after_queried_at: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
+            .bind(id_with_panoid)
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
+    assert_eq!(
+        original_queried_at, after_queried_at,
+        "bulk_mark_queried must not touch queried_at on rows that already have a panoid"
+    );
+}
+
+#[tokio::test]
+#[serial]
 async fn test_baidu_bulk_update_stamps_queried_at() {
     let pool = setup_test_db().await;
     let id = insert_test_junction(

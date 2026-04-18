@@ -168,11 +168,12 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
 }
 
 /// Fetch Baidu panoids for every mainland-China Y-junction missing one.
-/// Sequential HTTP at ~10 req/s (100ms spacing) — adequate for the Shanghai
-/// pilot scale. Full-country rollout will need bounded concurrency; deferred
-/// out of this PR. Out-of-China rows are skipped in-process without hitting
-/// Baidu. Transport failures abort immediately so operators can retry after
-/// fixing the underlying Baidu/network issue.
+/// Sequential HTTP with jittered 80–150 ms pacing (~6.7–12.5 req/s, mean
+/// ~115 ms) — adequate for the Shanghai pilot scale. Full-country rollout
+/// will need bounded concurrency; deferred out of this PR. Out-of-China
+/// rows are skipped in-process without hitting Baidu. Transport failures
+/// abort immediately so operators can retry after fixing the underlying
+/// Baidu/network issue.
 pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<usize> {
     let junctions = if refresh {
         crate::db::baidu_repository::find_all_for_refresh(pool).await?
