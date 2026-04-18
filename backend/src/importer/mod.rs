@@ -9,7 +9,6 @@ use anyhow::Result;
 use rayon::prelude::*;
 use sqlx::PgPool;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::domain::china;
 
@@ -193,16 +192,16 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
 
     let client = baidu::build_client()?;
     let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> = Vec::new();
-    let mut missed = 0usize;
+    let mut missed_ids: Vec<i64> = Vec::new();
 
     for (idx, junction) in china_junctions.iter().enumerate() {
         if idx > 0 {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            baidu::pace_next_request().await;
         }
 
         match baidu::fetch_nearest_panorama(&client, junction.lon, junction.lat).await {
             Ok(Some(pano)) => updates.push((junction.id, pano)),
-            Ok(None) => missed += 1,
+            Ok(None) => missed_ids.push(junction.id),
             Err(e) => {
                 return Err(anyhow::anyhow!(
                     "Baidu qsdata failed for junction {} ({}, {}): {}",
@@ -220,7 +219,7 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
                 idx + 1,
                 china_junctions.len(),
                 updates.len(),
-                missed
+                missed_ids.len()
             );
         }
     }
@@ -229,11 +228,17 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
         "Baidu panoid fetch complete: total={}, ok={}, none={}",
         china_junctions.len(),
         updates.len(),
-        missed
+        missed_ids.len()
     );
 
     let updated_count = crate::db::baidu_repository::bulk_update_baidu(pool, &updates).await?;
     tracing::info!("Updated {} Y-junctions with Baidu panoid", updated_count);
+
+    let tombstoned = crate::db::baidu_repository::bulk_mark_queried(pool, &missed_ids).await?;
+    tracing::info!(
+        "Tombstoned {} Y-junctions with no Baidu coverage",
+        tombstoned
+    );
 
     Ok(updated_count)
 }
