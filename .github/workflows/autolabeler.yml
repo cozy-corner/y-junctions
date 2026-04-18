@@ -1,31 +1,22 @@
-# Autolabeler Workflow (autolabeler only)
-#
-# Trigger:
-# - pull_request: Applies labels (feature / bug / data / internal etc.) based
-#   on branch name and title rules defined in .github/release-drafter.yml.
-#
-# Release drafting is handled by .github/workflows/release-drafter.yml.
-# See: https://github.com/release-drafter/release-drafter#usage
-
-name: Autolabeler
+name: Auto Label
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
 
 concurrency:
   group: autolabeler-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  autolabel:
+  auto_label:
     permissions:
-      contents: read
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: release-drafter/release-drafter@v7
-        with:
-          disable-releaser: true
+      - uses: release-drafter/release-drafter/autolabeler@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
