@@ -194,7 +194,6 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
     let client = baidu::build_client()?;
     let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> = Vec::new();
     let mut missed = 0usize;
-    let mut errored = 0usize;
 
     for (idx, junction) in china_junctions.iter().enumerate() {
         if idx > 0 {
@@ -205,35 +204,32 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
             Ok(Some(pano)) => updates.push((junction.id, pano)),
             Ok(None) => missed += 1,
             Err(e) => {
-                errored += 1;
-                tracing::warn!(
+                return Err(anyhow::anyhow!(
                     "Baidu qsdata failed for junction {} ({}, {}): {}",
                     junction.id,
                     junction.lat,
                     junction.lon,
                     e
-                );
+                ));
             }
         }
 
         if (idx + 1) % 100 == 0 {
             tracing::info!(
-                "Progress: {}/{} (ok={}, none={}, err={})",
+                "Progress: {}/{} (ok={}, none={})",
                 idx + 1,
                 china_junctions.len(),
                 updates.len(),
-                missed,
-                errored
+                missed
             );
         }
     }
 
     tracing::info!(
-        "Baidu panoid fetch complete: total={}, ok={}, none={}, err={}",
+        "Baidu panoid fetch complete: total={}, ok={}, none={}",
         china_junctions.len(),
         updates.len(),
-        missed,
-        errored
+        missed
     );
 
     let updated_count = crate::db::baidu_repository::bulk_update_baidu(pool, &updates).await?;
