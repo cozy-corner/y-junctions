@@ -189,16 +189,21 @@ pub async fn bulk_update_baidu(
 
 /// Stamp `baidu_queried_at = NOW()` for junctions that returned no panorama
 /// so they're excluded from the next `find_without_baidu_panoid` run. The
-/// panoid columns stay NULL (there's nothing to store).
+/// `AND baidu_panoid IS NULL` clause keeps this strictly a tombstone writer:
+/// if a caller mistakenly passes an id for a successful row, we leave the
+/// existing `baidu_queried_at` (set by `bulk_update_baidu`) untouched.
 pub async fn bulk_mark_queried(pool: &PgPool, ids: &[i64]) -> Result<usize, sqlx::Error> {
     if ids.is_empty() {
         return Ok(0);
     }
 
-    let result = sqlx::query("UPDATE y_junctions SET baidu_queried_at = NOW() WHERE id = ANY($1)")
-        .bind(ids)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query(
+        "UPDATE y_junctions SET baidu_queried_at = NOW() \
+         WHERE id = ANY($1) AND baidu_panoid IS NULL",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await?;
 
     Ok(result.rows_affected() as usize)
 }
