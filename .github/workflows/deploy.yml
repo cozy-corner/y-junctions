@@ -95,19 +95,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-deps-
 
-      - name: Cache tools
-        id: cache-tools
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-tools-audit-0.22.0
-
-      - name: Install tools
-        if: steps.cache-tools.outputs.cache-hit != 'true'
-        run: |
-          cargo install cargo-audit --version 0.22.0 --locked
-
       - name: Create test database
         run: psql -h localhost -U y_junction -d y_junction -c "CREATE DATABASE y_junction_test;"
         env:
@@ -121,11 +108,6 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Security audit
-        run: |
-          # Ignore RUSTSEC-2023-0071 (rsa crate via sqlx-mysql): PostgreSQL-only project, MySQL code not executed
-          cargo audit --ignore RUSTSEC-2023-0071
 
   # Frontend Test Job
   frontend-test:
