@@ -40,8 +40,9 @@ pub fn is_in_china_mainland(lng: f64, lat: f64) -> bool {
     if (127.5..=129.5).contains(&lng) && (29.5..=33.5).contains(&lat) {
         return false;
     }
-    // Japan - Kyushu / Shikoku / western Honshu (lng > 135 は上の上限で除外済み)
-    if (129.5..=135.0).contains(&lng) && (29.5..=46.0).contains(&lat) {
+    // Japan - Kyushu / Shikoku / western Honshu / 隠岐・竹島 (lat 上限 37.5 で
+    // 竹島/独島 lat 37.24 をカバーしつつ、中国東北部 lat 42+ に侵食させない)
+    if (129.5..=135.0).contains(&lng) && (29.5..=37.5).contains(&lat) {
         return false;
     }
     // Korean Peninsula 南半分 (lat 39.0 で中国東北部との境界を避ける)
@@ -308,6 +309,10 @@ mod tests {
         assert!(is_in_china_mainland(119.2965, 26.0745)); // Fuzhou
         assert!(is_in_china_mainland(124.3833, 40.1238)); // Dandong (NK border, lng/lat just above Korea box)
         assert!(is_in_china_mainland(121.6147, 38.9140)); // Dalian
+                                                          // Regression for northeast China leaking into Japan exclusion box
+        assert!(is_in_china_mainland(129.6070, 44.5833)); // Mudanjiang (Heilongjiang)
+        assert!(is_in_china_mainland(130.9700, 45.3000)); // eastern Heilongjiang
+        assert!(is_in_china_mainland(129.5000, 42.9000)); // Yanji (Jilin, Yanbian)
     }
 
     #[test]
