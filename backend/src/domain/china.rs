@@ -28,8 +28,37 @@ pub fn is_in_china_mainland(lng: f64, lat: f64) -> bool {
     if (113.5..=113.6).contains(&lng) && (22.1..=22.2).contains(&lat) {
         return false;
     }
-    // Taiwan
-    if (119.3..=122.0).contains(&lng) && (21.9..=25.3).contains(&lat) {
+    // Taiwan (上限 122.1 で基隆北東沿岸・棉花嶼/彭佳嶼 をカバー)
+    if (119.3..=122.1).contains(&lng) && (21.9..=25.3).contains(&lat) {
+        return false;
+    }
+    // Japan - Nansei islands (Yaeyama / Miyako / Okinawa / Amami)
+    if (122.8..=131.5).contains(&lng) && (23.5..=29.5).contains(&lat) {
+        return false;
+    }
+    // Japan - 東シナ海島嶼 (五島列島・男女群島)
+    if (127.5..=129.5).contains(&lng) && (29.5..=33.5).contains(&lat) {
+        return false;
+    }
+    // Japan - Kyushu / Shikoku / western Honshu / 隠岐・竹島 (lat 上限 37.5 で
+    // 竹島/独島 lat 37.24 をカバーしつつ、中国東北部 lat 42+ に侵食させない)
+    if (129.5..=135.0).contains(&lng) && (29.5..=37.5).contains(&lat) {
+        return false;
+    }
+    // Korean Peninsula 南半分 (lat 39.0 で中国東北部との境界を避ける)
+    if (124.5..=131.0).contains(&lng) && (33.0..=39.0).contains(&lat) {
+        return false;
+    }
+    // DPRK 東海岸 (清津・羅先): lat 37.5-42.3, lng 129.5-131。
+    // 旧 Japan box (lat 29.5-46) が偶然覆っていた帯域を明示化。上限 lat 42.3 は
+    // Tumen 河口 (中朝露三国境) で、以北の延吉 (42.91) や琿春 (42.87) は中国。
+    if (129.5..=131.0).contains(&lng) && (37.5..=42.3).contains(&lat) {
+        return false;
+    }
+    // Russia - Primorsky Krai 南部 (Vladivostok・Ussuriysk): lng 131-135, lat 42.3-45.0。
+    // 上限 lat 45.0 は黒龍江省 Mishan (131.88/45.55)・Hulin (132.98/45.77) を
+    // 誤除外しないため。北の Arsenyev (44.16) までは捕捉。
+    if (131.0..=135.0).contains(&lng) && (42.3..=45.0).contains(&lat) {
         return false;
     }
 
@@ -206,16 +235,20 @@ pub fn compute_baidu_heading(
     }
 }
 
-/// Assemble a Baidu panorama deep-link that opens the junction view with the
-/// camera pointed at the Y-junction.
+/// Assemble a Baidu panorama deep-link. Camera faces into the Y-junction's
+/// narrowest wedge (same heading logic as the Google Street View URL). Falls
+/// back to the pano→junction bearing when the junction has no 3-way bearings
+/// recorded — rare but keeps the URL valid.
 pub fn baidu_panorama_url(panorama: &BaiduPanorama, junction: &Junction) -> String {
     let (junction_mc_x, junction_mc_y) = wgs84_to_bd09mc(junction.lon, junction.lat);
-    let heading = compute_baidu_heading(
-        panorama.pano_mc_x,
-        panorama.pano_mc_y,
-        junction_mc_x,
-        junction_mc_y,
-    );
+    let heading = junction.min_angle_heading().unwrap_or_else(|| {
+        compute_baidu_heading(
+            panorama.pano_mc_x,
+            panorama.pano_mc_y,
+            junction_mc_x,
+            junction_mc_y,
+        )
+    });
 
     format!(
         "https://map.baidu.com/@{:.2},{:.2},21z#panotype=street&pid={}&panoid={}&heading={:.0}&pitch=0&l=21&tn=B_NORMAL_MAP&sc=0&newmap=1&shareurl=1",
@@ -262,6 +295,53 @@ mod tests {
     #[test]
     fn tokyo_is_not_china_mainland() {
         assert!(!is_in_china_mainland(139.7671, 35.6812));
+    }
+
+    #[test]
+    fn japan_western_regions_are_not_china_mainland() {
+        // Main islands west of 135°E used to leak through the lng/lat box.
+        assert!(!is_in_china_mainland(130.4017, 33.5902)); // Fukuoka (Kyushu)
+        assert!(!is_in_china_mainland(130.5571, 31.5966)); // Kagoshima
+        assert!(!is_in_china_mainland(132.4553, 34.3853)); // Hiroshima (Chugoku)
+        assert!(!is_in_china_mainland(132.7657, 33.8416)); // Matsuyama (Shikoku)
+                                                           // Nansei islands
+        assert!(!is_in_china_mainland(127.6809, 26.2124)); // Naha (Okinawa main)
+        assert!(!is_in_china_mainland(122.9499, 24.4671)); // Yonaguni
+        assert!(!is_in_china_mainland(129.6966, 28.3778)); // Amami
+                                                           // 東シナ海島嶼（Nansei box と本州 box の狭間に落ちる島々）
+        assert!(!is_in_china_mainland(128.8389, 32.6953)); // 五島福江島
+        assert!(!is_in_china_mainland(128.3370, 32.0253)); // 男女群島
+    }
+
+    #[test]
+    fn eastern_china_coast_still_china_mainland() {
+        // Regression: coastal points near the Japan exclusion boxes must stay China.
+        assert!(is_in_china_mainland(122.1140, 37.5128)); // Weihai (Shandong tip, ~122.1°E)
+        assert!(is_in_china_mainland(122.2074, 30.0164)); // Zhoushan main (Zhejiang)
+        assert!(is_in_china_mainland(119.2965, 26.0745)); // Fuzhou
+        assert!(is_in_china_mainland(124.3833, 40.1238)); // Dandong (NK border, lng/lat just above Korea box)
+        assert!(is_in_china_mainland(121.6147, 38.9140)); // Dalian
+                                                          // Regression for northeast China leaking into Japan exclusion box
+        assert!(is_in_china_mainland(129.6070, 44.5833)); // Mudanjiang (Heilongjiang)
+        assert!(is_in_china_mainland(130.9700, 45.3000)); // eastern Heilongjiang
+        assert!(is_in_china_mainland(129.5000, 42.9000)); // Yanji (Jilin, Yanbian)
+    }
+
+    #[test]
+    fn korean_peninsula_is_not_china_mainland() {
+        assert!(!is_in_china_mainland(126.9780, 37.5665)); // Seoul
+        assert!(!is_in_china_mainland(129.0756, 35.1796)); // Busan
+        assert!(!is_in_china_mainland(126.5312, 33.4996)); // Jeju
+        assert!(!is_in_china_mainland(128.3971, 38.5097)); // NK 東岸 (DMZ 少し北)
+        assert!(!is_in_china_mainland(129.7750, 41.7950)); // Chongjin (DPRK 北部東岸)
+        assert!(!is_in_china_mainland(130.3000, 42.2500)); // Rason (DPRK 北東端)
+    }
+
+    #[test]
+    fn russian_primorsky_is_not_china_mainland() {
+        assert!(!is_in_china_mainland(131.8860, 43.1200)); // Vladivostok
+        assert!(!is_in_china_mainland(131.9450, 43.8000)); // Ussuriysk
+        assert!(!is_in_china_mainland(133.2700, 44.1600)); // Arsenyev
     }
 
     #[test]

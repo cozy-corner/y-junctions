@@ -189,7 +189,7 @@ pub async fn find_by_bbox(
     pool: &PgPool,
     bbox: (f64, f64, f64, f64), // (min_lon, min_lat, max_lon, max_lat)
     filters: FilterParams,
-) -> Result<(Vec<Junction>, i64), sqlx::Error> {
+) -> Result<Vec<Junction>, sqlx::Error> {
     let limit = filters.limit.unwrap_or(500).clamp(1, 1000);
 
     let mut query_builder = QueryBuilder::new(
@@ -237,13 +237,9 @@ pub async fn find_by_bbox(
 
     let rows: Vec<JunctionRow> = query_builder.build_query_as().fetch_all(pool).await?;
 
-    // total_countは返した件数を設定
-    // Note: limitに達している場合、さらに多くのデータがある可能性がある
-    let total_count = rows.len() as i64;
-
     let junctions: Vec<Junction> = rows.into_iter().map(Junction::from).collect();
 
-    Ok((junctions, total_count))
+    Ok(junctions)
 }
 
 pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<Junction>, sqlx::Error> {

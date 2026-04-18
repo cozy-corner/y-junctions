@@ -4,30 +4,35 @@ use crate::domain::Junction;
 use sqlx::PgPool;
 
 /// Replace `streetview_url` on each feature with a region-appropriate URL.
-/// Junctions inside mainland China get a Baidu deep-link (or empty when no
-/// panorama is linked); everywhere else keeps the existing Google URL.
+/// Junctions inside mainland China get a Baidu deep-link; everywhere else
+/// keeps the existing Google URL. Mainland-China junctions without a Baidu
+/// panorama are dropped from the response — map markers that open to a
+/// broken/empty link are worse than not showing the marker at all.
 pub async fn enrich_collection(
     pool: &PgPool,
     junctions: Vec<Junction>,
-    total_count: i64,
 ) -> Result<serde_json::Value, sqlx::Error> {
     let ids: Vec<i64> = junctions.iter().map(|j| j.id).collect();
     let baidu_map = baidu_repository::find_by_junction_ids(pool, &ids).await?;
 
     let features: Vec<serde_json::Value> = junctions
         .iter()
-        .map(|j| {
+        .filter_map(|j| {
+            let baidu = baidu_map.get(&j.id);
+            if china::is_in_china_mainland(j.lon, j.lat) && baidu.is_none() {
+                return None;
+            }
             let mut feature = j.to_feature();
             feature["properties"]["streetview_url"] =
-                serde_json::Value::String(build_url(j, baidu_map.get(&j.id)));
-            feature
+                serde_json::Value::String(build_url(j, baidu));
+            Some(feature)
         })
         .collect();
 
     Ok(serde_json::json!({
         "type": "FeatureCollection",
         "features": features,
-        "total_count": total_count,
+        "total_count": features.len() as i64,
     }))
 }
 
