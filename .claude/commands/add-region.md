@@ -39,11 +39,12 @@ URLはGeofabrikのサイトで確認して正しいパスを使うこと。
 
 ```bash
 set -euo pipefail
-cd backend && ./target/release/import \
+cd backend
+./target/release/import \
   --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
   --bbox <bbox>
 
-cd backend && ./target/release/import_two_way \
+./target/release/import_two_way \
   --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
   --bbox <bbox>
 ```
