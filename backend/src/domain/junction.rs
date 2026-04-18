@@ -65,48 +65,52 @@ impl Junction {
         [self.angle_1, self.angle_2, self.angle_3]
     }
 
+    /// Compass heading (0=N, clockwise) pointing into the Y-junction's narrowest
+    /// wedge — the average of the two bearings forming the minimum angle.
+    /// Returns None when the junction has no 3-way bearings recorded.
+    pub fn min_angle_heading(&self) -> Option<f64> {
+        if self.bearings.len() != 3 {
+            return None;
+        }
+        // angles and bearings are in clockwise order
+        // angle_1 is between bearings[0] and bearings[1]
+        // angle_2 is between bearings[1] and bearings[2]
+        // angle_3 is between bearings[2] and bearings[0]
+        let angles = [self.angle_1, self.angle_2, self.angle_3];
+        let min_angle = *angles.iter().min().unwrap();
+
+        let (b1, b2): (f64, f64) = if self.angle_1 == min_angle {
+            (self.bearings[0].into(), self.bearings[1].into())
+        } else if self.angle_2 == min_angle {
+            (self.bearings[1].into(), self.bearings[2].into())
+        } else {
+            (self.bearings[2].into(), self.bearings[0].into())
+        };
+
+        let heading = if (b2 - b1).abs() > 180.0 {
+            // Wrap around 360 degrees
+            let avg = (b1 + b2 + 360.0) / 2.0;
+            if avg >= 360.0 {
+                avg - 360.0
+            } else {
+                avg
+            }
+        } else {
+            (b1 + b2) / 2.0
+        };
+        Some(heading)
+    }
+
     pub fn streetview_url(&self) -> String {
         let base_url = format!(
             "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={},{}",
             self.lat, self.lon
         );
 
-        if self.bearings.len() == 3 {
-            // angles and bearings are in clockwise order
-            // angle_1 is between bearings[0] and bearings[1]
-            // angle_2 is between bearings[1] and bearings[2]
-            // angle_3 is between bearings[2] and bearings[0]
-
-            // Find which angle is minimum
-            let angles = [self.angle_1, self.angle_2, self.angle_3];
-            let min_angle = *angles.iter().min().unwrap();
-
-            // Determine which two bearings create the minimum angle
-            let (b1, b2) = if self.angle_1 == min_angle {
-                (self.bearings[0], self.bearings[1])
-            } else if self.angle_2 == min_angle {
-                (self.bearings[1], self.bearings[2])
-            } else {
-                (self.bearings[2], self.bearings[0])
-            };
-
-            // Calculate heading as the middle direction between the two roads
-            let heading = if (b2 - b1).abs() > 180.0 {
-                // Wrap around 360 degrees
-                let avg = (b1 + b2 + 360.0) / 2.0;
-                if avg >= 360.0 {
-                    avg - 360.0
-                } else {
-                    avg
-                }
-            } else {
-                (b1 + b2) / 2.0
-            };
-
-            return format!("{}&heading={:.0}", base_url, heading);
+        match self.min_angle_heading() {
+            Some(heading) => format!("{}&heading={:.0}", base_url, heading),
+            None => base_url,
         }
-
-        base_url
     }
 
     pub fn to_feature(&self) -> serde_json::Value {
