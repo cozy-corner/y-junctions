@@ -46,25 +46,29 @@ export function JunctionPopup({ properties }: JunctionPopupProps) {
 
       {/* Street Viewリンク + URLコピーボタン */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {streetview_url && (
-          <a
-            href={streetview_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-block',
-              padding: '8px 12px',
-              fontSize: 13,
-              fontWeight: 600,
-              color: 'white',
-              background: '#4285f4',
-              textDecoration: 'none',
-              borderRadius: 4,
-            }}
-          >
-            Street Viewで見る
-          </a>
-        )}
+        {streetview_url &&
+          (() => {
+            const isBaidu = streetview_url.startsWith('https://map.baidu.com');
+            return (
+              <a
+                href={streetview_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'white',
+                  background: isBaidu ? '#2319dc' : '#4285f4',
+                  textDecoration: 'none',
+                  borderRadius: 4,
+                }}
+              >
+                {isBaidu ? '打开百度街景' : 'Google ストリートビューで見る'}
+              </a>
+            );
+          })()}
         <button
           type="button"
           onClick={handleCopyUrl}

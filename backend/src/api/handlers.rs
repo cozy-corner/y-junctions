@@ -170,10 +170,9 @@ pub async fn get_junctions(
     let bbox = query.parse_bbox()?;
     let filters = query.to_filter_params()?;
 
-    let (junctions, total_count) = repository::find_by_bbox(&pool, bbox, filters).await?;
+    let junctions = repository::find_by_bbox(&pool, bbox, filters).await?;
 
-    let feature_collection =
-        streetview_enricher::enrich_collection(&pool, junctions, total_count).await?;
+    let feature_collection = streetview_enricher::enrich_collection(&pool, junctions).await?;
 
     Ok(Json(feature_collection))
 }
