@@ -49,6 +49,18 @@ pub fn is_in_china_mainland(lng: f64, lat: f64) -> bool {
     if (124.5..=131.0).contains(&lng) && (33.0..=39.0).contains(&lat) {
         return false;
     }
+    // DPRK 東海岸 (清津・羅先): lat 37.5-42.3, lng 129.5-131。
+    // 旧 Japan box (lat 29.5-46) が偶然覆っていた帯域を明示化。上限 lat 42.3 は
+    // Tumen 河口 (中朝露三国境) で、以北の延吉 (42.91) や琿春 (42.87) は中国。
+    if (129.5..=131.0).contains(&lng) && (37.5..=42.3).contains(&lat) {
+        return false;
+    }
+    // Russia - Primorsky Krai 南部 (Vladivostok・Ussuriysk): lng 131-135, lat 42.3-45.0。
+    // 上限 lat 45.0 は黒龍江省 Mishan (131.88/45.55)・Hulin (132.98/45.77) を
+    // 誤除外しないため。北の Arsenyev (44.16) までは捕捉。
+    if (131.0..=135.0).contains(&lng) && (42.3..=45.0).contains(&lat) {
+        return false;
+    }
 
     true
 }
@@ -321,6 +333,15 @@ mod tests {
         assert!(!is_in_china_mainland(129.0756, 35.1796)); // Busan
         assert!(!is_in_china_mainland(126.5312, 33.4996)); // Jeju
         assert!(!is_in_china_mainland(128.3971, 38.5097)); // NK 東岸 (DMZ 少し北)
+        assert!(!is_in_china_mainland(129.7750, 41.7950)); // Chongjin (DPRK 北部東岸)
+        assert!(!is_in_china_mainland(130.3000, 42.2500)); // Rason (DPRK 北東端)
+    }
+
+    #[test]
+    fn russian_primorsky_is_not_china_mainland() {
+        assert!(!is_in_china_mainland(131.8860, 43.1200)); // Vladivostok
+        assert!(!is_in_china_mainland(131.9450, 43.8000)); // Ussuriysk
+        assert!(!is_in_china_mainland(133.2700, 44.1600)); // Arsenyev
     }
 
     #[test]
