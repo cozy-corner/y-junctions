@@ -3135,6 +3135,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "osmpbf",
+ "rand 0.8.5",
  "rayon",
  "reqwest",
  "roxmltree",
