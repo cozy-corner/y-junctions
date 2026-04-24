@@ -1265,6 +1265,136 @@ async fn test_baidu_find_without_panoid_returns_only_null_rows() {
     assert!(!pending_ids.contains(&id_with));
 }
 
+#[tokio::test]
+#[serial]
+async fn test_baidu_find_without_panoid_skips_tombstoned_rows() {
+    let pool = setup_test_db().await;
+    let id_fresh = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    let id_tombstoned = insert_test_junction(
+        &pool,
+        TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
+    )
+    .await;
+
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[id_tombstoned])
+        .await
+        .expect("bulk mark failed");
+    assert_eq!(marked, 1);
+
+    let pending = baidu_repository::find_without_baidu_panoid(&pool)
+        .await
+        .expect("query failed");
+    let pending_ids: Vec<i64> = pending.iter().map(|j| j.id).collect();
+    assert!(pending_ids.contains(&id_fresh));
+    assert!(
+        !pending_ids.contains(&id_tombstoned),
+        "queried-but-no-coverage row must not be re-queried"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_mark_queried_empty_is_noop() {
+    let pool = setup_test_db().await;
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[])
+        .await
+        .expect("bulk mark failed");
+    assert_eq!(marked, 0);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
+    let pool = setup_test_db().await;
+    let id_with_panoid = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+    let id_without = insert_test_junction(
+        &pool,
+        TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
+    )
+    .await;
+
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id_with_panoid,
+            BaiduPanorama {
+                panoid: "EXISTING".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let original_queried_at: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
+            .bind(id_with_panoid)
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
+
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[id_with_panoid, id_without])
+        .await
+        .expect("bulk mark failed");
+    assert_eq!(marked, 1, "only the panoid-less row should be tombstoned");
+
+    let after_queried_at: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
+            .bind(id_with_panoid)
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
+    assert_eq!(
+        original_queried_at, after_queried_at,
+        "bulk_mark_queried must not touch queried_at on rows that already have a panoid"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_baidu_bulk_update_stamps_queried_at() {
+    let pool = setup_test_db().await;
+    let id = insert_test_junction(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            id,
+            BaiduPanorama {
+                panoid: "STAMPED".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .unwrap();
+
+    let queried_at: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
+    assert!(
+        queried_at.is_some(),
+        "baidu_queried_at must be set after successful bulk_update_baidu"
+    );
+}
+
 // ========== streetview_url region dispatch via handler ==========
 
 #[tokio::test]

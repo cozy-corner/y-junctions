@@ -97,9 +97,10 @@ pub async fn find_by_junction_ids(
         .collect())
 }
 
-/// Fetch every junction that has not yet been enriched with a Baidu panorama.
-/// Mainland-China filtering is done in application code (cheap; keeps the SQL
-/// agnostic to the region policy).
+/// Fetch every junction that has never been queried against Baidu. Rows that
+/// were queried previously and returned no coverage are skipped via the
+/// `baidu_queried_at` tombstone so re-runs don't re-hit dead coordinates;
+/// use `find_all_for_refresh` to force a full re-query.
 pub async fn find_without_baidu_panoid(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
     let rows: Vec<JunctionRow> = sqlx::query_as(
         "SELECT id, osm_node_id, \
@@ -108,7 +109,8 @@ pub async fn find_without_baidu_panoid(pool: &PgPool) -> Result<Vec<Junction>, s
          elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
          way_1_highway_type, way_2_highway_type, way_3_highway_type, \
          way_1_category, way_2_category, way_3_category \
-         FROM y_junctions WHERE baidu_panoid IS NULL",
+         FROM y_junctions \
+         WHERE baidu_panoid IS NULL AND baidu_queried_at IS NULL",
     )
     .fetch_all(pool)
     .await?;
@@ -152,7 +154,8 @@ pub async fn bulk_update_baidu(
             "UPDATE y_junctions SET \
              baidu_panoid = updates.panoid, \
              baidu_pano_mc_x = updates.pano_mc_x, \
-             baidu_pano_mc_y = updates.pano_mc_y \
+             baidu_pano_mc_y = updates.pano_mc_y, \
+             baidu_queried_at = NOW() \
              FROM (VALUES ",
         );
 
@@ -182,4 +185,25 @@ pub async fn bulk_update_baidu(
 
     tx.commit().await?;
     Ok(total_updated)
+}
+
+/// Stamp `baidu_queried_at = NOW()` for junctions that returned no panorama
+/// so they're excluded from the next `find_without_baidu_panoid` run. The
+/// `AND baidu_panoid IS NULL` clause keeps this strictly a tombstone writer:
+/// if a caller mistakenly passes an id for a successful row, we leave the
+/// existing `baidu_queried_at` (set by `bulk_update_baidu`) untouched.
+pub async fn bulk_mark_queried(pool: &PgPool, ids: &[i64]) -> Result<usize, sqlx::Error> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+
+    let result = sqlx::query(
+        "UPDATE y_junctions SET baidu_queried_at = NOW() \
+         WHERE id = ANY($1) AND baidu_panoid IS NULL",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() as usize)
 }
