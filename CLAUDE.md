@@ -8,7 +8,7 @@
 CockroachDB の含意:
 - `pg_advisory_lock` 非対応 → sqlx migrate は `.set_locking(false)` で実行
 - `RESTART IDENTITY` 非対応 → TRUNCATE 時に指定しない
-- sqlx は `postgres://` ドライバで動作するが、一部の PG 機能は使えない
+- sqlx は `postgresql://` ドライバで動作するが、一部の PG 機能は使えない
 
 ## ローカル環境起動
 
@@ -17,6 +17,9 @@ CockroachDB の含意:
 docker-compose up -d
 
 # 初回のみ: テスト DB を作成
+# データは名前付きボリューム cockroachdata に永続化されるため、
+# `docker-compose down` (ボリュームは残る) や docker restart 後の再作成は不要。
+# `docker-compose down -v` 等でボリュームを削除した場合のみ再実行が必要。
 docker exec y-junctions-cockroachdb ./cockroach sql --insecure \
   --execute "CREATE DATABASE IF NOT EXISTS y_junction_test;"
 ```
@@ -80,6 +83,12 @@ npm run lint
 - [ ] Clippyチェックを実行し、通過した（Backend）
 - [ ] 型チェックを実行し、通過した（Frontend）
 - [ ] Lintチェックを実行し、通過した（Frontend）
+
+## テストスキップ禁止
+
+統合テストは「ローカル DB が起動していない」を理由にスキップしてはならない。
+DB が落ちているなら、上記「ローカル環境起動」セクションの手順 (`docker-compose up -d` 等)
+を自分で実行してから再度テストを走らせる。手順自体が失敗した場合に限り質問すること。
 
 ## CI失敗時の対応プロトコル
 
