@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 /// Way tag information (bridge, tunnel, highway_type, etc.)
 #[derive(Debug, Clone, Default)]
@@ -478,6 +478,97 @@ impl NodeConnectionCounter {
     pub fn get_way_tag(&self, way_id: i64) -> Option<WayTagInfo> {
         self.way_tags.get(&way_id).map(|tag| tag.clone())
     }
+
+    /// Check if any branch from this junction merges back with another branch
+    /// within `max_way_hops` way-hops.
+    ///
+    /// Detects patterns like bus bays, highway ramps, and right-turn shortcuts where
+    /// the "Y" is not a real fork but two branches that rejoin downstream.
+    ///
+    /// Works for both 2-way and 3-way junctions: starts BFS from the junction node,
+    /// constrained so the first hop uses `w_start` only, and subsequent hops cannot
+    /// re-enter the junction via another of its ways.
+    pub fn junction_has_merge_back(&self, junction_node_id: i64, max_way_hops: usize) -> bool {
+        let ways: Vec<i64> = match self.node_to_ways.get(&junction_node_id) {
+            Some(w) => w.value().iter().copied().collect(),
+            None => return false,
+        };
+
+        for &w_start in &ways {
+            // target_set = nodes in other junction ways, excluding the junction node itself
+            let mut target_set: HashSet<i64> = HashSet::new();
+            for &w in &ways {
+                if w == w_start {
+                    continue;
+                }
+                if let Some(nodes) = self.way_nodes.get(&w) {
+                    for &n in nodes.value() {
+                        if n != junction_node_id {
+                            target_set.insert(n);
+                        }
+                    }
+                }
+            }
+
+            // Prevent re-entering the junction via another of its ways.
+            let mut visited_ways: HashSet<i64> =
+                ways.iter().copied().filter(|&w| w != w_start).collect();
+
+            let mut frontier: VecDeque<(i64, usize)> = VecDeque::new();
+            frontier.push_back((junction_node_id, 0));
+
+            while let Some((node, hops)) = frontier.pop_front() {
+                if hops >= max_way_hops {
+                    continue;
+                }
+
+                let node_ways: Vec<i64> = match self.node_to_ways.get(&node) {
+                    Some(w) => w.value().iter().copied().collect(),
+                    None => continue,
+                };
+
+                for way_id in node_ways {
+                    if visited_ways.contains(&way_id) {
+                        continue;
+                    }
+                    // First hop must start with w_start only
+                    if hops == 0 && way_id != w_start {
+                        continue;
+                    }
+
+                    visited_ways.insert(way_id);
+
+                    let way_nodes_vec: Vec<i64> = match self.way_nodes.get(&way_id) {
+                        Some(nodes) => nodes.value().clone(),
+                        None => continue,
+                    };
+
+                    // Merge-back: any node on this way (other than our entry node) is in another branch
+                    for &n in &way_nodes_vec {
+                        if n != node && target_set.contains(&n) {
+                            return true;
+                        }
+                    }
+
+                    // Expand BFS from the way's endpoints
+                    let first = way_nodes_vec.first().copied();
+                    let last = way_nodes_vec.last().copied();
+                    if let Some(f) = first {
+                        if f != node {
+                            frontier.push_back((f, hops + 1));
+                        }
+                    }
+                    if let (Some(l), first_val) = (last, first) {
+                        if l != node && Some(l) != first_val {
+                            frontier.push_back((l, hops + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
 }
 
 impl Default for NodeConnectionCounter {
@@ -916,6 +1007,71 @@ mod tests {
             0,
             "Should reject 2-way junction without core highway"
         );
+    }
+
+    #[test]
+    fn test_merge_back_bus_bay_1hop() {
+        // Bus bay pattern (2-way junction at node 20):
+        //   passing way [10, 20, 30, 40]
+        //   bay way     [20, 50, 40]   ← returns to main road at node 40
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[10, 20, 30, 40], "residential", false, false);
+        counter.add_way(2, &[20, 50, 40], "service", false, false);
+
+        // w_start = way 2 (the bay): target = way 1's nodes - {20} = {10, 30, 40}.
+        // Way 2 itself contains node 40 → merge-back detected at 1 hop.
+        assert!(counter.junction_has_merge_back(20, 1));
+        assert!(counter.junction_has_merge_back(20, 2));
+    }
+
+    #[test]
+    fn test_merge_back_ramp_2hop() {
+        // Ramp pattern: junction 20, connecting way exits to an intermediate way
+        // that rejoins the passing way at node 40.
+        //   passing way      [10, 20, 30, 40]
+        //   connecting way   [20, 50]
+        //   intermediate way [50, 60, 40]
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[10, 20, 30, 40], "primary", false, false);
+        counter.add_way(2, &[20, 50], "service", false, false);
+        counter.add_way(3, &[50, 60, 40], "service", false, false);
+
+        // 1-hop is not enough (reachable only after traversing way 2 then way 3)
+        assert!(!counter.junction_has_merge_back(20, 1));
+        // 2-hop catches it
+        assert!(counter.junction_has_merge_back(20, 2));
+    }
+
+    #[test]
+    fn test_merge_back_independent_y() {
+        // Three branches radiating out from node 2 with no shared downstream nodes.
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[2, 10, 11, 12], "residential", false, false);
+        counter.add_way(2, &[2, 20, 21, 22], "residential", false, false);
+        counter.add_way(3, &[2, 30, 31, 32], "residential", false, false);
+
+        assert!(!counter.junction_has_merge_back(2, 5));
+    }
+
+    #[test]
+    fn test_merge_back_loop_beyond_max_hops() {
+        // 3-way junction at node 2 with a long loop connecting branch 1 back to branch 2.
+        //   branch 1: way 1 = [2, 10, 11]
+        //   branch 2: way 2 = [2, 20, 21]
+        //   branch 3: way 3 = [2, 30]
+        //   loop:     [11] → way4 → 40 → way5 → 50 → way6 → 60 → way7 → [21]
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[2, 10, 11], "residential", false, false);
+        counter.add_way(2, &[2, 20, 21], "residential", false, false);
+        counter.add_way(3, &[2, 30], "residential", false, false);
+        counter.add_way(4, &[11, 40], "residential", false, false);
+        counter.add_way(5, &[40, 50], "residential", false, false);
+        counter.add_way(6, &[50, 60], "residential", false, false);
+        counter.add_way(7, &[60, 21], "residential", false, false);
+
+        // Reaching 21 from way 1 requires 5 way-hops (way1 → way4 → way5 → way6 → way7).
+        assert!(!counter.junction_has_merge_back(2, 2));
+        assert!(counter.junction_has_merge_back(2, 5));
     }
 
     #[test]

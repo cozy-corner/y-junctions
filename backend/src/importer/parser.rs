@@ -9,6 +9,10 @@ use super::calculator::calculate_junction_angles;
 use super::detector::{JunctionForInsert, NodeConnectionCounter, YJunctionWithCoords};
 use crate::domain::junction::AngleType;
 
+/// Max way-hops for merge-back detection.
+/// 2 hops catches bus bays (1-hop) and ramps / right-turn shortcuts (2-hop).
+const MERGE_BACK_MAX_WAY_HOPS: usize = 2;
+
 /// Way data collected during parallel parsing
 #[derive(Debug)]
 struct WayData {
@@ -238,6 +242,11 @@ pub fn parse_pbf_three_way(
                 return None;
             }
 
+            // Exclude junctions whose branches merge back downstream (bus bays, ramps, etc.)
+            if counter.junction_has_merge_back(junction.node_id, MERGE_BACK_MAX_WAY_HOPS) {
+                return None;
+            }
+
             // Extract bridge/tunnel flags from way tags (now guaranteed to be in same order as angles)
             let (way_1_bridge, way_1_tunnel) = (way_tags[0].bridge, way_tags[0].tunnel);
             let (way_2_bridge, way_2_tunnel) = (way_tags[1].bridge, way_tags[1].tunnel);
@@ -383,6 +392,11 @@ pub fn parse_pbf_two_way(
                     min_angle, candidate.node_id, junction_lat, junction_lon,
                     angles[0], angles[1], angles[2]
                 );
+                return None;
+            }
+
+            // Exclude junctions whose branches merge back downstream (bus bays, ramps, etc.)
+            if counter.junction_has_merge_back(candidate.node_id, MERGE_BACK_MAX_WAY_HOPS) {
                 return None;
             }
 
