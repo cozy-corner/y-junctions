@@ -173,8 +173,14 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
 /// will need bounded concurrency; deferred out of this PR. Out-of-China
 /// rows are skipped in-process without hitting Baidu. Transport failures
 /// abort immediately so operators can retry after fixing the underlying
-/// Baidu/network issue.
+/// Baidu/network issue; results buffered up to the previous chunk flush
+/// stay in DB so the retry skips already-fetched junctions.
 pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<usize> {
+    /// Flush every 100 fetches. Worst-case loss on transport error is
+    /// CHUNK_SIZE - 1 in-flight items; matches the existing progress-log
+    /// cadence so each "Progress" line corresponds to one flush boundary.
+    const CHUNK_SIZE: usize = 100;
+
     let junctions = if refresh {
         crate::db::baidu_repository::find_all_for_refresh(pool).await?
     } else {
@@ -192,8 +198,11 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
     );
 
     let client = baidu::build_client()?;
-    let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> = Vec::new();
-    let mut missed_ids: Vec<i64> = Vec::new();
+    let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> =
+        Vec::with_capacity(CHUNK_SIZE);
+    let mut missed_ids: Vec<i64> = Vec::with_capacity(CHUNK_SIZE);
+    let mut total_updated: usize = 0;
+    let mut total_tombstoned: usize = 0;
 
     for (idx, junction) in china_junctions.iter().enumerate() {
         if idx > 0 {
@@ -214,32 +223,68 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
             }
         }
 
-        if (idx + 1) % 100 == 0 {
+        if updates.len() + missed_ids.len() >= CHUNK_SIZE {
+            flush_baidu_chunk(
+                pool,
+                &mut updates,
+                &mut missed_ids,
+                &mut total_updated,
+                &mut total_tombstoned,
+            )
+            .await?;
+
             tracing::info!(
-                "Progress: {}/{} (ok={}, none={})",
+                "Progress: {}/{} (flushed: ok={}, none={})",
                 idx + 1,
                 china_junctions.len(),
-                updates.len(),
-                missed_ids.len()
+                total_updated,
+                total_tombstoned
             );
         }
     }
 
+    flush_baidu_chunk(
+        pool,
+        &mut updates,
+        &mut missed_ids,
+        &mut total_updated,
+        &mut total_tombstoned,
+    )
+    .await?;
+
     tracing::info!(
         "Baidu panoid fetch complete: total={}, ok={}, none={}",
         china_junctions.len(),
-        updates.len(),
-        missed_ids.len()
+        total_updated,
+        total_tombstoned
     );
 
-    let updated_count = crate::db::baidu_repository::bulk_update_baidu(pool, &updates).await?;
-    tracing::info!("Updated {} Y-junctions with Baidu panoid", updated_count);
+    Ok(total_updated)
+}
 
-    let tombstoned = crate::db::baidu_repository::bulk_mark_queried(pool, &missed_ids).await?;
-    tracing::info!(
-        "Tombstoned {} Y-junctions with no Baidu coverage",
-        tombstoned
-    );
+/// Persist the current buffer of fetched panoids and tombstones, then clear
+/// the buffers. Called every CHUNK_SIZE fetches and once more at the end of
+/// the loop for the trailing partial chunk. No-op when both buffers are
+/// empty (e.g. when the run length is an exact multiple of CHUNK_SIZE).
+async fn flush_baidu_chunk(
+    pool: &PgPool,
+    updates: &mut Vec<(i64, crate::domain::china::BaiduPanorama)>,
+    missed_ids: &mut Vec<i64>,
+    total_updated: &mut usize,
+    total_tombstoned: &mut usize,
+) -> Result<()> {
+    if updates.is_empty() && missed_ids.is_empty() {
+        return Ok(());
+    }
 
-    Ok(updated_count)
+    let updated = crate::db::baidu_repository::bulk_update_baidu(pool, updates).await?;
+    let tombstoned = crate::db::baidu_repository::bulk_mark_queried(pool, missed_ids).await?;
+
+    *total_updated += updated;
+    *total_tombstoned += tombstoned;
+
+    updates.clear();
+    missed_ids.clear();
+
+    Ok(())
 }
