@@ -72,9 +72,9 @@ pub async fn pace_next_request() {
 }
 
 fn pacing_sleep() -> Duration {
-    use rand::Rng;
+    use rand::RngExt;
     let range_ms = (PACING_MAX - PACING_MIN).as_millis() as u64;
-    let extra_ms = rand::thread_rng().gen_range(0..=range_ms);
+    let extra_ms = rand::rng().random_range(0..=range_ms);
     PACING_MIN + Duration::from_millis(extra_ms)
 }
 
