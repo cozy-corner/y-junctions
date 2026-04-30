@@ -61,7 +61,6 @@ docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
       way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel,
       way_3_bridge, way_3_tunnel,
       way_1_highway_type, way_2_highway_type, way_3_highway_type,
-      baidu_panoid, baidu_pano_mc_x, baidu_pano_mc_y,
       created_at
     FROM y_junctions
     WHERE lon BETWEEN $MIN_LON AND $MAX_LON
@@ -119,7 +118,6 @@ cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO y_junctions (
   way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel,
   way_3_bridge, way_3_tunnel,
   way_1_highway_type, way_2_highway_type, way_3_highway_type,
-  baidu_panoid, baidu_pano_mc_x, baidu_pano_mc_y,
   created_at
 ) CSV DATA ('userfile:///junctions.csv');"
 
