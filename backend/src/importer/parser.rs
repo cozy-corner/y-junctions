@@ -24,6 +24,7 @@ struct WayData {
 struct LocalState {
     ways: Vec<WayData>,
     nodes: Vec<(i64, (f64, f64))>,
+    bus_stop_node_ids: Vec<i64>,
 }
 
 impl LocalState {
@@ -34,6 +35,7 @@ impl LocalState {
     fn merge(mut self, other: Self) -> Self {
         self.ways.extend(other.ways);
         self.nodes.extend(other.nodes);
+        self.bus_stop_node_ids.extend(other.bus_stop_node_ids);
         self
     }
 }
@@ -86,10 +88,22 @@ fn build_cache_and_counter(input_path: &str) -> Result<CacheAndCounter> {
                 osmpbf::Element::Node(node) => {
                     // Cache all node coordinates
                     local.nodes.push((node.id(), (node.lat(), node.lon())));
+                    if node
+                        .tags()
+                        .any(|(k, v)| k == "public_transport" && v == "stop_position")
+                    {
+                        local.bus_stop_node_ids.push(node.id());
+                    }
                 }
                 osmpbf::Element::DenseNode(node) => {
                     // Cache all dense node coordinates
                     local.nodes.push((node.id(), (node.lat(), node.lon())));
+                    if node
+                        .tags()
+                        .any(|(k, v)| k == "public_transport" && v == "stop_position")
+                    {
+                        local.bus_stop_node_ids.push(node.id());
+                    }
                 }
                 _ => {}
             }
@@ -113,6 +127,9 @@ fn build_cache_and_counter(input_path: &str) -> Result<CacheAndCounter> {
             way.tunnel,
         );
     }
+    for &node_id in &local_state.bus_stop_node_ids {
+        counter.add_bus_stop_node(node_id);
+    }
 
     // Build node coordinates map
     let node_coords: DashMap<i64, (f64, f64)> = DashMap::new();
@@ -128,6 +145,10 @@ fn build_cache_and_counter(input_path: &str) -> Result<CacheAndCounter> {
         counter.node_count()
     );
     tracing::info!("  Total node coordinates cached: {}", node_coords.len());
+    tracing::info!(
+        "  Bus stop nodes (public_transport=stop_position): {}",
+        local_state.bus_stop_node_ids.len()
+    );
 
     Ok((Arc::new(node_coords), counter))
 }
@@ -235,6 +256,13 @@ pub fn parse_pbf_three_way(
 
             // 最小角度が60度以上の場合はT字路とみなして除外
             if min_angle >= 60 {
+                return None;
+            }
+
+            // Exclude paired bus pull-outs (Pattern A): one branch is a service way
+            // leading to a bus_stop that loops back to another branch via a second
+            // service way. Catches both J1 and J2 of the pair symmetrically.
+            if counter.junction_has_bus_stop_loop(junction.node_id) {
                 return None;
             }
 
@@ -383,6 +411,11 @@ pub fn parse_pbf_two_way(
                     min_angle, candidate.node_id, junction_lat, junction_lon,
                     angles[0], angles[1], angles[2]
                 );
+                return None;
+            }
+
+            // Exclude paired bus pull-outs (Pattern A): see parse_pbf_three_way for details.
+            if counter.junction_has_bus_stop_loop(candidate.node_id) {
                 return None;
             }
 

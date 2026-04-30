@@ -286,7 +286,7 @@ npm install  # 初回のみ
 npm run dev
 ```
 
-フロントエンドは `http://localhost:5173` で起動します。
+フロントエンドは `http://localhost:3000` で起動します（ポートは `frontend/vite.config.ts` で指定）。
 
 ### Git Worktree Runnerの設定（追加worktree用）
 
