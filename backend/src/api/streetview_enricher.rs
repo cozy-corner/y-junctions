@@ -12,13 +12,13 @@ pub async fn enrich_collection(
     pool: &PgPool,
     junctions: Vec<Junction>,
 ) -> Result<serde_json::Value, sqlx::Error> {
-    let ids: Vec<i64> = junctions.iter().map(|j| j.id).collect();
-    let baidu_map = baidu_repository::find_by_junction_ids(pool, &ids).await?;
+    let osm_node_ids: Vec<i64> = junctions.iter().map(|j| j.osm_node_id).collect();
+    let baidu_map = baidu_repository::find_by_osm_node_ids(pool, &osm_node_ids).await?;
 
     let features: Vec<serde_json::Value> = junctions
         .iter()
         .filter_map(|j| {
-            let baidu = baidu_map.get(&j.id);
+            let baidu = baidu_map.get(&j.osm_node_id);
             if china::is_in_china_mainland(j.lon, j.lat) && baidu.is_none() {
                 return None;
             }
@@ -42,10 +42,10 @@ pub async fn enrich_feature(
     pool: &PgPool,
     junction: Junction,
 ) -> Result<serde_json::Value, sqlx::Error> {
-    let baidu_map = baidu_repository::find_by_junction_ids(pool, &[junction.id]).await?;
+    let baidu_map = baidu_repository::find_by_osm_node_ids(pool, &[junction.osm_node_id]).await?;
     let mut feature = junction.to_feature();
     feature["properties"]["streetview_url"] =
-        serde_json::Value::String(build_url(&junction, baidu_map.get(&junction.id)));
+        serde_json::Value::String(build_url(&junction, baidu_map.get(&junction.osm_node_id)));
     Ok(feature)
 }
 

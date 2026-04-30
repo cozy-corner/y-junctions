@@ -15,7 +15,8 @@ IMPORT INTO が失敗する。新規地域は非重複 bbox を選ぶこと。
 手動で TRUNCATE + 全件 IMPORT INTO を実施する。
 
 Step 4 以降で失敗した場合は userfile が残るので、手動で
-`cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"` で掃除する。
+`cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"` と
+`cockroach userfile delete baidu_panoramas.csv --url "$PROD_CRDB_URI"` で掃除する。
 
 ## Step 1: bbox の検証と本番DB接続情報の取得
 
@@ -70,6 +71,19 @@ docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
 LINE_COUNT=$(wc -l < ~/y-junctions-data/junctions.csv)
 [ "$LINE_COUNT" -gt 0 ] || { echo "export produced 0 rows, aborting"; exit 1; }
 echo "exported $LINE_COUNT rows"
+
+# bbox 内の junction に紐付く baidu_panoramas 行も書き出す
+docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
+  psql "postgresql://root@host.docker.internal:26257/y_junction?sslmode=disable" -c "\copy (
+    SELECT bp.osm_node_id, bp.panoid, bp.pano_mc_x, bp.pano_mc_y, bp.queried_at
+    FROM baidu_panoramas bp
+    JOIN y_junctions y ON y.osm_node_id = bp.osm_node_id
+    WHERE y.lon BETWEEN $MIN_LON AND $MAX_LON
+      AND y.lat BETWEEN $MIN_LAT AND $MAX_LAT
+  ) TO '/data/baidu_panoramas.csv' WITH CSV"
+
+BAIDU_COUNT=$(wc -l < ~/y-junctions-data/baidu_panoramas.csv)
+echo "exported $BAIDU_COUNT baidu_panoramas rows"
 ```
 
 ## Step 3: userfile に CSV をアップロード
@@ -84,6 +98,9 @@ PROD_CRDB_URI=$(cd terraform && terraform output -raw cockroachdb_connection_uri
 
 cockroach userfile upload ~/y-junctions-data/junctions.csv \
   junctions.csv --url "$PROD_CRDB_URI"
+
+cockroach userfile upload ~/y-junctions-data/baidu_panoramas.csv \
+  baidu_panoramas.csv --url "$PROD_CRDB_URI"
 ```
 
 ## Step 4: 本番DBに差分追加（IMPORT INTO、TRUNCATE なし）
@@ -105,6 +122,10 @@ cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO y_junctions (
   baidu_panoid, baidu_pano_mc_x, baidu_pano_mc_y,
   created_at
 ) CSV DATA ('userfile:///junctions.csv');"
+
+cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO baidu_panoramas (
+  osm_node_id, panoid, pano_mc_x, pano_mc_y, queried_at
+) CSV DATA ('userfile:///baidu_panoramas.csv');"
 ```
 
 出力に `status: succeeded` と投入件数が出ていることを確認する。
@@ -130,4 +151,5 @@ cockroach sql --url "$PROD_CRDB_URI" -e "
 
 cockroach sql --url "$PROD_CRDB_URI" -e "SELECT COUNT(*) FROM y_junctions;"
 cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"
+cockroach userfile delete baidu_panoramas.csv --url "$PROD_CRDB_URI"
 ```
