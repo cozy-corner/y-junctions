@@ -74,6 +74,12 @@ async fn setup_test_db() -> PgPool {
         .await
         .expect("Failed to truncate table");
 
+    // baidu_panoramas は y_junctions に FK を持たないため CASCADE で消えない
+    sqlx::query("TRUNCATE TABLE baidu_panoramas")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate baidu_panoramas");
+
     pool
 }
 
@@ -230,6 +236,13 @@ impl TestJunctionData {
         self.min_angle_index = Some(min_idx);
         self
     }
+}
+
+// テストヘルパー: テストデータ挿入＋(id, osm_node_id) を返す
+async fn insert_test_junction_with_ids(pool: &PgPool, data: TestJunctionData) -> (i64, i64) {
+    let osm_node_id = data.osm_node_id;
+    let id = insert_test_junction(pool, data).await;
+    (id, osm_node_id)
 }
 
 // テストヘルパー: テストデータ挿入
@@ -1093,9 +1106,9 @@ const SHANGHAI_LON: f64 = 121.4737;
 
 #[tokio::test]
 #[serial]
-async fn test_baidu_find_by_junction_ids_empty_input() {
+async fn test_baidu_find_by_osm_node_ids_empty_input() {
     let pool = setup_test_db().await;
-    let result = baidu_repository::find_by_junction_ids(&pool, &[])
+    let result = baidu_repository::find_by_osm_node_ids(&pool, &[])
         .await
         .expect("query failed");
     assert!(result.is_empty());
@@ -1103,15 +1116,15 @@ async fn test_baidu_find_by_junction_ids_empty_input() {
 
 #[tokio::test]
 #[serial]
-async fn test_baidu_find_by_junction_ids_skips_rows_without_panoid() {
+async fn test_baidu_find_by_osm_node_ids_skips_rows_without_panoid() {
     let pool = setup_test_db().await;
-    let id = insert_test_junction(
+    let (_, osm_node_id) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
     .await;
 
-    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+    let result = baidu_repository::find_by_osm_node_ids(&pool, &[osm_node_id])
         .await
         .expect("query failed");
     assert!(
@@ -1124,7 +1137,7 @@ async fn test_baidu_find_by_junction_ids_skips_rows_without_panoid() {
 #[serial]
 async fn test_baidu_bulk_update_and_find_roundtrip() {
     let pool = setup_test_db().await;
-    let id = insert_test_junction(
+    let (_, osm_node_id) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1135,16 +1148,18 @@ async fn test_baidu_bulk_update_and_find_roundtrip() {
         pano_mc_x: 13_523_770.0,
         pano_mc_y: 3_640_859.0,
     };
-    let updated = baidu_repository::bulk_update_baidu(&pool, &[(id, pano.clone())])
+    let updated = baidu_repository::bulk_update_baidu(&pool, &[(osm_node_id, pano.clone())])
         .await
         .expect("bulk update failed");
     assert_eq!(updated, 1);
 
-    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+    let result = baidu_repository::find_by_osm_node_ids(&pool, &[osm_node_id])
         .await
         .expect("query failed");
     assert_eq!(result.len(), 1);
-    let got = result.get(&id).expect("id missing from map");
+    let got = result
+        .get(&osm_node_id)
+        .expect("osm_node_id missing from map");
     assert_eq!(got, &pano);
 }
 
@@ -1152,7 +1167,7 @@ async fn test_baidu_bulk_update_and_find_roundtrip() {
 #[serial]
 async fn test_baidu_bulk_update_overwrites_existing() {
     let pool = setup_test_db().await;
-    let id = insert_test_junction(
+    let (_, osm_node_id) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1163,7 +1178,7 @@ async fn test_baidu_bulk_update_overwrites_existing() {
         pano_mc_x: 13_000_000.0,
         pano_mc_y: 3_600_000.0,
     };
-    baidu_repository::bulk_update_baidu(&pool, &[(id, first)])
+    baidu_repository::bulk_update_baidu(&pool, &[(osm_node_id, first)])
         .await
         .unwrap();
 
@@ -1172,14 +1187,14 @@ async fn test_baidu_bulk_update_overwrites_existing() {
         pano_mc_x: 13_523_770.0,
         pano_mc_y: 3_640_859.0,
     };
-    baidu_repository::bulk_update_baidu(&pool, &[(id, second.clone())])
+    baidu_repository::bulk_update_baidu(&pool, &[(osm_node_id, second.clone())])
         .await
         .unwrap();
 
-    let result = baidu_repository::find_by_junction_ids(&pool, &[id])
+    let result = baidu_repository::find_by_osm_node_ids(&pool, &[osm_node_id])
         .await
         .unwrap();
-    assert_eq!(result.get(&id), Some(&second));
+    assert_eq!(result.get(&osm_node_id), Some(&second));
 }
 
 #[tokio::test]
@@ -1196,7 +1211,7 @@ async fn test_baidu_bulk_update_empty_is_noop() {
 #[serial]
 async fn test_baidu_find_all_for_refresh_returns_every_row() {
     let pool = setup_test_db().await;
-    let id_with = insert_test_junction(
+    let (id_with, osm_with) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1209,7 +1224,7 @@ async fn test_baidu_find_all_for_refresh_returns_every_row() {
     baidu_repository::bulk_update_baidu(
         &pool,
         &[(
-            id_with,
+            osm_with,
             BaiduPanorama {
                 panoid: "EXISTING".to_string(),
                 pano_mc_x: 13_523_770.0,
@@ -1232,7 +1247,7 @@ async fn test_baidu_find_all_for_refresh_returns_every_row() {
 #[serial]
 async fn test_baidu_find_without_panoid_returns_only_null_rows() {
     let pool = setup_test_db().await;
-    let id_with = insert_test_junction(
+    let (id_with, osm_with) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1246,7 +1261,7 @@ async fn test_baidu_find_without_panoid_returns_only_null_rows() {
     baidu_repository::bulk_update_baidu(
         &pool,
         &[(
-            id_with,
+            osm_with,
             BaiduPanorama {
                 panoid: "HAS_PANOID".to_string(),
                 pano_mc_x: 13_523_770.0,
@@ -1274,13 +1289,13 @@ async fn test_baidu_find_without_panoid_skips_tombstoned_rows() {
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
     .await;
-    let id_tombstoned = insert_test_junction(
+    let (id_tombstoned, osm_tombstoned) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
     )
     .await;
 
-    let marked = baidu_repository::bulk_mark_queried(&pool, &[id_tombstoned])
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[osm_tombstoned])
         .await
         .expect("bulk mark failed");
     assert_eq!(marked, 1);
@@ -1310,12 +1325,12 @@ async fn test_baidu_bulk_mark_queried_empty_is_noop() {
 #[serial]
 async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
     let pool = setup_test_db().await;
-    let id_with_panoid = insert_test_junction(
+    let (_, osm_with_panoid) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
     .await;
-    let id_without = insert_test_junction(
+    let (_, osm_without) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::normal_type().with_location(SHANGHAI_LAT, SHANGHAI_LON + 0.001),
     )
@@ -1324,7 +1339,7 @@ async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
     baidu_repository::bulk_update_baidu(
         &pool,
         &[(
-            id_with_panoid,
+            osm_with_panoid,
             BaiduPanorama {
                 panoid: "EXISTING".to_string(),
                 pano_mc_x: 13_523_770.0,
@@ -1336,20 +1351,20 @@ async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
     .unwrap();
 
     let original_queried_at: chrono::DateTime<chrono::Utc> =
-        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
-            .bind(id_with_panoid)
+        sqlx::query_scalar("SELECT queried_at FROM baidu_panoramas WHERE osm_node_id = $1")
+            .bind(osm_with_panoid)
             .fetch_one(&pool)
             .await
             .expect("query failed");
 
-    let marked = baidu_repository::bulk_mark_queried(&pool, &[id_with_panoid, id_without])
+    let marked = baidu_repository::bulk_mark_queried(&pool, &[osm_with_panoid, osm_without])
         .await
         .expect("bulk mark failed");
     assert_eq!(marked, 1, "only the panoid-less row should be tombstoned");
 
     let after_queried_at: chrono::DateTime<chrono::Utc> =
-        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
-            .bind(id_with_panoid)
+        sqlx::query_scalar("SELECT queried_at FROM baidu_panoramas WHERE osm_node_id = $1")
+            .bind(osm_with_panoid)
             .fetch_one(&pool)
             .await
             .expect("query failed");
@@ -1363,7 +1378,7 @@ async fn test_baidu_bulk_mark_queried_skips_rows_with_panoid() {
 #[serial]
 async fn test_baidu_bulk_update_stamps_queried_at() {
     let pool = setup_test_db().await;
-    let id = insert_test_junction(
+    let (_, osm_node_id) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1372,7 +1387,7 @@ async fn test_baidu_bulk_update_stamps_queried_at() {
     baidu_repository::bulk_update_baidu(
         &pool,
         &[(
-            id,
+            osm_node_id,
             BaiduPanorama {
                 panoid: "STAMPED".to_string(),
                 pano_mc_x: 13_523_770.0,
@@ -1384,14 +1399,14 @@ async fn test_baidu_bulk_update_stamps_queried_at() {
     .unwrap();
 
     let queried_at: Option<chrono::DateTime<chrono::Utc>> =
-        sqlx::query_scalar("SELECT baidu_queried_at FROM y_junctions WHERE id = $1")
-            .bind(id)
+        sqlx::query_scalar("SELECT queried_at FROM baidu_panoramas WHERE osm_node_id = $1")
+            .bind(osm_node_id)
             .fetch_one(&pool)
             .await
             .expect("query failed");
     assert!(
         queried_at.is_some(),
-        "baidu_queried_at must be set after successful bulk_update_baidu"
+        "queried_at must be set after successful bulk_update_baidu"
     );
 }
 
@@ -1401,7 +1416,7 @@ async fn test_baidu_bulk_update_stamps_queried_at() {
 #[serial]
 async fn test_china_junction_with_baidu_returns_baidu_url() {
     let pool = setup_test_db().await;
-    let id = insert_test_junction(
+    let (id, osm_node_id) = insert_test_junction_with_ids(
         &pool,
         TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
     )
@@ -1409,7 +1424,7 @@ async fn test_china_junction_with_baidu_returns_baidu_url() {
     baidu_repository::bulk_update_baidu(
         &pool,
         &[(
-            id,
+            osm_node_id,
             BaiduPanorama {
                 panoid: "SHANGHAI_TEST".to_string(),
                 pano_mc_x: 13_523_770.0,
