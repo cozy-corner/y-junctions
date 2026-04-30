@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, FromRow)]
 struct BaiduRow {
-    id: i64,
+    osm_node_id: i64,
     panoid: String,
     pano_mc_x: f64,
     pano_mc_y: f64,
@@ -61,24 +61,23 @@ impl From<JunctionRow> for Junction {
     }
 }
 
-/// Fetch saved Baidu panorama metadata for the given junction ids. Rows with
-/// NULL panoid are skipped so the returned map contains only junctions that
-/// actually have a linked panorama.
-pub async fn find_by_junction_ids(
+/// Fetch saved Baidu panorama metadata for the given OSM node ids. Rows whose
+/// `panoid` is NULL (tombstones for "queried, no coverage") are skipped so the
+/// returned map contains only nodes that actually have a linked panorama.
+pub async fn find_by_osm_node_ids(
     pool: &PgPool,
-    ids: &[i64],
+    osm_node_ids: &[i64],
 ) -> Result<HashMap<i64, BaiduPanorama>, sqlx::Error> {
-    if ids.is_empty() {
+    if osm_node_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
     let rows: Vec<BaiduRow> = sqlx::query_as(
-        "SELECT id, baidu_panoid AS panoid, \
-                baidu_pano_mc_x AS pano_mc_x, baidu_pano_mc_y AS pano_mc_y \
-         FROM y_junctions \
-         WHERE id = ANY($1) AND baidu_panoid IS NOT NULL",
+        "SELECT osm_node_id, panoid, pano_mc_x, pano_mc_y \
+         FROM baidu_panoramas \
+         WHERE osm_node_id = ANY($1) AND panoid IS NOT NULL",
     )
-    .bind(ids)
+    .bind(osm_node_ids)
     .fetch_all(pool)
     .await?;
 
@@ -86,7 +85,7 @@ pub async fn find_by_junction_ids(
         .into_iter()
         .map(|r| {
             (
-                r.id,
+                r.osm_node_id,
                 BaiduPanorama {
                     panoid: r.panoid,
                     pano_mc_x: r.pano_mc_x,
@@ -97,20 +96,23 @@ pub async fn find_by_junction_ids(
         .collect())
 }
 
-/// Fetch every junction that has never been queried against Baidu. Rows that
-/// were queried previously and returned no coverage are skipped via the
-/// `baidu_queried_at` tombstone so re-runs don't re-hit dead coordinates;
-/// use `find_all_for_refresh` to force a full re-query.
+/// Fetch every junction that has never been queried against Baidu. A junction
+/// is "never queried" iff no row exists in `baidu_panoramas` for its
+/// `osm_node_id` — tombstones (queried-but-no-coverage) are stored as rows
+/// with `panoid IS NULL` and excluded by the LEFT JOIN filter so re-runs
+/// don't re-hit dead coordinates. Use `find_all_for_refresh` to force a full
+/// re-query.
 pub async fn find_without_baidu_panoid(pool: &PgPool) -> Result<Vec<Junction>, sqlx::Error> {
     let rows: Vec<JunctionRow> = sqlx::query_as(
-        "SELECT id, osm_node_id, \
-         lat, lon, \
-         angle_1, angle_2, angle_3, bearings, created_at, \
-         elevation, min_elevation_diff, max_elevation_diff, min_angle_elevation_diff, \
-         way_1_highway_type, way_2_highway_type, way_3_highway_type, \
-         way_1_category, way_2_category, way_3_category \
-         FROM y_junctions \
-         WHERE baidu_panoid IS NULL AND baidu_queried_at IS NULL",
+        "SELECT y.id, y.osm_node_id, \
+         y.lat, y.lon, \
+         y.angle_1, y.angle_2, y.angle_3, y.bearings, y.created_at, \
+         y.elevation, y.min_elevation_diff, y.max_elevation_diff, y.min_angle_elevation_diff, \
+         y.way_1_highway_type, y.way_2_highway_type, y.way_3_highway_type, \
+         y.way_1_category, y.way_2_category, y.way_3_category \
+         FROM y_junctions y \
+         LEFT JOIN baidu_panoramas bp ON bp.osm_node_id = y.osm_node_id \
+         WHERE bp.osm_node_id IS NULL",
     )
     .fetch_all(pool)
     .await?;
@@ -135,8 +137,10 @@ pub async fn find_all_for_refresh(pool: &PgPool) -> Result<Vec<Junction>, sqlx::
     Ok(rows.into_iter().map(Junction::from).collect())
 }
 
-/// Bulk upsert panorama metadata for the given junction ids. Batched with a
-/// `FROM (VALUES ...)` update to avoid exceeding PostgreSQL's parameter limit.
+/// Bulk upsert panorama metadata keyed by `osm_node_id`. Existing rows
+/// (tombstones or stale panoids) are overwritten; `queried_at` is refreshed
+/// to NOW() on every successful fetch. Batched with a single VALUES list per
+/// chunk to avoid exceeding PostgreSQL's parameter limit.
 pub async fn bulk_update_baidu(
     pool: &PgPool,
     updates: &[(i64, BaiduPanorama)],
@@ -151,32 +155,30 @@ pub async fn bulk_update_baidu(
 
     for chunk in updates.chunks(BATCH_SIZE) {
         let mut qb = QueryBuilder::new(
-            "UPDATE y_junctions SET \
-             baidu_panoid = updates.panoid, \
-             baidu_pano_mc_x = updates.pano_mc_x, \
-             baidu_pano_mc_y = updates.pano_mc_y, \
-             baidu_queried_at = NOW() \
-             FROM (VALUES ",
+            "INSERT INTO baidu_panoramas (osm_node_id, panoid, pano_mc_x, pano_mc_y, queried_at) VALUES ",
         );
 
-        for (i, (id, pano)) in chunk.iter().enumerate() {
+        for (i, (osm_node_id, pano)) in chunk.iter().enumerate() {
             if i > 0 {
                 qb.push(", ");
             }
             qb.push("(");
-            qb.push_bind(*id);
+            qb.push_bind(*osm_node_id);
             qb.push(", ");
             qb.push_bind(pano.panoid.clone());
             qb.push(", ");
             qb.push_bind(pano.pano_mc_x);
             qb.push(", ");
             qb.push_bind(pano.pano_mc_y);
-            qb.push(")");
+            qb.push(", NOW())");
         }
 
         qb.push(
-            ") AS updates(id, panoid, pano_mc_x, pano_mc_y) \
-             WHERE y_junctions.id = updates.id",
+            " ON CONFLICT (osm_node_id) DO UPDATE SET \
+             panoid = EXCLUDED.panoid, \
+             pano_mc_x = EXCLUDED.pano_mc_x, \
+             pano_mc_y = EXCLUDED.pano_mc_y, \
+             queried_at = NOW()",
         );
 
         let result = qb.build().execute(&mut *tx).await?;
@@ -187,23 +189,31 @@ pub async fn bulk_update_baidu(
     Ok(total_updated)
 }
 
-/// Stamp `baidu_queried_at = NOW()` for junctions that returned no panorama
-/// so they're excluded from the next `find_without_baidu_panoid` run. The
-/// `AND baidu_panoid IS NULL` clause keeps this strictly a tombstone writer:
-/// if a caller mistakenly passes an id for a successful row, we leave the
-/// existing `baidu_queried_at` (set by `bulk_update_baidu`) untouched.
-pub async fn bulk_mark_queried(pool: &PgPool, ids: &[i64]) -> Result<usize, sqlx::Error> {
-    if ids.is_empty() {
+/// Stamp a tombstone (`panoid` NULL, `queried_at = NOW()`) for OSM nodes that
+/// returned no panorama, so they're excluded from the next
+/// `find_without_baidu_panoid` run. `ON CONFLICT DO NOTHING` keeps this
+/// strictly a tombstone writer: if a row already exists in `baidu_panoramas`
+/// (either a successful fetch or a prior tombstone) we leave it untouched —
+/// callers that mistakenly pass a node id with an existing panoid won't
+/// damage the success row's `queried_at`.
+pub async fn bulk_mark_queried(pool: &PgPool, osm_node_ids: &[i64]) -> Result<usize, sqlx::Error> {
+    if osm_node_ids.is_empty() {
         return Ok(0);
     }
 
-    let result = sqlx::query(
-        "UPDATE y_junctions SET baidu_queried_at = NOW() \
-         WHERE id = ANY($1) AND baidu_panoid IS NULL",
-    )
-    .bind(ids)
-    .execute(pool)
-    .await?;
+    let mut qb = QueryBuilder::new("INSERT INTO baidu_panoramas (osm_node_id, queried_at) VALUES ");
 
+    for (i, osm_node_id) in osm_node_ids.iter().enumerate() {
+        if i > 0 {
+            qb.push(", ");
+        }
+        qb.push("(");
+        qb.push_bind(*osm_node_id);
+        qb.push(", NOW())");
+    }
+
+    qb.push(" ON CONFLICT (osm_node_id) DO NOTHING");
+
+    let result = qb.build().execute(pool).await?;
     Ok(result.rows_affected() as usize)
 }

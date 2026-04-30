@@ -200,7 +200,7 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
     let client = baidu::build_client()?;
     let mut updates: Vec<(i64, crate::domain::china::BaiduPanorama)> =
         Vec::with_capacity(CHUNK_SIZE);
-    let mut missed_ids: Vec<i64> = Vec::with_capacity(CHUNK_SIZE);
+    let mut missed_osm_node_ids: Vec<i64> = Vec::with_capacity(CHUNK_SIZE);
     let mut total_updated: usize = 0;
     let mut total_tombstoned: usize = 0;
 
@@ -210,12 +210,12 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
         }
 
         match baidu::fetch_nearest_panorama(&client, junction.lon, junction.lat).await {
-            Ok(Some(pano)) => updates.push((junction.id, pano)),
-            Ok(None) => missed_ids.push(junction.id),
+            Ok(Some(pano)) => updates.push((junction.osm_node_id, pano)),
+            Ok(None) => missed_osm_node_ids.push(junction.osm_node_id),
             Err(e) => {
                 return Err(anyhow::anyhow!(
-                    "Baidu qsdata failed for junction {} ({}, {}): {}",
-                    junction.id,
+                    "Baidu qsdata failed for junction osm_node_id={} ({}, {}): {}",
+                    junction.osm_node_id,
                     junction.lat,
                     junction.lon,
                     e
@@ -223,11 +223,11 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
             }
         }
 
-        if updates.len() + missed_ids.len() >= CHUNK_SIZE {
+        if updates.len() + missed_osm_node_ids.len() >= CHUNK_SIZE {
             flush_baidu_chunk(
                 pool,
                 &mut updates,
-                &mut missed_ids,
+                &mut missed_osm_node_ids,
                 &mut total_updated,
                 &mut total_tombstoned,
             )
@@ -246,7 +246,7 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
     flush_baidu_chunk(
         pool,
         &mut updates,
-        &mut missed_ids,
+        &mut missed_osm_node_ids,
         &mut total_updated,
         &mut total_tombstoned,
     )
@@ -269,22 +269,23 @@ pub async fn import_baidu_panoid_data(pool: &PgPool, refresh: bool) -> Result<us
 async fn flush_baidu_chunk(
     pool: &PgPool,
     updates: &mut Vec<(i64, crate::domain::china::BaiduPanorama)>,
-    missed_ids: &mut Vec<i64>,
+    missed_osm_node_ids: &mut Vec<i64>,
     total_updated: &mut usize,
     total_tombstoned: &mut usize,
 ) -> Result<()> {
-    if updates.is_empty() && missed_ids.is_empty() {
+    if updates.is_empty() && missed_osm_node_ids.is_empty() {
         return Ok(());
     }
 
     let updated = crate::db::baidu_repository::bulk_update_baidu(pool, updates).await?;
-    let tombstoned = crate::db::baidu_repository::bulk_mark_queried(pool, missed_ids).await?;
+    let tombstoned =
+        crate::db::baidu_repository::bulk_mark_queried(pool, missed_osm_node_ids).await?;
 
     *total_updated += updated;
     *total_tombstoned += tombstoned;
 
     updates.clear();
-    missed_ids.clear();
+    missed_osm_node_ids.clear();
 
     Ok(())
 }
