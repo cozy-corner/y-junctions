@@ -117,6 +117,8 @@ pub struct NodeConnectionCounter {
     valid_highway_types: HashSet<String>,
     /// Core highway types (roads, not pedestrian ways) - at least one required per junction
     core_highway_types: HashSet<String>,
+    /// Node ids tagged public_transport=stop_position
+    bus_stop_nodes: HashSet<i64>,
 }
 
 impl NodeConnectionCounter {
@@ -168,7 +170,18 @@ impl NodeConnectionCounter {
             way_highway_types: DashMap::new(),
             valid_highway_types,
             core_highway_types,
+            bus_stop_nodes: HashSet::new(),
         }
+    }
+
+    /// Register a node id as a bus stop (public_transport=stop_position)
+    pub fn add_bus_stop_node(&mut self, node_id: i64) {
+        self.bus_stop_nodes.insert(node_id);
+    }
+
+    /// Check if a node is a bus stop
+    pub fn is_bus_stop_node(&self, node_id: i64) -> bool {
+        self.bus_stop_nodes.contains(&node_id)
     }
 
     /// Check if highway type is valid for Y-junction detection
@@ -477,6 +490,115 @@ impl NodeConnectionCounter {
     /// Returns WayTagInfo if the way exists, None otherwise
     pub fn get_way_tag(&self, way_id: i64) -> Option<WayTagInfo> {
         self.way_tags.get(&way_id).map(|tag| tag.clone())
+    }
+
+    /// Check if a junction is part of a bus-stop loop (Pattern A bus pull-out).
+    ///
+    /// Detects the structure: J → service way → bus_stop → service way → N,
+    /// where N lies on another branch of J (the split main road), and the
+    /// bus_stop has exactly degree 2 (only the in/out service ways meet there).
+    ///
+    /// Both junctions of a paired pull-out match this condition symmetrically,
+    /// so calling this on either J1 or J2 returns true.
+    pub fn junction_has_bus_stop_loop(&self, junction_node_id: i64) -> bool {
+        let way_ids: Vec<i64> = match self.node_to_ways.get(&junction_node_id) {
+            Some(ws) => ws.value().iter().copied().collect(),
+            None => return false,
+        };
+
+        for &wid in &way_ids {
+            // Branch must be highway=service
+            let highway = match self.way_highway_types.get(&wid) {
+                Some(h) => h.value().clone(),
+                None => continue,
+            };
+            if highway != "service" {
+                continue;
+            }
+
+            // Find far endpoint of this service way (must be at endpoint, not middle)
+            let nodes: Vec<i64> = match self.way_nodes.get(&wid) {
+                Some(n) => n.value().clone(),
+                None => continue,
+            };
+            if nodes.len() < 2 {
+                continue;
+            }
+            let far_endpoint = if nodes[0] == junction_node_id {
+                nodes[nodes.len() - 1]
+            } else if nodes[nodes.len() - 1] == junction_node_id {
+                nodes[0]
+            } else {
+                continue;
+            };
+
+            // Far endpoint must be a bus stop
+            if !self.is_bus_stop_node(far_endpoint) {
+                continue;
+            }
+
+            // Bus stop must have exactly degree 2 (in + out, no extra branches)
+            let bus_stop_ways: Vec<i64> = match self.node_to_ways.get(&far_endpoint) {
+                Some(ws) => ws.value().iter().copied().collect(),
+                None => continue,
+            };
+            if bus_stop_ways.len() != 2 {
+                continue;
+            }
+
+            // The other way at the bus stop
+            let other_wid = match bus_stop_ways.iter().find(|&&w| w != wid).copied() {
+                Some(w) => w,
+                None => continue,
+            };
+
+            // Other way must also be highway=service
+            let other_highway = match self.way_highway_types.get(&other_wid) {
+                Some(h) => h.value().clone(),
+                None => continue,
+            };
+            if other_highway != "service" {
+                continue;
+            }
+
+            // Find far endpoint of the other service way (must be at endpoint)
+            let other_nodes: Vec<i64> = match self.way_nodes.get(&other_wid) {
+                Some(n) => n.value().clone(),
+                None => continue,
+            };
+            if other_nodes.len() < 2 {
+                continue;
+            }
+            let other_far = if other_nodes[0] == far_endpoint {
+                other_nodes[other_nodes.len() - 1]
+            } else if other_nodes[other_nodes.len() - 1] == far_endpoint {
+                other_nodes[0]
+            } else {
+                continue;
+            };
+
+            // Build target_set: nodes of J's OTHER branches (not the current service way),
+            // excluding J itself. This is what "loop comes back to another branch" means.
+            let mut target_set: HashSet<i64> = HashSet::new();
+            for &other_branch_wid in &way_ids {
+                if other_branch_wid == wid {
+                    continue;
+                }
+                if let Some(branch_nodes) = self.way_nodes.get(&other_branch_wid) {
+                    for &nid in branch_nodes.value() {
+                        if nid != junction_node_id {
+                            target_set.insert(nid);
+                        }
+                    }
+                }
+            }
+
+            if target_set.contains(&other_far) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -939,6 +1061,84 @@ mod tests {
             candidates.len(),
             1,
             "Should accept 2-way junction with one core highway"
+        );
+    }
+
+    /// Build a paired bus pull-out: J1 ↔ J2 connected by a main road segment
+    /// AND by a service loop through bus_stop B.
+    ///
+    ///   [10] ── main ── [J1=100] ── main ── [J2=200] ── main ── [20]
+    ///                     │                    ↑
+    ///                     │ service            │ service
+    ///                     └──→ [B=50] ─────────┘
+    fn build_paired_pullout_counter() -> NodeConnectionCounter {
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[10, 100], "tertiary", false, false); // main_a
+        counter.add_way(2, &[100, 200], "tertiary", false, false); // main_b (J1↔J2)
+        counter.add_way(3, &[200, 20], "tertiary", false, false); // main_c
+        counter.add_way(4, &[100, 50], "service", false, false); // service J1→B
+        counter.add_way(5, &[50, 200], "service", false, false); // service B→J2
+        counter.add_bus_stop_node(50);
+        counter
+    }
+
+    #[test]
+    fn test_bus_stop_loop_excludes_j1() {
+        let counter = build_paired_pullout_counter();
+        assert!(
+            counter.junction_has_bus_stop_loop(100),
+            "J1 (entry of bus pull-out) should be detected"
+        );
+    }
+
+    #[test]
+    fn test_bus_stop_loop_excludes_j2() {
+        let counter = build_paired_pullout_counter();
+        assert!(
+            counter.junction_has_bus_stop_loop(200),
+            "J2 (exit of bus pull-out) should be detected"
+        );
+    }
+
+    #[test]
+    fn test_bus_stop_loop_independent_y_not_excluded() {
+        let mut counter = NodeConnectionCounter::new();
+        // 3 independent branches, no bus stop, no loop
+        counter.add_way(1, &[1, 100], "tertiary", false, false);
+        counter.add_way(2, &[100, 2], "tertiary", false, false);
+        counter.add_way(3, &[100, 3], "service", false, false);
+
+        assert!(
+            !counter.junction_has_bus_stop_loop(100),
+            "Independent Y-junction without bus stop must not match"
+        );
+    }
+
+    #[test]
+    fn test_bus_stop_loop_degree_three_bus_stop_not_excluded() {
+        // Same shape as paired pull-out, but bus_stop also has a 3rd way
+        // → bus_stop degree = 3 → must NOT match (terminal-like, not Pattern A)
+        let mut counter = NodeConnectionCounter::new();
+        counter.add_way(1, &[10, 100], "tertiary", false, false);
+        counter.add_way(2, &[100, 200], "tertiary", false, false);
+        counter.add_way(3, &[200, 20], "tertiary", false, false);
+        counter.add_way(4, &[100, 50], "service", false, false);
+        counter.add_way(5, &[50, 200], "service", false, false);
+        counter.add_way(6, &[50, 999], "service", false, false); // 3rd way at bus_stop
+        counter.add_bus_stop_node(50);
+
+        assert_eq!(
+            counter.get_connection_count(50),
+            3,
+            "Bus stop now has degree 3"
+        );
+        assert!(
+            !counter.junction_has_bus_stop_loop(100),
+            "Pattern A rule must not match when bus stop has extra branches"
+        );
+        assert!(
+            !counter.junction_has_bus_stop_loop(200),
+            "Pattern A rule must not match J2 either"
         );
     }
 }
