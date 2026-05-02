@@ -19,6 +19,7 @@ jobs:
       backend-deploy: ${{ steps.filter.outputs.backend-deploy }}
       frontend: ${{ steps.filter.outputs.frontend }}
       pipeline: ${{ steps.filter.outputs.pipeline }}
+      pipeline-staging-migrate: ${{ steps.filter.outputs.pipeline-staging-migrate }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -58,6 +59,12 @@ jobs:
               - 'backend/src/domain/**'
               - 'backend/Cargo.toml'
               - 'backend/Cargo.lock'
+              - '.github/workflows/deploy.yml'
+            # pipeline-staging-migrate: Triggers staging DB migrations only when
+            # migration files (or this workflow) change. Kept narrow on purpose so
+            # that ordinary backend code edits do not touch the staging DB.
+            pipeline-staging-migrate:
+              - 'backend/migrations/**'
               - '.github/workflows/deploy.yml'
 
   # Backend Test Job
@@ -396,16 +403,52 @@ jobs:
             -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/pipeline:latest \
             .
 
+  # Pipeline Staging DB Migration Job
+  # Applies sqlx migrations to the y_junctions_pipeline_smoke staging DB.
+  # Independent of backend-deploy so ordinary backend code edits do not touch it.
+  pipeline-staging-migrate:
+    name: Pipeline - Staging DB Migrate
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.pipeline-staging-migrate == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust for migrations
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache SQLx CLI
+        id: cache-sqlx
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli
+
+      - name: Install SQLx CLI
+        if: steps.cache-sqlx.outputs.cache-hit != 'true'
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+
+      - name: Run database migrations (pipeline staging)
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.PIPELINE_SMOKE_DATABASE_URL }}
+        run: sqlx migrate run
+
   # Post-Deploy Job
   post-deploy:
     name: Post-Deploy Summary
     runs-on: ubuntu-latest
-    needs: [changes, backend-deploy, frontend-deploy, pipeline-deploy]
+    needs: [changes, backend-deploy, frontend-deploy, pipeline-deploy, pipeline-staging-migrate]
     if: |
       always() &&
       (needs.backend-deploy.result != 'skipped' ||
        needs.frontend-deploy.result != 'skipped' ||
-       needs.pipeline-deploy.result != 'skipped')
+       needs.pipeline-deploy.result != 'skipped' ||
+       needs.pipeline-staging-migrate.result != 'skipped')
 
     permissions:
       contents: read
@@ -461,6 +504,16 @@ jobs:
             echo "❌ **Pipeline image**: Build/push failed" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # Pipeline staging migration status
+          PIPELINE_STAGING_MIGRATE_RESULT="${{ needs.pipeline-staging-migrate.result }}"
+          if [ "$PIPELINE_STAGING_MIGRATE_RESULT" == "success" ]; then
+            echo "✅ **Pipeline staging migrate**: Applied successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "$PIPELINE_STAGING_MIGRATE_RESULT" == "skipped" ]; then
+            echo "⏭️ **Pipeline staging migrate**: Skipped (no migration changes)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Pipeline staging migrate**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
@@ -470,6 +523,7 @@ jobs:
           BACKEND_STATUS="${{ needs.backend-deploy.result }}"
           FRONTEND_STATUS="${{ needs.frontend-deploy.result }}"
           PIPELINE_STATUS="${{ needs.pipeline-deploy.result }}"
+          PIPELINE_STAGING_MIGRATE_STATUS="${{ needs.pipeline-staging-migrate.result }}"
 
           # スキップされたものは無視し、実行されたものが全て成功かチェック
           FAILED=false
@@ -486,6 +540,11 @@ jobs:
 
           if [ "$PIPELINE_STATUS" != "skipped" ] && [ "$PIPELINE_STATUS" != "success" ]; then
             echo "❌ Pipeline image build/push failed or was cancelled"
+            FAILED=true
+          fi
+
+          if [ "$PIPELINE_STAGING_MIGRATE_STATUS" != "skipped" ] && [ "$PIPELINE_STAGING_MIGRATE_STATUS" != "success" ]; then
+            echo "❌ Pipeline staging DB migration failed or was cancelled"
             FAILED=true
           fi
 
