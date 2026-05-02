@@ -21,11 +21,14 @@ RUN cargo build --release \
 FROM debian:bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --create-home --uid 65532 appuser
 
 COPY --from=builder /app/backend/target/release/pipeline-download-osm /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-extract-three-way /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-load-to-cockroach /usr/local/bin/
+
+USER 65532:65532
 
 # Placeholder; Cloud Run Job spec sets the actual `command` per job.
 CMD ["pipeline-download-osm", "--help"]
