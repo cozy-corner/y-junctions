@@ -41,6 +41,7 @@ resource "google_storage_bucket" "yj_raw" {
   name                        = "${var.project_id}-yj-raw"
   location                    = var.region
   uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
   force_destroy               = true
 
   lifecycle_rule {
@@ -59,6 +60,7 @@ resource "google_storage_bucket" "yj_extracted" {
   name                        = "${var.project_id}-yj-extracted"
   location                    = var.region
   uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
   force_destroy               = true
 
   lifecycle_rule {
@@ -77,6 +79,7 @@ resource "google_storage_bucket" "yj_serving" {
   name                        = "${var.project_id}-yj-serving"
   location                    = var.region
   uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
   force_destroy               = true
 
   lifecycle_rule {
