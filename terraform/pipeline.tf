@@ -413,6 +413,7 @@ resource "google_cloud_scheduler_job" "pipeline_trigger" {
   name        = "yj-pipeline-trigger"
   region      = var.region
   description = "Scheduled trigger for the walking-skeleton pipeline (issue #229)"
+  paused      = true        # Manual verification only; unpause once dispatcher (#237) lands.
   schedule    = "0 3 1 * *" # 03:00 JST on the 1st of each month
   time_zone   = "Asia/Tokyo"
 
