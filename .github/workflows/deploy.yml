@@ -18,6 +18,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       backend-deploy: ${{ steps.filter.outputs.backend-deploy }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      pipeline: ${{ steps.filter.outputs.pipeline }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -43,6 +44,20 @@ jobs:
             # frontend: Triggers tests and deployment for frontend changes
             frontend:
               - 'frontend/**'
+              - '.github/workflows/deploy.yml'
+            # pipeline: Triggers pipeline image build & push (Cloud Run Jobs)
+            # pipeline binaries link against importer/, pipeline/, domain/ and lib.rs
+            # (transitive deps: importer -> domain). Add new shared modules here when
+            # they are introduced — verify with `cargo tree --bin pipeline-*`.
+            pipeline:
+              - 'pipeline/**'
+              - 'backend/src/bin/pipeline_*.rs'
+              - 'backend/src/lib.rs'
+              - 'backend/src/importer/**'
+              - 'backend/src/pipeline/**'
+              - 'backend/src/domain/**'
+              - 'backend/Cargo.toml'
+              - 'backend/Cargo.lock'
               - '.github/workflows/deploy.yml'
 
   # Backend Test Job
@@ -336,15 +351,61 @@ jobs:
         run: |
           echo "Frontend deployed to: https://storage.googleapis.com/${{ secrets.GCP_BUCKET_NAME }}/index.html"
 
+  # Pipeline Image Build & Push Job (Cloud Run Jobs base image)
+  pipeline-deploy:
+    name: Pipeline - Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.pipeline == 'true'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Authenticate Docker to Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --push \
+            --file pipeline/Dockerfile \
+            --cache-from type=registry,ref=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/pipeline:cache \
+            --cache-to type=registry,ref=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/pipeline:cache,mode=max \
+            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/pipeline:${{ github.sha }} \
+            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/pipeline:latest \
+            .
+
   # Post-Deploy Job
   post-deploy:
     name: Post-Deploy Summary
     runs-on: ubuntu-latest
-    needs: [changes, backend-deploy, frontend-deploy]
+    needs: [changes, backend-deploy, frontend-deploy, pipeline-deploy]
     if: |
       always() &&
       (needs.backend-deploy.result != 'skipped' ||
-       needs.frontend-deploy.result != 'skipped')
+       needs.frontend-deploy.result != 'skipped' ||
+       needs.pipeline-deploy.result != 'skipped')
 
     permissions:
       contents: read
@@ -390,6 +451,16 @@ jobs:
             echo "❌ **Frontend**: Deployment failed" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # Pipeline image status
+          PIPELINE_RESULT="${{ needs.pipeline-deploy.result }}"
+          if [ "$PIPELINE_RESULT" == "success" ]; then
+            echo "✅ **Pipeline image**: Built & pushed successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "$PIPELINE_RESULT" == "skipped" ]; then
+            echo "⏭️ **Pipeline image**: Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Pipeline image**: Build/push failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
@@ -398,6 +469,7 @@ jobs:
         run: |
           BACKEND_STATUS="${{ needs.backend-deploy.result }}"
           FRONTEND_STATUS="${{ needs.frontend-deploy.result }}"
+          PIPELINE_STATUS="${{ needs.pipeline-deploy.result }}"
 
           # スキップされたものは無視し、実行されたものが全て成功かチェック
           FAILED=false
@@ -409,6 +481,11 @@ jobs:
 
           if [ "$FRONTEND_STATUS" != "skipped" ] && [ "$FRONTEND_STATUS" != "success" ]; then
             echo "❌ Frontend deployment failed or was cancelled"
+            FAILED=true
+          fi
+
+          if [ "$PIPELINE_STATUS" != "skipped" ] && [ "$PIPELINE_STATUS" != "success" ]; then
+            echo "❌ Pipeline image build/push failed or was cancelled"
             FAILED=true
           fi
 
