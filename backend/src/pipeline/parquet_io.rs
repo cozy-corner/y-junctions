@@ -1,3 +1,13 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+use bytes::Bytes;
+use parquet::basic::Compression;
+use parquet::file::properties::WriterProperties;
+use parquet::file::reader::FileReader;
+use parquet::file::reader::SerializedFileReader;
+use parquet::file::writer::SerializedFileWriter;
+use parquet::record::{RecordReader, RecordWriter};
 use parquet_derive::{ParquetRecordReader, ParquetRecordWriter};
 
 use crate::importer::detector::JunctionForInsert;
@@ -87,6 +97,41 @@ impl From<JunctionParquetRecord> for JunctionForInsert {
     }
 }
 
+/// Serialize a slice of records as a single-row-group Snappy-compressed
+/// Parquet file in memory.
+pub fn write_parquet_bytes(records: &[JunctionParquetRecord]) -> Result<Vec<u8>> {
+    let schema = records.schema()?;
+    let props = Arc::new(
+        WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .build(),
+    );
+
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut writer = SerializedFileWriter::new(&mut buffer, schema, props)?;
+    let mut row_group = writer.next_row_group()?;
+    records.write_to_row_group(&mut row_group)?;
+    row_group.close()?;
+    writer.close()?;
+
+    Ok(buffer)
+}
+
+/// Deserialize a Parquet file (any number of row groups) from an in-memory buffer.
+pub fn read_parquet_bytes(bytes: Bytes) -> Result<Vec<JunctionParquetRecord>> {
+    let reader = SerializedFileReader::new(bytes)?;
+    let metadata = reader.metadata();
+    let mut records: Vec<JunctionParquetRecord> = Vec::new();
+
+    for i in 0..metadata.num_row_groups() {
+        let num_rows = metadata.row_group(i).num_rows() as usize;
+        let mut row_group_reader = reader.get_row_group(i)?;
+        records.read_from_row_group(&mut *row_group_reader, num_rows)?;
+    }
+
+    Ok(records)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +193,29 @@ mod tests {
         assert!(restored.min_angle_index.is_none());
         assert!(restored.min_elevation_diff.is_none());
         assert!(restored.max_elevation_diff.is_none());
+    }
+
+    #[test]
+    fn parquet_roundtrip() {
+        let originals: Vec<JunctionParquetRecord> = (0..10)
+            .map(|i| {
+                let mut j = sample();
+                j.osm_node_id = i;
+                j.into()
+            })
+            .collect();
+
+        let bytes = write_parquet_bytes(&originals).unwrap();
+        assert!(!bytes.is_empty());
+
+        let restored = read_parquet_bytes(Bytes::from(bytes)).unwrap();
+        assert_eq!(restored.len(), originals.len());
+        for (a, b) in originals.iter().zip(restored.iter()) {
+            assert_eq!(a.osm_node_id, b.osm_node_id);
+            assert_eq!(a.angle_1, b.angle_1);
+            assert_eq!(a.bearing_1, b.bearing_1);
+            assert_eq!(a.way_1_highway_type, b.way_1_highway_type);
+            assert_eq!(a.way_1_bridge, b.way_1_bridge);
+        }
     }
 }

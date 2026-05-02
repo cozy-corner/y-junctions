@@ -23,6 +23,10 @@ path = "src/bin/import_baidu_panoid.rs"
 name = "pipeline-download-osm"
 path = "src/bin/pipeline_download_osm.rs"
 
+[[bin]]
+name = "pipeline-extract-three-way"
+path = "src/bin/pipeline_extract_three_way.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
@@ -52,10 +56,10 @@ bytes = "1"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
 url = "2"
+tempfile = "3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1"
 serial_test = "3"
-tempfile = "3"
