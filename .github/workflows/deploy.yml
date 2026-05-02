@@ -46,9 +46,16 @@ jobs:
               - 'frontend/**'
               - '.github/workflows/deploy.yml'
             # pipeline: Triggers pipeline image build & push (Cloud Run Jobs)
+            # pipeline binaries link against importer/, pipeline/, domain/ and lib.rs
+            # (transitive deps: importer -> domain). Add new shared modules here when
+            # they are introduced — verify with `cargo tree --bin pipeline-*`.
             pipeline:
               - 'pipeline/**'
               - 'backend/src/bin/pipeline_*.rs'
+              - 'backend/src/lib.rs'
+              - 'backend/src/importer/**'
+              - 'backend/src/pipeline/**'
+              - 'backend/src/domain/**'
               - 'backend/Cargo.toml'
               - 'backend/Cargo.lock'
               - '.github/workflows/deploy.yml'
