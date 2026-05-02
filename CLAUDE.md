@@ -39,6 +39,45 @@ worktree 運用では `scripts/setup-worktree.sh` が自動生成する。
 上記の基盤情報は要約であり、README.md にはデータインポート手順、
 API 仕様、本番デプロイ手順等の詳細が記載されている。
 
+## ブランチ命名規則
+
+PR マージ時に release-drafter がブランチ名から自動でラベル付けする：
+
+- `data/*` — データ追加・更新 → `data` ラベル
+- `feature/*` — 新機能 → `feature` ラベル
+- `fix/*` / `bugfix/*` — バグ修正 → `bug` ラベル
+- `refactor/*` / `chore/*` / `perf/*` / `style/*` / `docs/*` — 内部改善 → `internal` ラベル（リリースノート対象外）
+- `dependabot/*` — 依存関係更新 → `internal` ラベル
+
+issue 番号付きで `<prefix>/<issue#>-<kebab-desc>` 形式にする（例: `chore/234-staging-db-migrations`）。
+
+## Worktree 作成
+
+```bash
+git gtr new <branch>
+```
+
+`postCreate` hook で `npm install` / `cd frontend && npm install` / `mise trust` / `./scripts/setup-worktree.sh` が自動実行される。
+`git worktree add` を直接叩かないこと（hook が走らず .env 等が未整備になる）。
+
+## Terraform 操作（新規 worktree）
+
+```bash
+# main worktree から terraform.tfvars をコピー
+cp <main-worktree-path>/terraform/terraform.tfvars terraform/
+cd terraform && terraform init
+```
+
+`terraform.tfvars` は機密情報を含み gitignore 対象のため、各 worktree で個別に準備が必要。
+
+## 本番データ操作は skill 経由
+
+直接 SQL を本番 DB に流さないこと。以下の skill を使う：
+
+- 本番 DB → ローカルに取り込む: `/sync-from-prod`
+- ローカル DB → 本番に反映: `/deploy-data`
+- 新規地域追加: `/add-region`
+
 ---
 
 # 【必須】コミット前のチェック
