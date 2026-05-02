@@ -27,6 +27,10 @@ path = "src/bin/pipeline_download_osm.rs"
 name = "pipeline-extract-three-way"
 path = "src/bin/pipeline_extract_three_way.rs"
 
+[[bin]]
+name = "pipeline-load-to-cockroach"
+path = "src/bin/pipeline_load_to_cockroach.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
