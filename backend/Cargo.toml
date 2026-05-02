@@ -19,6 +19,10 @@ path = "src/bin/import_elevation.rs"
 name = "import-baidu-panoid"
 path = "src/bin/import_baidu_panoid.rs"
 
+[[bin]]
+name = "pipeline-download-osm"
+path = "src/bin/pipeline_download_osm.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
@@ -47,9 +51,11 @@ parquet_derive = "58"
 bytes = "1"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
+url = "2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1"
 serial_test = "3"
+tempfile = "3"
