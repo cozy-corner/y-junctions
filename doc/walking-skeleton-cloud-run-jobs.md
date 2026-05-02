@@ -50,7 +50,7 @@ issue #229 の宣言通り **1 PR にまとめ、分割しない**。
 
 ### B. Docker / Build
 
-- `pipeline/Dockerfile` — マルチステージ、3 バイナリを単一イメージに同梱、entrypoint を引数で切替
+- `pipeline/Dockerfile` — マルチステージ、3 バイナリを単一イメージに同梱。Dockerfile は placeholder `CMD` のみを持ち、各 Cloud Run Job が `terraform/pipeline.tf` の `command` フィールドで実行バイナリを切り替える
 - `pipeline/cloudbuild.yaml` — `asia-northeast1-docker.pkg.dev/y-junctions-prod/y-junctions/pipeline:latest` に push（既存 Artifact Registry リポジトリ共用、`pipeline:` プレフィックス）
 
 ### C. Terraform `terraform/pipeline.tf`（既存ファイル無変更）
@@ -94,7 +94,7 @@ issue #229 の宣言通り **1 PR にまとめ、分割しない**。
 - **PBF の GCS ストリーム化** — issue #229 既に却下（クレート改造 or 自前 `Read` 実装が要り、walking skeleton の趣旨から外れる。tmpfs 一時 DL で十分）
 - **prep PR で抽出/ロード分離リファクタを先行** — issue #229 既に却下（`parser` / `inserter` は既に分離済み）
 - **中間フォーマットに JSON Lines / Arrow IPC を採用** — issue #229 既に却下（Parquet が事実上の標準、DuckDB / BigQuery 直クエリも将来効く）
-- **3 バイナリを別イメージ化** — Cloud Build 時間倍増・Terraform も冗長。1 イメージ + entrypoint 切替で十分
+- **3 バイナリを別イメージ化** — Cloud Build 時間倍増・Terraform も冗長。1 イメージ + Cloud Run Job 側の `command` 切替で十分
 - **`yj-enriched` バケット先行作成** — 後続 sub-issue で要件が固まってから
 
 ## リスク / 未確認事項
