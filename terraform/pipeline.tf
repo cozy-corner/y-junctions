@@ -33,6 +33,9 @@ locals {
   pipeline_image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.main.repository_id}/pipeline:latest"
 
   pipeline_smoke_db_uri = "postgresql://${cockroach_sql_user.main.name}:${urlencode(var.cockroachdb_sql_password)}@${cockroach_cluster.main.regions[0].sql_dns}:26257/${cockroach_database.pipeline_smoke.name}?sslmode=require"
+
+  # New pipeline DB URI; replaces pipeline_smoke_db_uri after #242 PR2/PR3.
+  pipeline_db_uri = "postgresql://${cockroach_sql_user.main.name}:${urlencode(var.cockroachdb_sql_password)}@${cockroach_cluster.main.regions[0].sql_dns}:26257/${cockroach_database.pipeline.name}?sslmode=require"
 }
 
 # ---------- GCS buckets ------------------------------------------------------
@@ -94,18 +97,29 @@ resource "google_storage_bucket" "yj_serving" {
   depends_on = [google_project_service.storage]
 }
 
-# ---------- CockroachDB staging database -------------------------------------
+# ---------- CockroachDB pipeline database ------------------------------------
 #
 # Same cluster as production (asia-southeast1, BASIC plan), separate database.
-# Reuses the existing y_junctions_user; the smoke DB consumes from the cluster's
-# request-unit quota (request_unit_limit = 50_000_000) — monitor in step 7.
+# Reuses the existing y_junctions_user; consumes from the cluster's
+# request-unit quota (request_unit_limit = 50_000_000).
+#
+# Two databases coexist during the #242 rename:
+#   - pipeline_smoke: legacy name from #229 walking skeleton (removed in PR3)
+#   - pipeline:      new name (this PR; references switched in PR2)
 
 resource "cockroach_database" "pipeline_smoke" {
   name       = "y_junctions_pipeline_smoke"
   cluster_id = cockroach_cluster.main.id
 }
 
-# ---------- Secret Manager: staging DB URL -----------------------------------
+resource "cockroach_database" "pipeline" {
+  name       = "y_junctions_pipeline"
+  cluster_id = cockroach_cluster.main.id
+}
+
+# ---------- Secret Manager: pipeline DB URL ----------------------------------
+#
+# Two secrets coexist during #242 rename; old removed in PR3.
 
 resource "google_secret_manager_secret" "pipeline_smoke_db_url" {
   secret_id = "cockroachdb-pipeline-smoke-url"
@@ -120,6 +134,21 @@ resource "google_secret_manager_secret" "pipeline_smoke_db_url" {
 resource "google_secret_manager_secret_version" "pipeline_smoke_db_url_v1" {
   secret      = google_secret_manager_secret.pipeline_smoke_db_url.id
   secret_data = local.pipeline_smoke_db_uri
+}
+
+resource "google_secret_manager_secret" "pipeline_db_url" {
+  secret_id = "cockroachdb-pipeline-url"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "pipeline_db_url_v1" {
+  secret      = google_secret_manager_secret.pipeline_db_url.id
+  secret_data = local.pipeline_db_uri
 }
 
 # ---------- Service accounts (one per job) -----------------------------------
@@ -196,6 +225,15 @@ resource "google_storage_bucket_iam_member" "load_reads_serving" {
 
 resource "google_secret_manager_secret_iam_member" "load_reads_db_secret" {
   secret_id = google_secret_manager_secret.pipeline_smoke_db_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.pipeline_load_to_cockroach.email}"
+}
+
+# Mirror IAM grant on the new pipeline_db_url secret. The Cloud Run job env
+# is switched to this secret in #242 PR2; granting access here ensures the
+# job does not fail at startup the moment the env reference changes.
+resource "google_secret_manager_secret_iam_member" "load_reads_pipeline_db_secret" {
+  secret_id = google_secret_manager_secret.pipeline_db_url.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.pipeline_load_to_cockroach.email}"
 }
