@@ -34,7 +34,6 @@ docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
       way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel,
       way_3_bridge, way_3_tunnel,
       way_1_highway_type, way_2_highway_type, way_3_highway_type,
-      baidu_panoid, baidu_pano_mc_x, baidu_pano_mc_y,
       created_at
     FROM y_junctions
   ) TO '/data/prod_export.csv' WITH CSV HEADER"
@@ -52,7 +51,7 @@ docker cp ~/y-junctions-data/prod_export_baidu_panoramas.csv y-junctions-cockroa
 
 # IMPORT INTO でローカルCockroachDBにインポート（nodelocal://1/ はコンテナのexternディレクトリを参照）
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
-  --execute "IMPORT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, elevation_diff_1, elevation_diff_2, elevation_diff_3, min_angle_index, min_elevation_diff, max_elevation_diff, way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel, way_1_highway_type, way_2_highway_type, way_3_highway_type, baidu_panoid, baidu_pano_mc_x, baidu_pano_mc_y, created_at) CSV DATA ('nodelocal://1/prod_export.csv') WITH skip = '1';"
+  --execute "IMPORT INTO y_junctions (osm_node_id, location, angle_1, angle_2, angle_3, bearings, elevation, neighbor_elevation_1, neighbor_elevation_2, neighbor_elevation_3, elevation_diff_1, elevation_diff_2, elevation_diff_3, min_angle_index, min_elevation_diff, max_elevation_diff, way_1_bridge, way_1_tunnel, way_2_bridge, way_2_tunnel, way_3_bridge, way_3_tunnel, way_1_highway_type, way_2_highway_type, way_3_highway_type, created_at) CSV DATA ('nodelocal://1/prod_export.csv') WITH skip = '1';"
 
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
   --execute "IMPORT INTO baidu_panoramas (osm_node_id, panoid, pano_mc_x, pano_mc_y, queried_at) CSV DATA ('nodelocal://1/prod_export_baidu_panoramas.csv') WITH skip = '1';"
