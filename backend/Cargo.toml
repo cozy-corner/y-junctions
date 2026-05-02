@@ -19,6 +19,18 @@ path = "src/bin/import_elevation.rs"
 name = "import-baidu-panoid"
 path = "src/bin/import_baidu_panoid.rs"
 
+[[bin]]
+name = "pipeline-download-osm"
+path = "src/bin/pipeline_download_osm.rs"
+
+[[bin]]
+name = "pipeline-extract-three-way"
+path = "src/bin/pipeline_extract_three_way.rs"
+
+[[bin]]
+name = "pipeline-load-to-cockroach"
+path = "src/bin/pipeline_load_to_cockroach.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
@@ -39,8 +51,16 @@ clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
 dashmap = "6.1"
 rayon = "1.12"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 rand = "0.10"
+object_store = { version = "0.13", features = ["gcp"] }
+parquet = { version = "58", default-features = false, features = ["snap"] }
+parquet_derive = "58"
+bytes = "1"
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
+url = "2"
+tempfile = "3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
