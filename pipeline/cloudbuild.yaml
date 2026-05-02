@@ -5,14 +5,14 @@ steps:
       - -t
       - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:latest
       - -t
-      - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:$SHORT_SHA
+      - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:$BUILD_ID
       - -f
       - pipeline/Dockerfile
       - .
 
 images:
   - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:latest
-  - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:$SHORT_SHA
+  - asia-northeast1-docker.pkg.dev/$PROJECT_ID/y-junctions/pipeline:$BUILD_ID
 
 options:
   machineType: E2_HIGHCPU_8

@@ -208,6 +208,8 @@ resource "google_cloud_run_v2_job" "pipeline_download_osm" {
   name     = "pipeline-download-osm"
   location = var.region
 
+  deletion_protection = false
+
   template {
     template {
       service_account = google_service_account.pipeline_download_osm.email
@@ -339,10 +341,9 @@ resource "google_workflows_workflow" "pipeline" {
       steps:
         - init:
             assign:
-              - args_in: $${default(args, {})}
-              - dataset: $${default(map.get(args_in, "dataset"), "shikoku-latest")}
-              - geofabrik_url: $${default(map.get(args_in, "geofabrik_url"), "https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf")}
-              - bbox: $${default(map.get(args_in, "bbox"), "134.0,34.3,134.1,34.4")}
+              - dataset: $${default(map.get(args, "dataset"), "shikoku-latest")}
+              - geofabrik_url: $${default(map.get(args, "geofabrik_url"), "https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf")}
+              - bbox: $${default(map.get(args, "bbox"), "134.0,34.3,134.1,34.4")}
               - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + dataset + ".osm.pbf"}
               - extracted_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + dataset + ".parquet"}
               - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/three-way/" + dataset + ".parquet"}
