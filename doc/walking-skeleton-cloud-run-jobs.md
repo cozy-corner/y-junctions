@@ -65,7 +65,7 @@ issue #229 の宣言通り **1 PR にまとめ、分割しない**。
   - `load-to-cockroach`: cpu=1, memory=2Gi
 - **`google_workflows_workflow` 1 個**: YAML inline、3 ジョブ順次実行
 - **`google_cloud_scheduler_job` 1 個**: monthly cron で定義するが初期は disable で開始（手動キックで end-to-end 確認）
-- **`cockroach_database`**: `y_junctions_pipeline_smoke` を既存 cluster 内に追加。`load-to-cockroach` 起動時に既存 migrations を sqlx migrate で流す
+- **`cockroach_database`**: `y_junctions_pipeline` を既存 cluster 内に追加。`load-to-cockroach` 起動時に既存 migrations を sqlx migrate で流す
 
 ### D. パイロット bbox
 
@@ -83,7 +83,7 @@ issue #229 の宣言通り **1 PR にまとめ、分割しない**。
 
 ## 完了条件
 
-- [ ] Cloud Scheduler 手動キック → Workflows → 3 ジョブ順次成功 → `y_junctions_pipeline_smoke` database に Y 字路レコードが入る
+- [ ] Cloud Scheduler 手動キック → Workflows → 3 ジョブ順次成功 → `y_junctions_pipeline` database に Y 字路レコードが入る
 - [ ] パイロット bbox での所要時間・メモリ実測値を取得し issue #229 にコメント
 - [ ] osmpbf GCS 対応の判断材料（一時 DL で十分か / ストリーム化が必要か）を記録
 
