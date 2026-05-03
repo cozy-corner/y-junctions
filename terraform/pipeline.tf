@@ -467,9 +467,24 @@ resource "google_workflows_workflow" "dispatcher" {
               auth:
                 type: OAuth2
             result: catalog_raw
+        # http.get auto-parses body when Content-Type is application/json, but
+        # gsutil's content-type detection is best-effort — fall back to an
+        # explicit json.decode when the body comes back as a string/bytes.
+        - parse_catalog:
+            switch:
+              - condition: $${get_type(catalog_raw.body) == "list"}
+                steps:
+                  - body_already_list:
+                      assign:
+                        - catalog: $${catalog_raw.body}
+              - condition: true
+                steps:
+                  - decode_body:
+                      assign:
+                        - catalog: $${json.decode(catalog_raw.body)}
         - filter_targets:
             assign:
-              - targets: $${list.filter(catalog_raw.body, lambda(d, d.schedule == schedule_filter))}
+              - targets: $${list.filter(catalog, lambda(d, d.schedule == schedule_filter))}
         - fan_out:
             parallel:
               concurrency_limit: 4
