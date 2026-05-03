@@ -64,6 +64,14 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 
   depends_on = [google_project_service.run]
+
+  # The image is rolled by GitHub Actions per-commit (`:${SHA}` tag) while this
+  # config defaults to `:latest`. Both tags point at the same digest, but the
+  # string mismatch surfaces as a noisy in-place update on every `terraform
+  # plan`. Let GitHub Actions own the image; Terraform owns infra shape only.
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image]
+  }
 }
 
 # Allow unauthenticated access to Cloud Run
