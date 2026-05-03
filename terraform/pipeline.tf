@@ -347,9 +347,10 @@ resource "google_workflows_workflow" "pipeline" {
               - dataset: $${default(map.get(args, "dataset"), "shikoku-latest")}
               - geofabrik_url: $${default(map.get(args, "geofabrik_url"), "https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf")}
               - bbox: $${default(map.get(args, "bbox"), "134.0,34.3,134.1,34.4")}
-              - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + dataset + ".osm.pbf"}
-              - extracted_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + dataset + ".parquet"}
-              - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/three-way/" + dataset + ".parquet"}
+              - run_date: $${text.substring(time.format(sys.now(), "Asia/Tokyo"), 0, 10)}
+              - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + run_date + "/" + dataset + ".osm.pbf"}
+              - extracted_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
+              - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
         - download:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
