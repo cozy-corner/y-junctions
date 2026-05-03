@@ -404,7 +404,7 @@ jobs:
             .
 
   # Pipeline Staging DB Migration Job
-  # Applies sqlx migrations to the y_junctions_pipeline_smoke staging DB.
+  # Applies sqlx migrations to the y_junctions_pipeline staging DB.
   # Independent of backend-deploy so ordinary backend code edits do not touch it.
   pipeline-staging-migrate:
     name: Pipeline - Staging DB Migrate
@@ -435,7 +435,7 @@ jobs:
       - name: Run database migrations (pipeline staging)
         working-directory: backend
         env:
-          DATABASE_URL: ${{ secrets.PIPELINE_SMOKE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
         run: sqlx migrate run
 
   # Post-Deploy Job
