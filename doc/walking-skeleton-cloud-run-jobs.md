@@ -32,9 +32,11 @@ issue #229 の宣言通り **1 PR にまとめ、分割しない**。
 
 | バイナリ | 入力 → 出力 | 内部呼出 |
 |---|---|---|
-| `backend/src/bin/pipeline_download_osm.rs` | Geofabrik URL → `gs://...-yj-raw/osm/<dataset>.osm.pbf` | reqwest streaming |
-| `backend/src/bin/pipeline_extract_three_way.rs` | `gs://yj-raw/...` を tmpfs に DL → `gs://yj-extracted/three-way/<run_id>.parquet` + `gs://yj-serving/three-way/<run_id>.parquet`（同一ファイルをコピー） | `parser::parse_pbf_three_way` |
-| `backend/src/bin/pipeline_load_to_cockroach.rs` | `gs://yj-serving/three-way/<run_id>.parquet` → CockroachDB | `inserter::insert_junctions` |
+| `backend/src/bin/pipeline_download_osm.rs` | Geofabrik URL → `gs://...-yj-raw/osm/<run_date>/<dataset>.osm.pbf` | reqwest streaming |
+| `backend/src/bin/pipeline_extract_three_way.rs` | `gs://yj-raw/...` を tmpfs に DL → `gs://yj-extracted/three-way/<run_date>/<dataset>.parquet` + `gs://yj-serving/three-way/<run_date>/<dataset>.parquet`（同一ファイルをコピー） | `parser::parse_pbf_three_way` |
+| `backend/src/bin/pipeline_load_to_cockroach.rs` | `gs://yj-serving/three-way/<run_date>/<dataset>.parquet` → CockroachDB | `inserter::insert_junctions` |
+
+`<run_date>` は Workflow `init` ステップで `time.format(sys.now(), "Asia/Tokyo")` から算出する `YYYY-MM-DD`（issue #232）。同 Workflow 実行内で 3 ジョブ間の URI に同じ値が再利用される。
 
 **Cargo 依存追加（`backend/Cargo.toml`）**:
 - `object_store = { version = "0.x", features = ["gcp"] }`
