@@ -94,6 +94,24 @@ resource "google_storage_bucket" "yj_serving" {
   depends_on = [google_project_service.storage]
 }
 
+# Catalog bucket for pipeline dataset definitions (issue #237). Object content
+# is operator-managed via `gsutil cp pipeline/datasets.json gs://...-yj-config/`;
+# Terraform owns the bucket only, not the contents. Versioning enabled so a
+# bad edit can be rolled back with `gsutil cp gs://...?generation=...`.
+resource "google_storage_bucket" "yj_config" {
+  name                        = "${var.project_id}-yj-config"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+
+  depends_on = [google_project_service.storage]
+}
+
 # ---------- CockroachDB pipeline database ------------------------------------
 #
 # Same cluster as production (asia-southeast1, BASIC plan), separate database.
@@ -155,6 +173,13 @@ resource "google_service_account" "pipeline_workflow" {
 resource "google_service_account" "pipeline_scheduler" {
   account_id   = "sa-pipeline-scheduler"
   display_name = "Pipeline: scheduler trigger"
+
+  depends_on = [google_project_service.iam]
+}
+
+resource "google_service_account" "pipeline_dispatcher" {
+  account_id   = "sa-pipeline-dispatcher"
+  display_name = "Pipeline: catalog dispatcher (issue #237)"
 
   depends_on = [google_project_service.iam]
 }
@@ -330,9 +355,11 @@ resource "google_service_account_iam_member" "workflow_acts_as_load" {
   member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
 }
 
-# Workflow holds the workload defaults (dataset / geofabrik URL / bbox) and
-# constructs per-job containerOverrides. Callers can override any of these by
-# passing JSON to `gcloud workflows execute --data`.
+# Workflow constructs per-job containerOverrides from caller-supplied args.
+# All of `dataset` / `geofabrik_url` / `bbox` are required — the dispatcher
+# (issue #237) sources them from `gs://...-yj-config/datasets.json`, ad-hoc
+# runs pass them via `gcloud workflows execute --data='{...}'`. Removing the
+# defaults keeps workload identity out of infrastructure-as-code.
 resource "google_workflows_workflow" "pipeline" {
   name            = "yj-pipeline"
   region          = var.region
@@ -344,9 +371,9 @@ resource "google_workflows_workflow" "pipeline" {
       steps:
         - init:
             assign:
-              - dataset: $${default(map.get(args, "dataset"), "shikoku-latest")}
-              - geofabrik_url: $${default(map.get(args, "geofabrik_url"), "https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf")}
-              - bbox: $${default(map.get(args, "bbox"), "134.0,34.3,134.1,34.4")}
+              - dataset: $${args.dataset}
+              - geofabrik_url: $${args.geofabrik_url}
+              - bbox: $${args.bbox}
               - run_date: $${text.substring(time.format(sys.now(), "Asia/Tokyo"), 0, 10)}
               - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + run_date + "/" + dataset + ".osm.pbf"}
               - extracted_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
@@ -399,6 +426,74 @@ resource "google_workflows_workflow" "pipeline" {
   depends_on = [google_project_service.workflows]
 }
 
+# ---------- Catalog dispatcher (issue #237) ----------------------------------
+#
+# Single Cloud Scheduler trigger -> dispatcher Workflow -> fan-out to
+# yj-pipeline executions, one per dataset matching the requested schedule.
+# Adding a dataset is a `gsutil cp pipeline/datasets.json gs://...-yj-config/`,
+# not a `terraform apply` — workload identity stays out of IaC.
+
+# Dispatcher SA reads catalog from yj-config bucket.
+resource "google_storage_bucket_iam_member" "dispatcher_reads_config" {
+  bucket = google_storage_bucket.yj_config.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.pipeline_dispatcher.email}"
+}
+
+# Dispatcher SA invokes yj-pipeline executions. Project-level matches the
+# scheduler pattern; tighten to per-workflow if/when invoker count grows.
+resource "google_project_iam_member" "dispatcher_invokes_pipeline" {
+  project = var.project_id
+  role    = "roles/workflows.invoker"
+  member  = "serviceAccount:${google_service_account.pipeline_dispatcher.email}"
+}
+
+resource "google_workflows_workflow" "dispatcher" {
+  name            = "yj-pipeline-dispatcher"
+  region          = var.region
+  service_account = google_service_account.pipeline_dispatcher.id
+
+  source_contents = <<-EOT
+    main:
+      params: [args]
+      steps:
+        - init:
+            assign:
+              - schedule_filter: $${default(map.get(args, "schedule"), "monthly")}
+        - read_catalog:
+            call: http.get
+            args:
+              url: https://storage.googleapis.com/${google_storage_bucket.yj_config.name}/datasets.json
+              auth:
+                type: OAuth2
+            result: catalog_raw
+        - filter_targets:
+            assign:
+              - targets: $${list.filter(catalog_raw.body, lambda(d, d.schedule == schedule_filter))}
+        - fan_out:
+            parallel:
+              concurrency_limit: 4
+              for:
+                value: ds
+                in: $${targets}
+                steps:
+                  - run_pipeline:
+                      call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.create
+                      args:
+                        parent: projects/${var.project_id}/locations/${var.region}/workflows/${google_workflows_workflow.pipeline.name}
+                        body:
+                          argument: $${json.encode_to_string(ds)}
+        - done:
+            return: $${len(targets)}
+  EOT
+
+  depends_on = [
+    google_project_service.workflows,
+    google_storage_bucket_iam_member.dispatcher_reads_config,
+    google_project_iam_member.dispatcher_invokes_pipeline,
+  ]
+}
+
 # ---------- Cloud Scheduler --------------------------------------------------
 
 resource "google_project_iam_member" "scheduler_invokes_workflow" {
@@ -407,23 +502,25 @@ resource "google_project_iam_member" "scheduler_invokes_workflow" {
   member  = "serviceAccount:${google_service_account.pipeline_scheduler.email}"
 }
 
-# Scheduled trigger for the pipeline. The cron cadence is data, not part
+# Scheduled trigger for the dispatcher. The cron cadence is data, not part
 # of the resource identity — change `schedule` (or pause via `gcloud
 # scheduler jobs pause yj-pipeline-trigger`) without renaming the resource.
+# The dispatcher reads `gs://...-yj-config/datasets.json`, filters to
+# `schedule == "monthly"`, and fans out to yj-pipeline executions.
 #
-# Initial verification path:
-#   gcloud workflows execute yj-pipeline --location=asia-northeast1
+# Manual verification path:
+#   gcloud workflows execute yj-pipeline-dispatcher --location=asia-northeast1
 resource "google_cloud_scheduler_job" "pipeline_trigger" {
   name        = "yj-pipeline-trigger"
   region      = var.region
-  description = "Scheduled trigger for the walking-skeleton pipeline (issue #229)"
-  paused      = true        # Manual verification only; unpause once dispatcher (#237) lands.
+  description = "Scheduled trigger for the catalog dispatcher (issue #237)"
+  paused      = false       # Active: dispatcher reads catalog and fans out monthly.
   schedule    = "0 3 1 * *" # 03:00 JST on the 1st of each month
   time_zone   = "Asia/Tokyo"
 
   http_target {
     http_method = "POST"
-    uri         = "https://workflowexecutions.googleapis.com/v1/${google_workflows_workflow.pipeline.id}/executions"
+    uri         = "https://workflowexecutions.googleapis.com/v1/${google_workflows_workflow.dispatcher.id}/executions"
 
     oauth_token {
       service_account_email = google_service_account.pipeline_scheduler.email
