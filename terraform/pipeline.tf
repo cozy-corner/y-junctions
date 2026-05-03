@@ -460,7 +460,6 @@ resource "google_workflows_workflow" "dispatcher" {
         - init:
             assign:
               - schedule_filter: $${default(map.get(args, "schedule"), "monthly")}
-              - targets: []
         - read_catalog:
             call: http.get
             args:
@@ -483,35 +482,26 @@ resource "google_workflows_workflow" "dispatcher" {
                   - decode_body:
                       assign:
                         - catalog: $${json.decode(catalog_raw.body)}
-        # Workflows has no built-in `list.filter` / lambda — build the
-        # filtered list with a sequential loop + list.concat instead.
-        - filter_targets:
-            for:
-              value: ds
-              in: $${catalog}
-              steps:
-                - check_schedule:
-                    switch:
-                      - condition: $${ds.schedule == schedule_filter}
-                        steps:
-                          - add_target:
-                              assign:
-                                - targets: $${list.concat(targets, [ds])}
+        # Workflows has no built-in list.filter / lambda; do the schedule
+        # check inline in the parallel.for loop. Non-matching entries are
+        # cheap no-ops, no need for a separate filter pass.
         - fan_out:
             parallel:
               concurrency_limit: 4
               for:
                 value: ds
-                in: $${targets}
+                in: $${catalog}
                 steps:
-                  - run_pipeline:
-                      call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.create
-                      args:
-                        parent: projects/${var.project_id}/locations/${var.region}/workflows/${google_workflows_workflow.pipeline.name}
-                        body:
-                          argument: $${json.encode_to_string(ds)}
-        - done:
-            return: $${len(targets)}
+                  - dispatch_if_matches:
+                      switch:
+                        - condition: $${ds.schedule == schedule_filter}
+                          steps:
+                            - run_pipeline:
+                                call: googleapis.workflowexecutions.v1.projects.locations.workflows.executions.create
+                                args:
+                                  parent: projects/${var.project_id}/locations/${var.region}/workflows/${google_workflows_workflow.pipeline.name}
+                                  body:
+                                    argument: $${json.encode_to_string(ds)}
   EOT
 
   depends_on = [
