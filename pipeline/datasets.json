@@ -4,5 +4,17 @@
     "geofabrik_url": "https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf",
     "bbox": "134.0,34.3,134.1,34.4",
     "schedule": "monthly"
+  },
+  {
+    "dataset": "chugoku-latest",
+    "geofabrik_url": "https://download.geofabrik.de/asia/japan/chugoku-latest.osm.pbf",
+    "bbox": "132.45,34.38,132.48,34.41",
+    "schedule": "monthly"
+  },
+  {
+    "dataset": "kyushu-latest",
+    "geofabrik_url": "https://download.geofabrik.de/asia/japan/kyushu-latest.osm.pbf",
+    "bbox": "130.39,33.58,130.42,33.61",
+    "schedule": "monthly"
   }
 ]
