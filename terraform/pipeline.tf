@@ -319,7 +319,7 @@ resource "google_cloud_run_v2_job" "pipeline_load_to_cockroach" {
           name = "DATABASE_URL"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.pipeline_smoke_db_url.secret_id
+              secret  = google_secret_manager_secret.pipeline_db_url.secret_id
               version = "latest"
             }
           }
