@@ -1,2 +1,4 @@
+# Qodo Merge / Code Review configuration
+# Docs: https://docs.qodo.ai/
 [config]
 ignore_pr_authors = ["dependabot\\[bot\\]"]
