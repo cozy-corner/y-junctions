@@ -16,6 +16,7 @@ WORKDIR /app/backend
 RUN cargo build --release \
       --bin pipeline-download-osm \
       --bin pipeline-extract-three-way \
+      --bin pipeline-prepare-serving \
       --bin pipeline-load-to-cockroach
 
 FROM debian:bookworm-slim
@@ -26,6 +27,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/backend/target/release/pipeline-download-osm /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-extract-three-way /usr/local/bin/
+COPY --from=builder /app/backend/target/release/pipeline-prepare-serving /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-load-to-cockroach /usr/local/bin/
 
 USER 65532:65532

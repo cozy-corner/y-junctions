@@ -21,11 +21,6 @@ struct Args {
     #[arg(long)]
     extracted_output: String,
 
-    /// Serving-stage output URI — gs://...-yj-serving/... or file://...
-    /// (walking skeleton: identical to extracted output, no transformation yet)
-    #[arg(long)]
-    serving_output: String,
-
     /// Bounding box: min_lon,min_lat,max_lon,max_lat
     #[arg(long)]
     bbox: String,
@@ -40,10 +35,9 @@ async fn main() -> Result<()> {
     let bbox = parse_bbox(&args.bbox)?;
 
     tracing::info!(
-        "extract-three-way: {} -> {{extracted: {}, serving: {}}}",
+        "extract-three-way: {} -> {}",
         args.input,
-        args.extracted_output,
-        args.serving_output
+        args.extracted_output
     );
 
     let local_pbf = stage_pbf_locally(&args.input).await?;
@@ -57,10 +51,8 @@ async fn main() -> Result<()> {
     let parquet_bytes = write_parquet_bytes(&records)?;
     tracing::info!("Encoded {} bytes of Parquet", parquet_bytes.len());
 
-    let body = Bytes::from(parquet_bytes);
-    write_uri(&args.extracted_output, body.clone()).await?;
-    write_uri(&args.serving_output, body).await?;
-    tracing::info!("Wrote extracted + serving copies");
+    write_uri(&args.extracted_output, Bytes::from(parquet_bytes)).await?;
+    tracing::info!("Wrote extracted Parquet");
 
     Ok(())
 }
