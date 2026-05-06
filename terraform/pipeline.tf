@@ -718,20 +718,19 @@ resource "google_secret_manager_secret_iam_member" "enrich_baidu_reads_pipeline_
   member    = "serviceAccount:${google_service_account.pipeline_enrich_baidu_panoid.email}"
 }
 
-# Drain semantics: keep retrying until the queue is empty. Each fresh
-# attempt re-queries `find_without_baidu_panoid` (backend/src/importer/mod.rs)
-# and continues from the current DB state, so chunked persistence makes
-# retries effectively a no-op for already-processed work. The Job exits
-# naturally on success once nothing is left to process.
+# Drain semantics: paired with a daily cron and the idempotent skip in
+# `find_without_baidu_panoid` (backend/src/db/baidu_repository.rs:105-121),
+# which excludes both successfully-fetched junctions and tombstoned-empty
+# ones (panoid IS NULL rows from `bulk_mark_queried`). The Job processes a
+# bounded daily slice and exits — the next cron picks up tomorrow.
 #
-# Both knobs set generously (well within the 7-day / 10-retry Cloud Run Jobs
-# limits) so the per-cron budget is wide enough to drain any realistic
-# backlog: 11 attempts × 24h = 11 days of wall-clock per cron. Full-country
-# China (~600K junctions estimated from Japan-PBF density × China PBF size,
-# ~20h compute at 115ms paced) finishes within a single attempt; the
-# remaining retries are slack for transient Baidu failures. The timeout
-# setting itself is free — Cloud Run Jobs is billed per actual execution
-# second, so an unused budget costs nothing.
+# max_retries=2 (3 attempts max) gives ~3h of wall-clock per cron, enough
+# to drain ~93K junctions/day at the 80-150ms paced rate. Full-country
+# China (~600K, estimated from Japan PBF density × China PBF size) finishes
+# in ~7 daily runs. Bounded retry is also kinder to Baidu's anti-bot: a
+# 429 produces at most ~30s of in-cron retry hits before the Job exits,
+# leaving a 24h gap to next attempt. After drain, daily empty runs cost
+# ~$0.0001/day each (just container start + DB query).
 resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
   name     = "pipeline-enrich-baidu-panoid"
   location = var.region
@@ -741,8 +740,8 @@ resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
   template {
     template {
       service_account = google_service_account.pipeline_enrich_baidu_panoid.email
-      timeout         = "86400s"
-      max_retries     = 10
+      timeout         = "3600s"
+      max_retries     = 2
 
       containers {
         image   = local.pipeline_image
@@ -799,15 +798,16 @@ resource "google_cloud_run_v2_job_iam_member" "scheduler_invokes_baidu_job" {
 # verified, unpause via `gcloud scheduler jobs resume yj-baidu-trigger
 # --location=asia-northeast1` (or a follow-up PR flipping `paused = false`).
 #
-# Schedule sits one day after the main pipeline (`0 3 1 * *`) so newly-
-# loaded Chinese junctions in y_junctions_pipeline are visible by the time
-# this runs, and the worst-case 2h pipeline wall-clock has finished.
+# Daily cadence rather than monthly: the importer skips already-processed
+# junctions via `find_without_baidu_panoid` (idempotent + tombstone), so
+# repeated runs after drain are nearly free (~$0.0001/day). Daily also
+# means a 429-induced failure recovers in 24h instead of 30 days.
 resource "google_cloud_scheduler_job" "baidu_trigger" {
   name        = "yj-baidu-trigger"
   region      = var.region
   description = "Scheduled trigger for the Baidu panoid enrichment Job (issue #258)"
   paused      = true
-  schedule    = "0 3 2 * *" # 03:00 JST on the 2nd of each month (1d after main pipeline)
+  schedule    = "0 3 * * *" # 03:00 JST daily
   time_zone   = "Asia/Tokyo"
 
   http_target {
