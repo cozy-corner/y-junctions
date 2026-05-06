@@ -1,0 +1,117 @@
+name: PR Ready
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  ready:
+    name: ready
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Detect changed paths
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          BACKEND=false
+          FRONTEND=false
+          while IFS= read -r f; do
+            case "$f" in
+              backend/*|.github/workflows/backend-ci.yml) BACKEND=true ;;
+              frontend/*|.github/workflows/frontend-ci.yml) FRONTEND=true ;;
+            esac
+          done < <(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+          echo "frontend=$FRONTEND" >> "$GITHUB_OUTPUT"
+          echo "Backend changed: $BACKEND"
+          echo "Frontend changed: $FRONTEND"
+
+      - name: Wait for required CI checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          BACKEND: ${{ steps.changes.outputs.backend }}
+          FRONTEND: ${{ steps.changes.outputs.frontend }}
+        run: |
+          set -euo pipefail
+
+          EXPECTED=()
+          if [ "$BACKEND" = "true" ]; then
+            EXPECTED+=("Backend - Checks" "Backend - Test" "Backend - Security audit")
+          fi
+          if [ "$FRONTEND" = "true" ]; then
+            EXPECTED+=("Frontend - Checks" "Frontend - Test")
+          fi
+
+          if [ ${#EXPECTED[@]} -eq 0 ]; then
+            echo "No backend/frontend changes; nothing to wait on."
+            exit 0
+          fi
+
+          echo "Waiting for: ${EXPECTED[*]}"
+
+          INTERVAL=30
+          MAX_ITERATIONS=120
+
+          for i in $(seq 1 "$MAX_ITERATIONS"); do
+            RUNS=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100")
+
+            ALL_DONE=true
+            FAIL_LIST=()
+
+            for NAME in "${EXPECTED[@]}"; do
+              RUN=$(jq -c --arg n "$NAME" '
+                .check_runs
+                | map(select(.name == $n))
+                | sort_by(.started_at // "")
+                | last // null
+              ' <<< "$RUNS")
+
+              if [ "$RUN" = "null" ]; then
+                echo "  pending: $NAME (not started)"
+                ALL_DONE=false
+                continue
+              fi
+
+              STATUS=$(jq -r '.status' <<< "$RUN")
+              CONCLUSION=$(jq -r '.conclusion // ""' <<< "$RUN")
+
+              if [ "$STATUS" != "completed" ]; then
+                echo "  pending: $NAME ($STATUS)"
+                ALL_DONE=false
+                continue
+              fi
+
+              if [ "$CONCLUSION" = "success" ] || [ "$CONCLUSION" = "skipped" ]; then
+                echo "  ok: $NAME ($CONCLUSION)"
+              else
+                echo "  failed: $NAME ($CONCLUSION)"
+                FAIL_LIST+=("$NAME")
+              fi
+            done
+
+            if [ "$ALL_DONE" = "true" ]; then
+              if [ ${#FAIL_LIST[@]} -gt 0 ]; then
+                echo "Failed checks: ${FAIL_LIST[*]}"
+                exit 1
+              fi
+              echo "All required CIs passed."
+              exit 0
+            fi
+
+            echo "[$i/$MAX_ITERATIONS] sleeping ${INTERVAL}s"
+            sleep "$INTERVAL"
+          done
+
+          echo "Timed out waiting for required CIs."
+          exit 1
