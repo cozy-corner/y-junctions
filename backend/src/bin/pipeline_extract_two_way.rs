@@ -72,8 +72,7 @@ fn parse_bbox(s: &str) -> Result<(f64, f64, f64, f64)> {
 }
 
 /// `osmpbf::ElementReader` requires a real `File`, so non-`file://`
-/// inputs are downloaded to tmpfs before parsing. See
-/// `pipeline_extract_three_way.rs` for the streaming-deferred rationale.
+/// inputs are downloaded to tmpfs before parsing.
 enum LocalPbf {
     Existing(PathBuf),
     Owned(NamedTempFile),
