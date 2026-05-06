@@ -1,7 +1,7 @@
 ###############################################################################
 # Cloud Run Jobs walking-skeleton (issue #229)
 #
-# Pipeline: download-osm -> extract-three-way -> load-to-cockroach
+# Pipeline: download-osm -> extract-three-way -> prepare-serving -> load-to-cockroach
 #
 # Workload parameters (dataset / geofabrik url / bbox) are NOT baked into
 # the infrastructure. Cloud Run Jobs declare only `command` here; arguments
@@ -156,6 +156,13 @@ resource "google_service_account" "pipeline_extract_three_way" {
   depends_on = [google_project_service.iam]
 }
 
+resource "google_service_account" "pipeline_prepare_serving" {
+  account_id   = "sa-pipeline-prepare-serving"
+  display_name = "Pipeline: prepare-serving"
+
+  depends_on = [google_project_service.iam]
+}
+
 resource "google_service_account" "pipeline_load_to_cockroach" {
   account_id   = "sa-pipeline-load-to-cockroach"
   display_name = "Pipeline: load-to-cockroach"
@@ -193,7 +200,7 @@ resource "google_storage_bucket_iam_member" "download_osm_writes_raw" {
   member = "serviceAccount:${google_service_account.pipeline_download_osm.email}"
 }
 
-# extract-three-way: read yj-raw, write yj-extracted + yj-serving
+# extract-three-way: read yj-raw, write yj-extracted
 resource "google_storage_bucket_iam_member" "extract_reads_raw" {
   bucket = google_storage_bucket.yj_raw.name
   role   = "roles/storage.objectViewer"
@@ -206,10 +213,17 @@ resource "google_storage_bucket_iam_member" "extract_writes_extracted" {
   member = "serviceAccount:${google_service_account.pipeline_extract_three_way.email}"
 }
 
-resource "google_storage_bucket_iam_member" "extract_writes_serving" {
+# prepare-serving: read yj-extracted, write yj-serving
+resource "google_storage_bucket_iam_member" "prepare_serving_reads_extracted" {
+  bucket = google_storage_bucket.yj_extracted.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.pipeline_prepare_serving.email}"
+}
+
+resource "google_storage_bucket_iam_member" "prepare_serving_writes_serving" {
   bucket = google_storage_bucket.yj_serving.name
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.pipeline_extract_three_way.email}"
+  member = "serviceAccount:${google_service_account.pipeline_prepare_serving.email}"
 }
 
 # load-to-cockroach: read yj-serving, read DB secret
@@ -288,6 +302,35 @@ resource "google_cloud_run_v2_job" "pipeline_extract_three_way" {
   depends_on = [google_project_service.run]
 }
 
+resource "google_cloud_run_v2_job" "pipeline_prepare_serving" {
+  name     = "pipeline-prepare-serving"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.pipeline_prepare_serving.email
+      timeout         = "1800s"
+      max_retries     = 1
+
+      containers {
+        image   = local.pipeline_image
+        command = ["pipeline-prepare-serving"]
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "2Gi"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.run]
+}
+
 resource "google_cloud_run_v2_job" "pipeline_load_to_cockroach" {
   name     = "pipeline-load-to-cockroach"
   location = var.region
@@ -349,6 +392,12 @@ resource "google_service_account_iam_member" "workflow_acts_as_extract" {
   member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
 }
 
+resource "google_service_account_iam_member" "workflow_acts_as_prepare_serving" {
+  service_account_id = google_service_account.pipeline_prepare_serving.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
+}
+
 resource "google_service_account_iam_member" "workflow_acts_as_load" {
   service_account_id = google_service_account.pipeline_load_to_cockroach.name
   role               = "roles/iam.serviceAccountUser"
@@ -403,11 +452,22 @@ resource "google_workflows_workflow" "pipeline" {
                         - $${raw_uri}
                         - "--extracted-output"
                         - $${extracted_uri}
-                        - "--serving-output"
-                        - $${serving_uri}
                         - "--bbox"
                         - $${bbox}
             result: extract_result
+        - prepare_serving:
+            call: googleapis.run.v2.projects.locations.jobs.run
+            args:
+              name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_prepare_serving.name}
+              body:
+                overrides:
+                  containerOverrides:
+                    - args:
+                        - "--input"
+                        - $${extracted_uri}
+                        - "--output"
+                        - $${serving_uri}
+            result: prepare_serving_result
         - load:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
