@@ -53,6 +53,7 @@ jobs:
             pipeline:
               - 'pipeline/**'
               - 'backend/src/bin/pipeline_*.rs'
+              - 'backend/src/bin/import_baidu_panoid.rs'
               - 'backend/src/lib.rs'
               - 'backend/src/importer/**'
               - 'backend/src/pipeline/**'

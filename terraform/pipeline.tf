@@ -687,3 +687,125 @@ resource "google_cloud_scheduler_job" "pipeline_trigger" {
 
   depends_on = [google_project_service.cloudscheduler]
 }
+
+###############################################################################
+# Baidu panoid enrichment (issue #258)
+#
+# Standalone Cloud Run Job triggered directly by Cloud Scheduler — NOT part of
+# the yj-pipeline DAG / dispatcher fan-out. Reasoning is in issue #258:
+# the existing importer uses chunked DB persistence (#214) that survives
+# transient failures by reading "what's already done" from the DB on each run,
+# and converting that to Parquet I/O would re-introduce the all-or-nothing
+# failure mode #214 fixed. Baidu's anti-bot constraints (single-thread,
+# 80-150ms paced) also make catalog fan-out / parallelization unsafe.
+#
+# Writes to the same y_junctions_pipeline DB as the rest of the pipeline; the
+# import-baidu-panoid binary is reused as-is from the operator-facing
+# /add-region flow (no new bin to keep in sync). Cron runs the day after the
+# main pipeline so newly-loaded Chinese junctions are picked up next cycle.
+###############################################################################
+
+resource "google_service_account" "pipeline_enrich_baidu_panoid" {
+  account_id   = "sa-pipeline-enrich-baidu"
+  display_name = "Pipeline: enrich-baidu-panoid (issue #258)"
+
+  depends_on = [google_project_service.iam]
+}
+
+resource "google_secret_manager_secret_iam_member" "enrich_baidu_reads_pipeline_db_secret" {
+  secret_id = google_secret_manager_secret.pipeline_db_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.pipeline_enrich_baidu_panoid.email}"
+}
+
+# Long-running by design: paced single-thread Baidu fetch can run for an hour
+# or more on full-country scale. Timeout-and-resume is the recovery mode —
+# chunked persistence (backend/src/importer/mod.rs) means the next cron run
+# picks up where this one stopped. max_retries=0 because in-Job retry would
+# just re-burn the timeout budget; the next cron is the retry.
+resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
+  name     = "pipeline-enrich-baidu-panoid"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.pipeline_enrich_baidu_panoid.email
+      timeout         = "3600s"
+      max_retries     = 0
+
+      containers {
+        image   = local.pipeline_image
+        command = ["import-baidu-panoid"]
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.pipeline_db_url.secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_iam_member.enrich_baidu_reads_pipeline_db_secret,
+  ]
+}
+
+# Job-level invoker binding for the scheduler SA. Project-level would also
+# work but resource-level keeps the blast radius minimal — the scheduler SA
+# already has roles/workflows.invoker project-wide for the dispatcher; adding
+# run.invoker project-wide would let it trigger any future Job too.
+resource "google_cloud_run_v2_job_iam_member" "scheduler_invokes_baidu_job" {
+  project  = google_cloud_run_v2_job.pipeline_enrich_baidu_panoid.project
+  location = google_cloud_run_v2_job.pipeline_enrich_baidu_panoid.location
+  name     = google_cloud_run_v2_job.pipeline_enrich_baidu_panoid.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler.email}"
+}
+
+# Scheduler → Cloud Run Job direct trigger (no Workflows in between). Started
+# paused so the first execution is a manual `gcloud run jobs execute
+# pipeline-enrich-baidu-panoid` to verify Baidu reachability from
+# asia-northeast1 egress and DB writes against y_junctions_pipeline. Once
+# verified, unpause via `gcloud scheduler jobs resume yj-baidu-trigger
+# --location=asia-northeast1` (or a follow-up PR flipping `paused = false`).
+#
+# Schedule sits one day after the main pipeline (`0 3 1 * *`) so newly-
+# loaded Chinese junctions in y_junctions_pipeline are visible by the time
+# this runs, and the worst-case 2h pipeline wall-clock has finished.
+resource "google_cloud_scheduler_job" "baidu_trigger" {
+  name        = "yj-baidu-trigger"
+  region      = var.region
+  description = "Scheduled trigger for the Baidu panoid enrichment Job (issue #258)"
+  paused      = true
+  schedule    = "0 3 2 * *" # 03:00 JST on the 2nd of each month (1d after main pipeline)
+  time_zone   = "Asia/Tokyo"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_enrich_baidu_panoid.name}:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler.email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job_iam_member.scheduler_invokes_baidu_job,
+  ]
+}

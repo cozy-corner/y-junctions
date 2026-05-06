@@ -18,7 +18,8 @@ RUN cargo build --release \
       --bin pipeline-extract-three-way \
       --bin pipeline-extract-two-way \
       --bin pipeline-prepare-serving \
-      --bin pipeline-load-to-cockroach
+      --bin pipeline-load-to-cockroach \
+      --bin import-baidu-panoid
 
 FROM debian:bookworm-slim
 RUN apt-get update \
@@ -31,6 +32,7 @@ COPY --from=builder /app/backend/target/release/pipeline-extract-three-way /usr/
 COPY --from=builder /app/backend/target/release/pipeline-extract-two-way /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-prepare-serving /usr/local/bin/
 COPY --from=builder /app/backend/target/release/pipeline-load-to-cockroach /usr/local/bin/
+COPY --from=builder /app/backend/target/release/import-baidu-panoid /usr/local/bin/
 
 USER 65532:65532
 
