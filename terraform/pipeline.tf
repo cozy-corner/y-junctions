@@ -720,9 +720,12 @@ resource "google_secret_manager_secret_iam_member" "enrich_baidu_reads_pipeline_
 
 # Long-running by design: paced single-thread Baidu fetch can run for an hour
 # or more on full-country scale. Timeout-and-resume is the recovery mode —
-# chunked persistence (backend/src/importer/mod.rs) means the next cron run
-# picks up where this one stopped. max_retries=0 because in-Job retry would
-# just re-burn the timeout budget; the next cron is the retry.
+# chunked persistence (backend/src/importer/mod.rs) means each fresh start
+# re-queries `find_without_baidu_panoid` and continues from the current DB
+# state, so a retry does NOT redo flushed work. With max_retries=3 a single
+# cron execution gets up to 4 attempts × 3600s ≈ 4h of wall-clock budget,
+# which is the difference between draining ~31K junctions per cron (1 attempt)
+# and ~125K (4 attempts) at the 80-150ms paced rate.
 resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
   name     = "pipeline-enrich-baidu-panoid"
   location = var.region
@@ -733,7 +736,7 @@ resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
     template {
       service_account = google_service_account.pipeline_enrich_baidu_panoid.email
       timeout         = "3600s"
-      max_retries     = 0
+      max_retries     = 3
 
       containers {
         image   = local.pipeline_image
