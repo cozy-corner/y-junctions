@@ -218,4 +218,36 @@ mod tests {
             assert_eq!(a.way_1_bridge, b.way_1_bridge);
         }
     }
+
+    #[test]
+    fn merge_two_inputs_roundtrip() {
+        let three_way: Vec<JunctionParquetRecord> = (0..5)
+            .map(|i| {
+                let mut j = sample();
+                j.osm_node_id = 1000 + i;
+                j.into()
+            })
+            .collect();
+        let two_way: Vec<JunctionParquetRecord> = (0..7)
+            .map(|i| {
+                let mut j = sample();
+                j.osm_node_id = 2000 + i;
+                j.into()
+            })
+            .collect();
+
+        let three_way_bytes = write_parquet_bytes(&three_way).unwrap();
+        let two_way_bytes = write_parquet_bytes(&two_way).unwrap();
+
+        let mut merged = read_parquet_bytes(Bytes::from(three_way_bytes)).unwrap();
+        merged.extend(read_parquet_bytes(Bytes::from(two_way_bytes)).unwrap());
+
+        let serving_bytes = write_parquet_bytes(&merged).unwrap();
+        let restored = read_parquet_bytes(Bytes::from(serving_bytes)).unwrap();
+
+        assert_eq!(restored.len(), 12);
+        let ids: Vec<i64> = restored.iter().map(|r| r.osm_node_id).collect();
+        assert!((1000..1005).all(|i| ids.contains(&i)));
+        assert!((2000..2007).all(|i| ids.contains(&i)));
+    }
 }

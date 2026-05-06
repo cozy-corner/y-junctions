@@ -28,6 +28,10 @@ name = "pipeline-extract-three-way"
 path = "src/bin/pipeline_extract_three_way.rs"
 
 [[bin]]
+name = "pipeline-extract-two-way"
+path = "src/bin/pipeline_extract_two_way.rs"
+
+[[bin]]
 name = "pipeline-prepare-serving"
 path = "src/bin/pipeline_prepare_serving.rs"
 

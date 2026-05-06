@@ -1,7 +1,7 @@
 ###############################################################################
-# Cloud Run Jobs walking-skeleton (issue #229)
+# Cloud Run Jobs pipeline
 #
-# Pipeline: download-osm -> extract-three-way -> prepare-serving -> load-to-cockroach
+# download-osm -> [extract-three-way || extract-two-way] -> prepare-serving -> load-to-cockroach
 #
 # Workload parameters (dataset / geofabrik url / bbox) are NOT baked into
 # the infrastructure. Cloud Run Jobs declare only `command` here; arguments
@@ -156,6 +156,13 @@ resource "google_service_account" "pipeline_extract_three_way" {
   depends_on = [google_project_service.iam]
 }
 
+resource "google_service_account" "pipeline_extract_two_way" {
+  account_id   = "sa-pipeline-extract-two-way"
+  display_name = "Pipeline: extract-two-way"
+
+  depends_on = [google_project_service.iam]
+}
+
 resource "google_service_account" "pipeline_prepare_serving" {
   account_id   = "sa-pipeline-prepare-serving"
   display_name = "Pipeline: prepare-serving"
@@ -211,6 +218,19 @@ resource "google_storage_bucket_iam_member" "extract_writes_extracted" {
   bucket = google_storage_bucket.yj_extracted.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.pipeline_extract_three_way.email}"
+}
+
+# extract-two-way: read yj-raw, write yj-extracted
+resource "google_storage_bucket_iam_member" "extract_two_way_reads_raw" {
+  bucket = google_storage_bucket.yj_raw.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.pipeline_extract_two_way.email}"
+}
+
+resource "google_storage_bucket_iam_member" "extract_two_way_writes_extracted" {
+  bucket = google_storage_bucket.yj_extracted.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.pipeline_extract_two_way.email}"
 }
 
 # prepare-serving: read yj-extracted, write yj-serving
@@ -288,6 +308,35 @@ resource "google_cloud_run_v2_job" "pipeline_extract_three_way" {
       containers {
         image   = local.pipeline_image
         command = ["pipeline-extract-three-way"]
+
+        resources {
+          limits = {
+            cpu    = "2"
+            memory = "8Gi"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.run]
+}
+
+resource "google_cloud_run_v2_job" "pipeline_extract_two_way" {
+  name     = "pipeline-extract-two-way"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.pipeline_extract_two_way.email
+      timeout         = "1800s"
+      max_retries     = 1
+
+      containers {
+        image   = local.pipeline_image
+        command = ["pipeline-extract-two-way"]
 
         resources {
           limits = {
@@ -392,6 +441,12 @@ resource "google_service_account_iam_member" "workflow_acts_as_extract" {
   member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
 }
 
+resource "google_service_account_iam_member" "workflow_acts_as_extract_two_way" {
+  service_account_id = google_service_account.pipeline_extract_two_way.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
+}
+
 resource "google_service_account_iam_member" "workflow_acts_as_prepare_serving" {
   service_account_id = google_service_account.pipeline_prepare_serving.name
   role               = "roles/iam.serviceAccountUser"
@@ -425,8 +480,9 @@ resource "google_workflows_workflow" "pipeline" {
               - bbox: $${args.bbox}
               - run_date: $${text.substring(time.format(sys.now(), "Asia/Tokyo"), 0, 10)}
               - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + run_date + "/" + dataset + ".osm.pbf"}
-              - extracted_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
-              - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
+              - extracted_three_way_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
+              - extracted_two_way_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/two-way/" + run_date + "/" + dataset + ".parquet"}
+              - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/" + run_date + "/" + dataset + ".parquet"}
         - download:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
@@ -440,21 +496,44 @@ resource "google_workflows_workflow" "pipeline" {
                         - "--output"
                         - $${raw_uri}
             result: download_result
+        # 3-way / 2-way share the same PBF input; running them in parallel
+        # keeps failure isolation (one extractor's OOM doesn't kill the other)
+        # at the cost of parsing the PBF twice.
         - extract:
-            call: googleapis.run.v2.projects.locations.jobs.run
-            args:
-              name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_extract_three_way.name}
-              body:
-                overrides:
-                  containerOverrides:
-                    - args:
-                        - "--input"
-                        - $${raw_uri}
-                        - "--extracted-output"
-                        - $${extracted_uri}
-                        - "--bbox"
-                        - $${bbox}
-            result: extract_result
+            parallel:
+              branches:
+                - extract_three_way:
+                    steps:
+                      - run_extract_three_way:
+                          call: googleapis.run.v2.projects.locations.jobs.run
+                          args:
+                            name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_extract_three_way.name}
+                            body:
+                              overrides:
+                                containerOverrides:
+                                  - args:
+                                      - "--input"
+                                      - $${raw_uri}
+                                      - "--extracted-output"
+                                      - $${extracted_three_way_uri}
+                                      - "--bbox"
+                                      - $${bbox}
+                - extract_two_way:
+                    steps:
+                      - run_extract_two_way:
+                          call: googleapis.run.v2.projects.locations.jobs.run
+                          args:
+                            name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_extract_two_way.name}
+                            body:
+                              overrides:
+                                containerOverrides:
+                                  - args:
+                                      - "--input"
+                                      - $${raw_uri}
+                                      - "--extracted-output"
+                                      - $${extracted_two_way_uri}
+                                      - "--bbox"
+                                      - $${bbox}
         - prepare_serving:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
@@ -464,7 +543,9 @@ resource "google_workflows_workflow" "pipeline" {
                   containerOverrides:
                     - args:
                         - "--input"
-                        - $${extracted_uri}
+                        - $${extracted_three_way_uri}
+                        - "--input"
+                        - $${extracted_two_way_uri}
                         - "--output"
                         - $${serving_uri}
             result: prepare_serving_result
