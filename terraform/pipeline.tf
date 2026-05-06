@@ -749,10 +749,16 @@ resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
           }
         }
 
+        # 2Gi to match the rest of the pipeline jobs. The importer collects
+        # all unprocessed junctions into a Vec<Junction> before iterating
+        # (backend/src/importer/mod.rs:184-194), so peak memory scales with
+        # the unprocessed-junction count — 512Mi was risky on first-run
+        # backfill at full-country scale. CPU stays at 1 vCPU; the workload
+        # is HTTP-bound, not compute-bound.
         resources {
           limits = {
             cpu    = "1"
-            memory = "512Mi"
+            memory = "2Gi"
           }
         }
       }
