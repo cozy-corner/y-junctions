@@ -1,7 +1,7 @@
 ###############################################################################
-# Cloud Run Jobs walking-skeleton (issue #229)
+# Cloud Run Jobs pipeline
 #
-# Pipeline: download-osm -> [extract-three-way || extract-two-way] -> prepare-serving -> load-to-cockroach
+# download-osm -> [extract-three-way || extract-two-way] -> prepare-serving -> load-to-cockroach
 #
 # Workload parameters (dataset / geofabrik url / bbox) are NOT baked into
 # the infrastructure. Cloud Run Jobs declare only `command` here; arguments
@@ -497,8 +497,8 @@ resource "google_workflows_workflow" "pipeline" {
                         - $${raw_uri}
             result: download_result
         # 3-way / 2-way share the same PBF input; running them in parallel
-        # keeps failure isolation per #220 (one extractor's OOM doesn't kill
-        # the other) at the cost of parsing the PBF twice.
+        # keeps failure isolation (one extractor's OOM doesn't kill the other)
+        # at the cost of parsing the PBF twice.
         - extract:
             parallel:
               branches:
