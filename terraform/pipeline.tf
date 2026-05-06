@@ -718,14 +718,20 @@ resource "google_secret_manager_secret_iam_member" "enrich_baidu_reads_pipeline_
   member    = "serviceAccount:${google_service_account.pipeline_enrich_baidu_panoid.email}"
 }
 
-# Long-running by design: paced single-thread Baidu fetch can run for an hour
-# or more on full-country scale. Timeout-and-resume is the recovery mode —
-# chunked persistence (backend/src/importer/mod.rs) means each fresh start
-# re-queries `find_without_baidu_panoid` and continues from the current DB
-# state, so a retry does NOT redo flushed work. With max_retries=3 a single
-# cron execution gets up to 4 attempts × 3600s ≈ 4h of wall-clock budget,
-# which is the difference between draining ~31K junctions per cron (1 attempt)
-# and ~125K (4 attempts) at the 80-150ms paced rate.
+# Drain semantics: keep retrying until the queue is empty. Each fresh
+# attempt re-queries `find_without_baidu_panoid` (backend/src/importer/mod.rs)
+# and continues from the current DB state, so chunked persistence makes
+# retries effectively a no-op for already-processed work. The Job exits
+# naturally on success once nothing is left to process.
+#
+# Both knobs set generously (well within the 7-day / 10-retry Cloud Run Jobs
+# limits) so the per-cron budget is wide enough to drain any realistic
+# backlog: 11 attempts × 24h = 11 days of wall-clock per cron. Full-country
+# China (~600K junctions estimated from Japan-PBF density × China PBF size,
+# ~20h compute at 115ms paced) finishes within a single attempt; the
+# remaining retries are slack for transient Baidu failures. The timeout
+# setting itself is free — Cloud Run Jobs is billed per actual execution
+# second, so an unused budget costs nothing.
 resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
   name     = "pipeline-enrich-baidu-panoid"
   location = var.region
@@ -735,8 +741,8 @@ resource "google_cloud_run_v2_job" "pipeline_enrich_baidu_panoid" {
   template {
     template {
       service_account = google_service_account.pipeline_enrich_baidu_panoid.email
-      timeout         = "3600s"
-      max_retries     = 3
+      timeout         = "86400s"
+      max_retries     = 10
 
       containers {
         image   = local.pipeline_image
