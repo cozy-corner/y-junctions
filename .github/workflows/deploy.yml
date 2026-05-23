@@ -214,7 +214,7 @@ jobs:
 
       - name: Install SQLx CLI
         if: steps.cache-sqlx.outputs.cache-hit != 'true'
-        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+        run: cargo install sqlx-cli --version "0.8" --no-default-features --features postgres,rustls
 
       - name: Run database migrations
         working-directory: backend
@@ -431,7 +431,7 @@ jobs:
 
       - name: Install SQLx CLI
         if: steps.cache-sqlx.outputs.cache-hit != 'true'
-        run: cargo install sqlx-cli --no-default-features --features postgres,rustls
+        run: cargo install sqlx-cli --version "0.8" --no-default-features --features postgres,rustls
 
       - name: Run database migrations (pipeline staging)
         working-directory: backend
