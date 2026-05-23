@@ -41,13 +41,31 @@ API 仕様、本番デプロイ手順等の詳細が記載されている。
 
 ## ブランチ命名規則
 
-PR マージ時に release-drafter がブランチ名から自動でラベル付けする：
+**prefix 選択の判断基準: 「そのリリースで、エンドユーザーがリリースノートで見るべき変更か」を Yes/No で答える。**
 
-- `data/*` — データ追加・更新 → `data` ラベル
-- `feature/*` — 新機能 → `feature` ラベル
-- `fix/*` / `bugfix/*` — バグ修正 → `bug` ラベル
-- `refactor/*` / `chore/*` / `perf/*` / `style/*` / `docs/*` — 内部改善 → `internal` ラベル（リリースノート対象外）
-- `dependabot/*` — 依存関係更新 → `internal` ラベル
+PR マージ時に release-drafter がブランチ名から自動でラベル付けする。
+
+### Yes — ユーザー向け（リリースノート掲載）
+
+- `feature/*` — エンドユーザーが操作・知覚できる新機能。**内部 API・開発者向け機能・内部バッチは含めない** → `feature` ラベル + minor bump
+- `fix/*` / `bugfix/*` — エンドユーザーが体感するバグ修正 → `bug` ラベル + patch bump
+- `data/*` — データの追加・更新（地域追加・メンテナンス等）→ `data` ラベル + minor bump
+
+### No — 内部のみ（リリースノート除外）
+
+- `refactor/*` — 既存コードの再構成（挙動を変えない）
+- `perf/*` — 既存挙動の性能改善
+- `chore/*` — **軽量な保守作業のみ**（設定ファイル・スクリプト整備・リポジトリ管理）。**新規バッチ・新規 Job 等の大規模な新規実装には使わない**
+- `style/*` — フォーマット・style 変更
+- `docs/*` — ドキュメントのみ
+- `dependabot/*` — 依存関係更新
+
+→ いずれも `internal` ラベル（リリースノート対象外、version bump なし）
+
+### 判断に迷う典型ケース
+
+- **大規模な新規内部実装**（新規バッチ・Cloud Run Job・内部スクリプト等で、規模は大きいがユーザーには見えないもの）→ `feature/*` で切って **`skip-changelog` ラベルを手動付与**（release notes から除外しつつ、新規追加という性質をブランチ名で表現）。**`chore/*` には入れない**（chore は軽量保守専用）
+- **内部改善として始めたが結果的にユーザー価値を持った**ケース → `internal` ラベルを外して `feature` ラベルを手で貼る（release notes に出る、minor bump する）
 
 issue 番号付きで `<prefix>/<issue#>-<kebab-desc>` 形式にする（例: `chore/234-staging-db-migrations`）。
 

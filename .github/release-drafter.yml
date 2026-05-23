@@ -13,6 +13,7 @@ categories:
 exclude-labels:
   - 'internal'
   - 'dependencies'
+  - 'skip-changelog'
 change-template: '- $TITLE (#$NUMBER)'
 template: |
   ## 変更内容
