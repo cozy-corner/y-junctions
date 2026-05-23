@@ -9,7 +9,7 @@ use y_junction_backend::pipeline::storage::read_uri;
 
 #[derive(Parser, Debug)]
 #[command(name = "pipeline-load-to-cockroach")]
-#[command(about = "Load extracted Parquet records into CockroachDB", long_about = None)]
+#[command(about = "Load serving Parquet records into CockroachDB", long_about = None)]
 struct Args {
     /// Parquet source URI — gs://...-yj-serving/... or file://...
     #[arg(long)]
