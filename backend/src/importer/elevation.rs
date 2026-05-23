@@ -130,14 +130,29 @@ impl ElevationProvider {
             data_dir
         );
 
-        let mut mesh_to_file = HashMap::new();
+        // Index files by mesh code, keeping the highest-precision DEM type per mesh.
+        // GSI DEM5A (±0.3m) > 5B (±0.7m) > 5C (±1.4m). Same-precision ties are
+        // resolved by glob iteration order (last-wins). See issue #267.
+        let mut indexed: HashMap<String, (PathBuf, u8)> = HashMap::new();
         for path in xml_files {
-            if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                if let Some(mesh_code) = Self::extract_mesh_code(filename) {
-                    mesh_to_file.insert(mesh_code, path);
-                }
+            let Some(filename) = path.file_name().and_then(|f| f.to_str()) else {
+                continue;
+            };
+            let Some((mesh_code, new_pri)) = Self::extract_mesh_code_and_priority(filename) else {
+                continue;
+            };
+
+            if indexed
+                .get(&mesh_code)
+                .is_none_or(|(_, existing_pri)| new_pri >= *existing_pri)
+            {
+                indexed.insert(mesh_code, (path, new_pri));
             }
         }
+        let mesh_to_file: HashMap<String, PathBuf> = indexed
+            .into_iter()
+            .map(|(k, (path, _))| (k, path))
+            .collect();
 
         tracing::info!(
             "Initialized ElevationProvider: {} mesh codes indexed",
@@ -150,15 +165,24 @@ impl ElevationProvider {
         })
     }
 
-    fn extract_mesh_code(filename: &str) -> Option<String> {
-        if let Some(start) = filename.find("FG-GML-") {
-            let after_prefix = &filename[start + 7..];
-            let parts: Vec<&str> = after_prefix.split('-').collect();
-            if parts.len() >= 3 {
-                return Some(format!("{}-{}-{}", parts[0], parts[1], parts[2]));
-            }
+    /// Parses a GSI DEM filename and returns (mesh_code, precision_priority).
+    /// Priority: DEM5A=3, DEM5B=2, DEM5C=1, other DEM types=0.
+    /// Returns None if the filename does not match `FG-GML-pppp-qq-rr-...`.
+    fn extract_mesh_code_and_priority(filename: &str) -> Option<(String, u8)> {
+        let start = filename.find("FG-GML-")?;
+        let after_prefix = &filename[start + 7..];
+        let parts: Vec<&str> = after_prefix.split('-').collect();
+        if parts.len() < 3 {
+            return None;
         }
-        None
+        let mesh_code = format!("{}-{}-{}", parts[0], parts[1], parts[2]);
+        let priority = parts.get(3).map_or(0, |s| match *s {
+            "DEM5A" => 3,
+            "DEM5B" => 2,
+            "DEM5C" => 1,
+            _ => 0,
+        });
+        Some((mesh_code, priority))
     }
 
     /// Gets elevation at a specific coordinate
@@ -498,6 +522,68 @@ mod tests {
         assert!(
             elev.is_some(),
             "Should return elevation from gzipped fixture"
+        );
+    }
+
+    #[test]
+    fn test_extract_mesh_code_and_priority_known_dem_types() {
+        // Precision: DEM5A=3 > DEM5B=2 > DEM5C=1 (issue #267).
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority(
+                "FG-GML-5238-40-00-DEM5A-20210115.xml"
+            ),
+            Some(("5238-40-00".to_string(), 3))
+        );
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority(
+                "FG-GML-5238-40-00-DEM5B-20210115.xml"
+            ),
+            Some(("5238-40-00".to_string(), 2))
+        );
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority(
+                "FG-GML-5238-40-00-DEM5C-20210115.xml"
+            ),
+            Some(("5238-40-00".to_string(), 1))
+        );
+    }
+
+    #[test]
+    fn test_extract_mesh_code_and_priority_unknown_or_invalid() {
+        // Unknown DEM type still indexed (priority 0) so it wins only when
+        // no DEM5x sibling exists.
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority(
+                "FG-GML-5238-40-00-DEM10B-20210115.xml"
+            ),
+            Some(("5238-40-00".to_string(), 0))
+        );
+        // Filenames not matching FG-GML-pppp-qq-rr-... return None.
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority("not-a-gsi-file.xml"),
+            None
+        );
+        assert_eq!(
+            ElevationProvider::extract_mesh_code_and_priority("FG-GML-too-few.xml"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_priority_selection_dem5a_wins_over_5b_5c() {
+        // Mesh 5238-40-00 has DEM5A / 5B / 5C fixtures. After construction,
+        // the highest-precision file (DEM5A) must be selected regardless of
+        // glob iteration order. See issue #267.
+        let provider = ElevationProvider::new(&get_fixture_dir()).unwrap();
+        let path = provider
+            .mesh_to_file
+            .get("5238-40-00")
+            .expect("mesh 5238-40-00 should be indexed");
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert!(
+            filename.contains("DEM5A"),
+            "Should select DEM5A over 5B/5C, got: {}",
+            filename
         );
     }
 
