@@ -127,7 +127,7 @@ jobs:
       - name: Install sqlx-cli
         run: |
           if ! command -v sqlx &> /dev/null; then
-            cargo install sqlx-cli --version "0.8" --no-default-features --features postgres
+            cargo install sqlx-cli --version "^0.8" --no-default-features --features postgres
           fi
 
       - name: Create test database
