@@ -44,9 +44,26 @@ resource "google_storage_bucket" "yj_raw" {
   public_access_prevention    = "enforced"
   force_destroy               = true
 
+  # Coldline for DEM/PBF storage: ~$0.004/GB-month vs Standard's $0.020.
+  # DEM is touched once monthly by enrich-elevation; PBFs once a month by
+  # extract. Per-op Class B reads are ~$0.05/1000 (Standard $0.0004/1000)
+  # but volume is negligible. See issue #257 — gzip + Coldline drives the
+  # DEM monthly cost from ~$3.75 to ~$0.17. Newly-created objects inherit
+  # this class; existing objects must be migrated via `gsutil rewrite -s
+  # coldline`.
+  storage_class = "COLDLINE"
+
+  # Lifecycle rules are prefix-scoped because the two data kinds in this
+  # bucket have very different refresh cadences:
+  #   - osm/  → monthly PBF, safe to delete at 90d (next month's run regenerates)
+  #   - dem/  → annual GSI DEM upload, NOT auto-deleted (a 90d sweep would
+  #             remove the DEM 9 months out of every 12 and break enrich-
+  #             elevation for the rest of the year — operator manually
+  #             removes outdated date prefixes when uploading a new DEM).
   lifecycle_rule {
     condition {
-      age = 90
+      age            = 90
+      matches_prefix = ["osm/"]
     }
     action {
       type = "Delete"
@@ -77,6 +94,30 @@ resource "google_storage_bucket" "yj_extracted" {
 
 resource "google_storage_bucket" "yj_serving" {
   name                        = "${var.project_id}-yj-serving"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = true
+
+  lifecycle_rule {
+    condition {
+      age = 90
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  depends_on = [google_project_service.storage]
+}
+
+# Enrich stage outputs (issue #257). Currently only the `elevations/`
+# prefix for DEM-derived side tables; if Baidu panoid is later moved into
+# Parquet, it would live alongside as `baidu-panoids/` rather than a
+# separate bucket. Bucket name conveys the pipeline stage; the prefix
+# conveys the enrichment kind.
+resource "google_storage_bucket" "yj_enriched" {
+  name                        = "${var.project_id}-yj-enriched"
   location                    = var.region
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
@@ -198,6 +239,13 @@ resource "google_service_account" "pipeline_dispatcher" {
   depends_on = [google_project_service.iam]
 }
 
+resource "google_service_account" "pipeline_enrich_elevation" {
+  account_id   = "sa-pipeline-enrich-elevation"
+  display_name = "Pipeline: enrich-elevation (issue #257)"
+
+  depends_on = [google_project_service.iam]
+}
+
 # ---------- IAM: per-bucket access ------------------------------------------
 
 # download-osm: write to yj-raw
@@ -243,6 +291,34 @@ resource "google_storage_bucket_iam_member" "prepare_serving_reads_extracted" {
 resource "google_storage_bucket_iam_member" "prepare_serving_writes_serving" {
   bucket = google_storage_bucket.yj_serving.name
   role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.pipeline_prepare_serving.email}"
+}
+
+# enrich-elevation: read yj-extracted, read yj-raw (DEM XMLs via GCS FUSE),
+# write yj-enriched (issue #257).
+resource "google_storage_bucket_iam_member" "enrich_elevation_reads_extracted" {
+  bucket = google_storage_bucket.yj_extracted.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.pipeline_enrich_elevation.email}"
+}
+
+resource "google_storage_bucket_iam_member" "enrich_elevation_reads_raw" {
+  bucket = google_storage_bucket.yj_raw.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.pipeline_enrich_elevation.email}"
+}
+
+resource "google_storage_bucket_iam_member" "enrich_elevation_writes_enriched" {
+  bucket = google_storage_bucket.yj_enriched.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.pipeline_enrich_elevation.email}"
+}
+
+# prepare-serving also needs to read yj-enriched now that LEFT JOIN takes
+# enrichment inputs (issue #257).
+resource "google_storage_bucket_iam_member" "prepare_serving_reads_enriched" {
+  bucket = google_storage_bucket.yj_enriched.name
+  role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.pipeline_prepare_serving.email}"
 }
 
@@ -380,6 +456,62 @@ resource "google_cloud_run_v2_job" "pipeline_prepare_serving" {
   depends_on = [google_project_service.run]
 }
 
+resource "google_cloud_run_v2_job" "pipeline_enrich_elevation" {
+  name     = "pipeline-enrich-elevation"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.pipeline_enrich_elevation.email
+      timeout         = "1800s"
+      max_retries     = 1
+
+      # gen2 is required for GCS volume mounts (Cloud Storage FUSE).
+      # Default for Cloud Run Jobs is already gen2, but pin explicitly so a
+      # future provider default flip doesn't silently break the DEM mount.
+      execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+
+      # Mount yj-raw read-only at /mnt/dem so the binary can read DEM
+      # XML/XML.gz files via the local filesystem (issue #257). The binary's
+      # `--dem-dir /mnt/dem/dem` then resolves the lex-max {YYYYMMDD}/
+      # subdirectory to use the latest operator-uploaded DEM snapshot.
+      volumes {
+        name = "dem"
+        gcs {
+          bucket    = google_storage_bucket.yj_raw.name
+          read_only = true
+        }
+      }
+
+      containers {
+        image   = local.pipeline_image
+        command = ["pipeline-enrich-elevation"]
+
+        volume_mounts {
+          name       = "dem"
+          mount_path = "/mnt/dem"
+        }
+
+        resources {
+          limits = {
+            cpu    = "2"
+            memory = "8Gi"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.run,
+    google_storage_bucket_iam_member.enrich_elevation_reads_raw,
+    google_storage_bucket_iam_member.enrich_elevation_reads_extracted,
+    google_storage_bucket_iam_member.enrich_elevation_writes_enriched,
+  ]
+}
+
 resource "google_cloud_run_v2_job" "pipeline_load_to_cockroach" {
   name     = "pipeline-load-to-cockroach"
   location = var.region
@@ -459,6 +591,12 @@ resource "google_service_account_iam_member" "workflow_acts_as_load" {
   member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
 }
 
+resource "google_service_account_iam_member" "workflow_acts_as_enrich_elevation" {
+  service_account_id = google_service_account.pipeline_enrich_elevation.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.pipeline_workflow.email}"
+}
+
 # Workflow constructs per-job containerOverrides from caller-supplied args.
 # All of `dataset` / `geofabrik_url` / `bbox` are required — the dispatcher
 # (issue #237) sources them from `gs://...-yj-config/datasets.json`, ad-hoc
@@ -478,11 +616,34 @@ resource "google_workflows_workflow" "pipeline" {
               - dataset: $${args.dataset}
               - geofabrik_url: $${args.geofabrik_url}
               - bbox: $${args.bbox}
+              # region is optional in the catalog; default to "unknown" so
+              # the switch below routes through the no-enrichment branch.
+              # When set to "japan" the enrich-elevation step runs (issue
+              # #257). Both `missing key` and `empty string` collapse to
+              # "unknown" — a partial dispatcher serialization that strips
+              # region to "" must not silently skip enrichment for a
+              # genuine Japan dataset without flagging the misconfiguration.
+              - region_raw: $${default(map.get(args, "region"), "")}
+              - region: $${if(region_raw == "", "unknown", region_raw)}
               - run_date: $${text.substring(time.format(sys.now(), "Asia/Tokyo"), 0, 10)}
               - raw_uri: $${"gs://${google_storage_bucket.yj_raw.name}/osm/" + run_date + "/" + dataset + ".osm.pbf"}
               - extracted_three_way_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/three-way/" + run_date + "/" + dataset + ".parquet"}
               - extracted_two_way_uri: $${"gs://${google_storage_bucket.yj_extracted.name}/two-way/" + run_date + "/" + dataset + ".parquet"}
+              - enriched_three_way_uri: $${"gs://${google_storage_bucket.yj_enriched.name}/elevations/three-way/" + run_date + "/" + dataset + ".parquet"}
+              - enriched_two_way_uri: $${"gs://${google_storage_bucket.yj_enriched.name}/elevations/two-way/" + run_date + "/" + dataset + ".parquet"}
               - serving_uri: $${"gs://${google_storage_bucket.yj_serving.name}/" + run_date + "/" + dataset + ".parquet"}
+              # Default for `prepare_serving_args`: the no-enrichment form.
+              # Both switch arms reassign this to a kind-specific list, but
+              # defining it here at function scope prevents an undefined-
+              # symbol error if a future arm forgets to assign (defense-
+              # in-depth; current arms always assign).
+              - prepare_serving_args:
+                  - "--extracted"
+                  - $${extracted_three_way_uri}
+                  - "--extracted"
+                  - $${extracted_two_way_uri}
+                  - "--output"
+                  - $${serving_uri}
         - download:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
@@ -534,6 +695,74 @@ resource "google_workflows_workflow" "pipeline" {
                                       - $${extracted_two_way_uri}
                                       - "--bbox"
                                       - $${bbox}
+        # region-driven enrichment switch (issue #257). For region=japan the
+        # enrich-elevation Job runs in parallel for 3-way / 2-way, producing
+        # osm_node_id-keyed side parquets that prepare-serving LEFT JOINs
+        # back onto the extracted records. For other regions the branch is
+        # a no-op and prepare-serving runs without enrichment inputs.
+        - enrich:
+            switch:
+              - condition: $${region == "japan"}
+                steps:
+                  - run_enrich_parallel:
+                      parallel:
+                        branches:
+                          - enrich_three_way:
+                              steps:
+                                - run_enrich_elevation_3w:
+                                    call: googleapis.run.v2.projects.locations.jobs.run
+                                    args:
+                                      name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_enrich_elevation.name}
+                                      body:
+                                        overrides:
+                                          containerOverrides:
+                                            - args:
+                                                - "--input"
+                                                - $${extracted_three_way_uri}
+                                                - "--output"
+                                                - $${enriched_three_way_uri}
+                                                - "--dem-dir"
+                                                - "/mnt/dem/dem"
+                          - enrich_two_way:
+                              steps:
+                                - run_enrich_elevation_2w:
+                                    call: googleapis.run.v2.projects.locations.jobs.run
+                                    args:
+                                      name: projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.pipeline_enrich_elevation.name}
+                                      body:
+                                        overrides:
+                                          containerOverrides:
+                                            - args:
+                                                - "--input"
+                                                - $${extracted_two_way_uri}
+                                                - "--output"
+                                                - $${enriched_two_way_uri}
+                                                - "--dem-dir"
+                                                - "/mnt/dem/dem"
+                  - assign_serving_args_japan:
+                      assign:
+                        - prepare_serving_args:
+                            - "--extracted"
+                            - $${extracted_three_way_uri}
+                            - "--extracted"
+                            - $${extracted_two_way_uri}
+                            - "--enrichment"
+                            - $${enriched_three_way_uri}
+                            - "--enrichment"
+                            - $${enriched_two_way_uri}
+                            - "--output"
+                            - $${serving_uri}
+              - condition: true
+                steps:
+                  - assign_serving_args_other:
+                      assign:
+                        - prepare_serving_args:
+                            - "--extracted"
+                            - $${extracted_three_way_uri}
+                            - "--extracted"
+                            - $${extracted_two_way_uri}
+                            - "--output"
+                            - $${serving_uri}
         - prepare_serving:
             call: googleapis.run.v2.projects.locations.jobs.run
             args:
@@ -541,13 +770,7 @@ resource "google_workflows_workflow" "pipeline" {
               body:
                 overrides:
                   containerOverrides:
-                    - args:
-                        - "--input"
-                        - $${extracted_three_way_uri}
-                        - "--input"
-                        - $${extracted_two_way_uri}
-                        - "--output"
-                        - $${serving_uri}
+                    - args: $${prepare_serving_args}
             result: prepare_serving_result
         - load:
             call: googleapis.run.v2.projects.locations.jobs.run
