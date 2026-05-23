@@ -474,7 +474,7 @@ terraform apply   # 変更を適用
 
 ### DEM データ更新（年次運用、Cloud Run Jobs パイプライン）
 
-`enrich-elevation` Cloud Run Job は `gs://${project}-yj-raw/dem/{YYYYMMDD}/` 配下の GSI DEM XML を読み込んで Y 字路に標高を付与する。DEM5A は GSI 規約上自動取得不可のため、operator が年次で手動アップロードする：
+`enrich-elevation` Cloud Run Job は `gs://${PROJECT_ID}-yj-raw/dem/{YYYYMMDD}/` 配下の GSI DEM XML を読み込んで Y 字路に標高を付与する。DEM5A は GSI 規約上自動取得不可のため、operator が年次で手動アップロードする：
 
 ```bash
 # 1. 国土地理院から DEM5A を入手し ~/y-junctions-data/gsi/xml/ に展開（既存と同様）

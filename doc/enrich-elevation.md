@@ -146,7 +146,7 @@ gsutil -m rm -r gs://${PROJECT_ID}-yj-raw/dem/20250515/
 
 ## 10. Code Review 結果と対応
 
-extra-high 効ort review で 15 件 surface。
+extra-high effort review で 15 件 surface。
 
 ### 直したもの（quick wins）
 
