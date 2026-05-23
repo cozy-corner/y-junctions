@@ -3750,6 +3750,7 @@ dependencies = [
  "clap",
  "dashmap",
  "dotenvy",
+ "flate2",
  "futures",
  "geo",
  "glob",

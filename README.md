@@ -472,6 +472,37 @@ terraform apply   # 変更を適用
 
 新規地域のデータを追加して本番に反映するには `/add-region` スキルを使用してください。
 
+### DEM データ更新（年次運用、Cloud Run Jobs パイプライン）
+
+`enrich-elevation` Cloud Run Job は `gs://${project}-yj-raw/dem/{YYYYMMDD}/` 配下の GSI DEM XML を読み込んで Y 字路に標高を付与する。DEM5A は GSI 規約上自動取得不可のため、operator が年次で手動アップロードする：
+
+```bash
+# 1. 国土地理院から DEM5A を入手し ~/y-junctions-data/gsi/xml/ に展開（既存と同様）
+
+# 2. gzip で圧縮（~10:1 縮小、yj-raw Coldline と合わせて月額 $0.17 程度）。
+# -k で元の .xml を残す：upload リトライ時の再取得回避 + ローカルの
+# import-elevation CLI が引き続き同じディレクトリを使えるように。
+gzip -k ~/y-junctions-data/gsi/xml/*.xml
+
+# 3. 日付 prefix にアップロード（YYYYMMDD、enrich-elevation Job が辞書順
+# 最大の YYYYMMDD subdir を採用）
+gsutil cp ~/y-junctions-data/gsi/xml/*.xml.gz \
+  gs://${PROJECT_ID}-yj-raw/dem/$(date +%Y%m%d)/
+
+# 4. 月次パイプライン自走を待つか、refresh したい時は手動キック。
+# 引数は pipeline/datasets.json の該当 entry をコピペすればよい：
+gcloud workflows execute yj-pipeline \
+  --location=asia-northeast1 \
+  --data='{"dataset":"shikoku-latest","geofabrik_url":"https://download.geofabrik.de/asia/japan/shikoku-latest.osm.pbf","bbox":"134.0,34.3,134.1,34.4","region":"japan"}'
+```
+
+DEM は `dem/` prefix が lifecycle 自動削除の対象外（terraform/pipeline.tf
+で `matches_prefix = ["osm/"]` 設定）。**古い DEM 日付 prefix の掃除は
+operator が新 DEM upload 時に手動で行う：**
+```bash
+gsutil -m rm -r gs://${PROJECT_ID}-yj-raw/dem/20250515/  # 一年前の DEM 例
+```
+
 ## ブランチ命名規則
 
 PRのマージ時にGitHub Releasesのドラフトが自動生成されます。ブランチ名によって自動的にラベルが付与されます：

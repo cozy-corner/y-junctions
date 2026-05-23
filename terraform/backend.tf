@@ -26,8 +26,8 @@ resource "google_artifact_registry_repository" "main" {
 
 # Cloud Run service for backend API
 resource "google_cloud_run_v2_service" "backend" {
-  name               = var.backend_service_name
-  location           = var.region
+  name                = var.backend_service_name
+  location            = var.region
   deletion_protection = true
 
   template {
