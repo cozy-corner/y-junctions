@@ -56,6 +56,80 @@ pub async fn import_two_way_junctions(
     Ok(count)
 }
 
+/// Looks up DEM elevation, logging real errors but treating out-of-
+/// coverage as a silent `None`. ElevationProvider returns Ok(None) when
+/// the mesh isn't in mesh_to_file (e.g. non-Japan coordinates), and Err
+/// only on actual file I/O / parse / gzip failures — the latter are
+/// operational issues worth surfacing in logs.
+fn try_get_elevation(provider: &elevation::ElevationProvider, lat: f64, lon: f64) -> Option<f64> {
+    match provider.get_elevation(lat, lon) {
+        Ok(opt) => opt,
+        Err(e) => {
+            tracing::warn!("ElevationProvider error at ({lat}, {lon}): {e:#}");
+            None
+        }
+    }
+}
+
+/// Per-junction elevation enrichment payload — what
+/// [`compute_elevation_enrichment`] returns on success. All fields use
+/// f64 to match `ElevationProvider`'s native return type; downstream
+/// consumers (DB UPDATE, Parquet write) cast to f32 at their boundary.
+#[derive(Debug, Clone, Copy)]
+pub struct ElevationEnrichment {
+    pub elevation: f64,
+    pub neighbor_elevations: [f64; 3],
+    pub elevation_diffs: [f64; 3],
+    pub min_angle_index: i16,
+    pub min_elevation_diff: f64,
+    pub max_elevation_diff: f64,
+}
+
+/// Compute elevation enrichment for a single junction. Returns `None` if
+/// the junction's own coordinate OR any of the three 10m-neighbor
+/// coordinates has no DEM coverage. Out-of-coverage rows (e.g. China,
+/// edges of Japan) return `None` silently — the GSI DEM lookup
+/// distinguishes "mesh not present" (Ok(None)) from "mesh present but
+/// failed to read" (Err), and only the latter emits a warn log. No DB
+/// access. Shared by `import_elevation_data` (legacy DB-direct CLI) and
+/// `pipeline-enrich-elevation` (Cloud Run Job, issue #257).
+pub fn compute_elevation_enrichment(
+    provider: &elevation::ElevationProvider,
+    lat: f64,
+    lon: f64,
+    bearings: &[f64; 3],
+    angles: &[i16; 3],
+) -> Option<ElevationEnrichment> {
+    let junction_elev = try_get_elevation(provider, lat, lon)?;
+
+    let neighbor_coords = [
+        calculator::calculate_neighbor_coord(lat, lon, bearings[0], 10.0),
+        calculator::calculate_neighbor_coord(lat, lon, bearings[1], 10.0),
+        calculator::calculate_neighbor_coord(lat, lon, bearings[2], 10.0),
+    ];
+
+    let neighbor_elevations = [
+        try_get_elevation(provider, neighbor_coords[0].0, neighbor_coords[0].1)?,
+        try_get_elevation(provider, neighbor_coords[1].0, neighbor_coords[1].1)?,
+        try_get_elevation(provider, neighbor_coords[2].0, neighbor_coords[2].1)?,
+    ];
+
+    let elevation_diffs =
+        detector::JunctionForInsert::calculate_elevation_diffs(junction_elev, &neighbor_elevations);
+    let (min_elevation_diff, max_elevation_diff) =
+        detector::JunctionForInsert::calculate_min_max_diffs(&elevation_diffs);
+    let min_angle_index = detector::JunctionForInsert::calculate_min_angle_index(angles);
+
+    Some(ElevationEnrichment {
+        elevation: junction_elev,
+        neighbor_elevations,
+        elevation_diffs,
+        min_angle_index,
+        min_elevation_diff,
+        max_elevation_diff,
+    })
+}
+
 pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result<usize> {
     tracing::info!("Starting elevation data import from: {}", elevation_dir);
 
@@ -74,75 +148,35 @@ pub async fn import_elevation_data(pool: &PgPool, elevation_dir: &str) -> Result
     let elevation_updates: Vec<crate::db::repository::ElevationUpdate> = junctions
         .par_iter()
         .filter_map(|junction| {
-            // Get junction elevation
-            let junction_elev = match elevation_provider.get_elevation(junction.lat, junction.lon) {
-                Ok(Some(elev)) => elev,
-                Ok(None) => {
-                    // No elevation data available
-                    return None;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to get elevation for junction {} at ({}, {}): {}",
-                        junction.id,
-                        junction.lat,
-                        junction.lon,
-                        e
-                    );
-                    return None;
-                }
-            };
-
-            // Calculate neighbor coordinates (approximately 10m away)
-            let neighbor_coords: Vec<(f64, f64)> = junction
-                .bearings
-                .iter()
-                .map(|&bearing| {
-                    calculator::calculate_neighbor_coord(
-                        junction.lat,
-                        junction.lon,
-                        bearing as f64,
-                        10.0,
-                    )
-                })
-                .collect();
-
-            // Get neighbor elevations
-            let neighbor_elevs: Vec<Option<f64>> = neighbor_coords
-                .iter()
-                .map(|(lat, lon)| elevation_provider.get_elevation(*lat, *lon).ok().flatten())
-                .collect();
-
-            // Only update if all neighbor elevations are available
-            let [Some(n1), Some(n2), Some(n3)] =
-                [neighbor_elevs[0], neighbor_elevs[1], neighbor_elevs[2]]
-            else {
-                return None;
-            };
-
-            let neighbor_elevations = [n1, n2, n3];
+            let bearings = [
+                junction.bearings[0] as f64,
+                junction.bearings[1] as f64,
+                junction.bearings[2] as f64,
+            ];
             let angles = [junction.angle_1, junction.angle_2, junction.angle_3];
-
-            let elevation_diffs = detector::JunctionForInsert::calculate_elevation_diffs(
-                junction_elev,
-                &neighbor_elevations,
-            );
-            let (min_diff, max_diff) =
-                detector::JunctionForInsert::calculate_min_max_diffs(&elevation_diffs);
-            let min_angle_index = detector::JunctionForInsert::calculate_min_angle_index(&angles);
-
+            let enrich = compute_elevation_enrichment(
+                &elevation_provider,
+                junction.lat,
+                junction.lon,
+                &bearings,
+                &angles,
+            )?;
             Some(crate::db::repository::ElevationUpdate {
                 id: junction.id,
-                elevation: junction_elev as f32,
-                neighbor_elevations: [n1 as f32, n2 as f32, n3 as f32],
-                elevation_diffs: [
-                    elevation_diffs[0] as f32,
-                    elevation_diffs[1] as f32,
-                    elevation_diffs[2] as f32,
+                elevation: enrich.elevation as f32,
+                neighbor_elevations: [
+                    enrich.neighbor_elevations[0] as f32,
+                    enrich.neighbor_elevations[1] as f32,
+                    enrich.neighbor_elevations[2] as f32,
                 ],
-                min_angle_index,
-                min_elevation_diff: min_diff as f32,
-                max_elevation_diff: max_diff as f32,
+                elevation_diffs: [
+                    enrich.elevation_diffs[0] as f32,
+                    enrich.elevation_diffs[1] as f32,
+                    enrich.elevation_diffs[2] as f32,
+                ],
+                min_angle_index: enrich.min_angle_index,
+                min_elevation_diff: enrich.min_elevation_diff as f32,
+                max_elevation_diff: enrich.max_elevation_diff as f32,
             })
         })
         .collect();
@@ -288,4 +322,51 @@ async fn flush_baidu_chunk(
     missed_osm_node_ids.clear();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod compute_elevation_enrichment_tests {
+    use super::*;
+
+    /// Fixture covers (35.0–35.01, 138.0–138.01). compute_elevation_enrichment
+    /// against that coordinate exercises both the junction-lookup and the
+    /// 3-neighbor lookups in one call.
+    #[test]
+    fn returns_enrichment_for_fixture_coordinate() {
+        let provider = elevation::ElevationProvider::new("tests/fixtures/gsi").unwrap();
+        let bearings = [0.0_f64, 120.0, 240.0]; // 3 spread directions
+        let angles = [35_i16, 145, 180];
+
+        let result = compute_elevation_enrichment(&provider, 35.005, 138.005, &bearings, &angles);
+
+        let enrich = result.expect("fixture coordinate should yield enrichment");
+        assert!(
+            (100.0..=150.0).contains(&enrich.elevation),
+            "fixture elevation should fall in 100-150m range, got {}",
+            enrich.elevation
+        );
+        // All three neighbor lookups succeeded
+        for ne in enrich.neighbor_elevations {
+            assert!(
+                (100.0..=150.0).contains(&ne),
+                "neighbor elevation out of expected range: {}",
+                ne
+            );
+        }
+    }
+
+    #[test]
+    fn returns_none_for_out_of_coverage_coordinate() {
+        let provider = elevation::ElevationProvider::new("tests/fixtures/gsi").unwrap();
+        let bearings = [0.0_f64, 120.0, 240.0];
+        let angles = [35_i16, 145, 180];
+
+        // Beijing — far outside the fixture mesh (which is around 35N 138E)
+        let result = compute_elevation_enrichment(&provider, 39.9, 116.4, &bearings, &angles);
+
+        assert!(
+            result.is_none(),
+            "Out-of-coverage coordinate should return None, got Some"
+        );
+    }
 }
