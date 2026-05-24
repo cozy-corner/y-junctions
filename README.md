@@ -426,6 +426,76 @@ docker exec y-junctions-cockroachdb ./cockroach sql --insecure --execute "SELECT
 └── docker-compose.yml    # CockroachDB設定
 ```
 
+## データパイプライン（GCP）
+
+OSM データの取得から本番 DB への投入までを Cloud Run Jobs + Cloud Workflows で自動化しています。
+Cloud Scheduler が月次で dispatcher を起動し、`pipeline/datasets.json` に定義された各データセットを並列処理します。
+
+```mermaid
+flowchart TD
+    subgraph trigger["トリガー"]
+        scheduler["Cloud Scheduler<br/>(月次)"]
+    end
+
+    subgraph orchestration["オーケストレーション"]
+        dispatcher["dispatcher workflow<br/>(datasets.json を読み fan-out)"]
+        pipeline_wf["pipeline workflow<br/>(1 dataset あたり 1 実行)"]
+    end
+
+    subgraph jobs["Cloud Run Jobs"]
+        download["download-osm<br/>Geofabrik → GCS raw/"]
+        extract3["extract-3way<br/>PBF → Parquet"]
+        extract2["extract-2way<br/>PBF → Parquet"]
+        enrich_elev["enrich-elevation<br/>(region=japan のみ)"]
+        prepare["prepare-serving<br/>extracted/ + enriched/ → serving/"]
+        load["load-to-cockroach<br/>Parquet → 本番DB"]
+    end
+
+    subgraph storage["GCS バケット"]
+        raw["yj-raw/<br/>OSM PBF, GSI DEM"]
+        extracted["yj-extracted/<br/>Y字路 Parquet"]
+        enriched["yj-enriched/<br/>標高付与済み"]
+        serving["yj-serving/<br/>DB ロード用最終形"]
+    end
+
+    subgraph external["外部"]
+        geofabrik["Geofabrik"]
+        gsi["GSI DEM5A<br/>(年次手動 upload)"]
+        cockroachdb["CockroachDB Cloud<br/>(本番)"]
+    end
+
+    subgraph independent["独立スケジュール"]
+        baidu_scheduler["Cloud Scheduler<br/>(月次)"]
+        baidu["enrich-baidu-panoid<br/>DB 直接更新"]
+    end
+
+    scheduler --> dispatcher
+    dispatcher --> pipeline_wf
+    pipeline_wf --> download
+    download -->|PBF| raw
+    raw --> extract3 & extract2
+    extract3 -->|Parquet| extracted
+    extract2 -->|Parquet| extracted
+    extracted -.->|region=japan| enrich_elev
+    raw -.->|DEM| enrich_elev
+    enrich_elev -->|Parquet| enriched
+    extracted --> prepare
+    enriched -.->|region=japan| prepare
+    prepare -->|Parquet| serving
+    serving --> load
+    load --> cockroachdb
+    geofabrik -.->|HTTP download| download
+    gsi -.->|gsutil cp| raw
+
+    baidu_scheduler --> baidu
+    baidu --> cockroachdb
+```
+
+**補足:**
+- `enrich-elevation` は region switch パターンで `region=japan` の dataset でのみ実行される（それ以外はスキップ）
+- `enrich-baidu-panoid` は Workflow 非統合で Cloud Scheduler から直接トリガ（中国リージョン専用）
+- GSI DEM は規約上自動取得不可。年次に `gsutil cp` で `yj-raw/dem/{YYYYMMDD}/` に手動アップロード
+
 ## 本番環境デプロイ
 
 ### インフラ管理
