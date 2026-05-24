@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use dashmap::DashMap;
+use flate2::read::GzDecoder;
 use glob::glob;
 use roxmltree::Document;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -101,15 +103,31 @@ impl ElevationProvider {
     /// * `Ok(Self)` - Successfully initialized with elevation data files
     /// * `Err(...)` - No XML files found in the specified directory
     pub fn new(data_dir: &str) -> Result<Self> {
-        let pattern = format!("{}/xml/*.xml", data_dir);
-        let xml_files: Vec<PathBuf> = glob(&pattern)
-            .map(|paths| paths.filter_map(|p| p.ok()).collect())
-            .unwrap_or_default();
+        // Accept both layouts:
+        //   {data_dir}/xml/*.xml{,.gz}   — legacy local-dev convention
+        //   {data_dir}/*.xml{,.gz}       — flat layout used by the GCS FUSE
+        //                                   mount in pipeline-enrich-elevation
+        // Accept both `*.xml` (operator手順, legacy) and `*.xml.gz` (gzip
+        // 圧縮 — DEM 全体で ~10x 削減、issue #257 で gzip + Coldline 採用).
+        let patterns = [
+            format!("{}/xml/*.xml", data_dir),
+            format!("{}/xml/*.xml.gz", data_dir),
+            format!("{}/*.xml", data_dir),
+            format!("{}/*.xml.gz", data_dir),
+        ];
+        let xml_files: Vec<PathBuf> = patterns
+            .iter()
+            .flat_map(|p| {
+                glob(p)
+                    .map(|paths| paths.filter_map(|p| p.ok()).collect::<Vec<_>>())
+                    .unwrap_or_default()
+            })
+            .collect();
 
         anyhow::ensure!(
             !xml_files.is_empty(),
-            "No XML files found in {}. Cannot proceed with elevation import.",
-            pattern
+            "No XML files found in {} (looked for *.xml{{,.gz}} in {{,xml/}}). Cannot proceed with elevation import.",
+            data_dir
         );
 
         // Index files by mesh code, keeping the highest-precision DEM type per mesh.
@@ -175,8 +193,12 @@ impl ElevationProvider {
     ///
     /// # Returns
     /// * `Ok(Some(elevation))` - Elevation in meters
-    /// * `Ok(None)` - Valid coordinate but no data available (XML parse errors are logged and skipped)
-    /// * `Err(...)` - File read error
+    /// * `Ok(None)` - Valid coordinate but no data available (mesh not covered
+    ///   by the loaded DEM, or `-9999` "no data" marker in the grid)
+    /// * `Err(...)` - File read / XML parse / gzip decode error (i.e. the
+    ///   mesh IS supposed to be present, but the file failed to load).
+    ///   "Mesh not in mesh_to_file" returns `Ok(None)` rather than `Err`,
+    ///   so callers can distinguish "out of coverage" from real errors.
     pub fn get_elevation(&self, lat: f64, lon: f64) -> Result<Option<f64>> {
         let mesh_code = calculate_mesh_code(lat, lon);
 
@@ -186,13 +208,23 @@ impl ElevationProvider {
             return Ok(tile.get_elevation(lat, lon).filter(|&e| e != -9999.0));
         }
 
-        // Slow path: parse XML and insert atomically
+        // Out-of-coverage mesh is NOT an error condition — distinguish it
+        // from real I/O / parse errors by returning Ok(None) before the
+        // try-insert. Otherwise every out-of-Japan junction would surface
+        // as Err and noisy warnings (issue #257 review).
+        if !self.mesh_to_file.contains_key(&mesh_code) {
+            return Ok(None);
+        }
+
+        // Slow path: parse XML and insert atomically. The map.get inside
+        // the closure can no longer race-miss (we just confirmed presence)
+        // but `or_try_insert_with` requires returning Result so a defensive
+        // anyhow!() handles the impossible-in-practice case.
         let tile_ref = self.cache.entry(mesh_code.clone()).or_try_insert_with(
             || -> Result<Arc<GsiTile>> {
-                let xml_path = self
-                    .mesh_to_file
-                    .get(&mesh_code)
-                    .ok_or_else(|| anyhow::anyhow!("Mesh code not found: {}", mesh_code))?;
+                let xml_path = self.mesh_to_file.get(&mesh_code).ok_or_else(|| {
+                    anyhow::anyhow!("Mesh entry disappeared after check: {}", mesh_code)
+                })?;
                 let tile = Self::parse_xml_file(xml_path)?;
                 Ok(Arc::new(tile))
             },
@@ -206,9 +238,25 @@ impl ElevationProvider {
     }
 
     /// Parses a GSI JPGIS XML file and extracts elevation data
+    ///
+    /// Transparently handles `.xml.gz` via flate2 (issue #257). Detection is
+    /// extension-based: `.gz` suffix triggers gzip decoding, otherwise the
+    /// file is read as plain UTF-8.
     fn parse_xml_file(xml_path: &PathBuf) -> Result<GsiTile> {
-        let xml_content = std::fs::read_to_string(xml_path)
-            .context(format!("Failed to read XML file: {:?}", xml_path))?;
+        let is_gz = xml_path.extension().and_then(|s| s.to_str()) == Some("gz");
+        let xml_content = if is_gz {
+            let f = std::fs::File::open(xml_path)
+                .context(format!("Failed to open XML.gz file: {:?}", xml_path))?;
+            let mut decoder = GzDecoder::new(f);
+            let mut s = String::new();
+            decoder
+                .read_to_string(&mut s)
+                .context(format!("Failed to decode XML.gz file: {:?}", xml_path))?;
+            s
+        } else {
+            std::fs::read_to_string(xml_path)
+                .context(format!("Failed to read XML file: {:?}", xml_path))?
+        };
 
         let doc = Document::parse(&xml_content).context("Failed to parse XML")?;
 
@@ -443,6 +491,38 @@ mod tests {
 
         assert_eq!(files_1, files_2, "Cache size should not increase");
         assert!(files_1 > 0, "At least one file should be cached");
+    }
+
+    #[test]
+    fn test_gzipped_xml() {
+        // Verify .xml.gz is read transparently and produces the same result
+        // as the plain .xml fixture (issue #257 — gzip + Coldline storage).
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write as _;
+
+        // Stage a temp dir with the fixture XML re-encoded as .xml.gz
+        let temp = tempfile::tempdir().unwrap();
+        let xml_dir = temp.path().join("xml");
+        std::fs::create_dir_all(&xml_dir).unwrap();
+
+        let src = "tests/fixtures/gsi/xml/FG-GML-5238-40-00-DEM5B-20210115.xml";
+        let body = std::fs::read(src).expect("fixture XML must exist");
+
+        let gz_path = xml_dir.join("FG-GML-5238-40-00-DEM5B-20210115.xml.gz");
+        let f = std::fs::File::create(&gz_path).unwrap();
+        let mut encoder = GzEncoder::new(f, Compression::default());
+        encoder.write_all(&body).unwrap();
+        encoder.finish().unwrap();
+
+        let provider = ElevationProvider::new(temp.path().to_str().unwrap()).unwrap();
+        let result = provider.get_elevation(35.005, 138.005);
+        assert!(result.is_ok(), "Should successfully read .xml.gz fixture");
+        let elev = result.unwrap();
+        assert!(
+            elev.is_some(),
+            "Should return elevation from gzipped fixture"
+        );
     }
 
     #[test]

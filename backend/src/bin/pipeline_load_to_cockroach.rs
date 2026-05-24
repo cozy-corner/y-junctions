@@ -4,12 +4,12 @@ use sqlx::postgres::PgPoolOptions;
 
 use y_junction_backend::importer::detector::JunctionForInsert;
 use y_junction_backend::importer::inserter::insert_junctions;
-use y_junction_backend::pipeline::parquet_io::{read_parquet_bytes, JunctionParquetRecord};
+use y_junction_backend::pipeline::parquet_io::{read_parquet_bytes, ServingJunctionParquetRecord};
 use y_junction_backend::pipeline::storage::read_uri;
 
 #[derive(Parser, Debug)]
 #[command(name = "pipeline-load-to-cockroach")]
-#[command(about = "Load extracted Parquet records into CockroachDB", long_about = None)]
+#[command(about = "Load serving Parquet records into CockroachDB", long_about = None)]
 struct Args {
     /// Parquet source URI — gs://...-yj-serving/... or file://...
     #[arg(long)]
@@ -27,9 +27,12 @@ async fn main() -> Result<()> {
     let bytes = read_uri(&args.input).await?;
     tracing::info!("Read {} bytes of Parquet", bytes.len());
 
-    let records: Vec<JunctionParquetRecord> = read_parquet_bytes(bytes)?;
+    let records: Vec<ServingJunctionParquetRecord> = read_parquet_bytes(bytes)?;
     tracing::info!("Decoded {} records", records.len());
 
+    // ServingJunctionParquetRecord -> JunctionForInsert via From impl in
+    // pipeline::parquet_io, which unwraps the -9999.0 elevation sentinel
+    // back to None (issue #257).
     let junctions: Vec<JunctionForInsert> = records.into_iter().map(Into::into).collect();
 
     let database_url = std::env::var("DATABASE_URL")
