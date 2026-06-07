@@ -17,6 +17,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       backend-deploy: ${{ steps.filter.outputs.backend-deploy }}
+      backend-migrate: ${{ steps.filter.outputs.backend-migrate }}
       frontend: ${{ steps.filter.outputs.frontend }}
       pipeline: ${{ steps.filter.outputs.pipeline }}
       pipeline-staging-migrate: ${{ steps.filter.outputs.pipeline-staging-migrate }}
@@ -60,6 +61,12 @@ jobs:
               - 'backend/src/domain/**'
               - 'backend/Cargo.toml'
               - 'backend/Cargo.lock'
+              - '.github/workflows/deploy.yml'
+            # backend-migrate: Gates the prod `sqlx migrate run` step inside
+            # backend-deploy. Without this, every backend code edit would run a
+            # no-op migration against prod (unnecessary auth + log noise).
+            backend-migrate:
+              - 'backend/migrations/**'
               - '.github/workflows/deploy.yml'
             # pipeline-staging-migrate: Triggers staging DB migrations only when
             # migration files (or this workflow) change. Kept narrow on purpose so
@@ -217,6 +224,7 @@ jobs:
         run: cargo install sqlx-cli --version "^0.8" --no-default-features --features postgres,rustls
 
       - name: Run database migrations
+        if: needs.changes.outputs.backend-migrate == 'true'
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
