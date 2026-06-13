@@ -55,16 +55,6 @@ git gtr new <branch>
 `postCreate` hook で `npm install` / `cd frontend && npm install` / `mise trust` / `./scripts/setup-worktree.sh` が自動実行される。
 `git worktree add` を直接叩かないこと（hook が走らず .env 等が未整備になる）。
 
-## Terraform 操作（新規 worktree）
-
-```bash
-# main worktree から terraform.tfvars をコピー
-cp <main-worktree-path>/terraform/terraform.tfvars terraform/
-cd terraform && terraform init
-```
-
-`terraform.tfvars` は機密情報を含み gitignore 対象のため、各 worktree で個別に準備が必要。
-
 ## 本番データ操作は skill 経由
 
 直接 SQL を本番 DB に流さないこと。以下の skill を使う：
