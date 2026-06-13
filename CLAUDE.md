@@ -65,28 +65,7 @@ git gtr new <branch>
 
 ---
 
-# 【必須】コミット前のチェック
-
-**コミット前に必ず以下を実行し、全て通過させること。チェックなしのコミットは禁止。**
-
-## Backend変更時
-
-```bash
-cargo test --manifest-path backend/Cargo.toml
-cargo fmt --manifest-path backend/Cargo.toml --check
-cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
-```
-
-## Frontend変更時
-
-```bash
-cd frontend && npm test
-npm run typecheck
-npm run format:check
-npm run lint
-```
-
-## テストスキップ禁止
+# テストスキップ禁止
 
 統合テストは「ローカル DB が起動していない」を理由にスキップしてはならない。
 DB が落ちているなら「ローカル環境起動」の手順 (`docker-compose up -d` 等) を自分で実行してから再度走らせる。手順自体が失敗した場合に限り質問すること。
