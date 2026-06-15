@@ -67,8 +67,8 @@ rayon = "1.12"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 rand = "0.10"
 object_store = { version = "0.13", features = ["gcp"] }
-parquet = { version = "58", default-features = false, features = ["snap"] }
-parquet_derive = "58"
+parquet = { version = "59", default-features = false, features = ["snap"] }
+parquet_derive = "59"
 bytes = "1"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
