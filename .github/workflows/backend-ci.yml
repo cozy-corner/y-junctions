@@ -21,7 +21,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
@@ -57,7 +57,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
 
       - name: Cache cargo-audit
         id: cache-tools
@@ -73,7 +73,10 @@ jobs:
 
       - name: Security audit
         # Ignore RUSTSEC-2023-0071 (rsa crate via sqlx-mysql): PostgreSQL-only project, MySQL code not executed
-        run: cargo audit --ignore RUSTSEC-2023-0071
+        # Ignore RUSTSEC-2026-0194 / RUSTSEC-2026-0195 (quick-xml via object_store "gcp"): DoS in XML parsing,
+        # only reachable when parsing GCS responses (trusted endpoint). No upstream fix yet — object_store 0.14.0
+        # still pins quick-xml ^0.40. Remove once object_store releases a build on quick-xml >=0.41.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
 
   test:
     name: Backend - Test
@@ -107,7 +110,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
