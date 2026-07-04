@@ -21,7 +21,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
@@ -57,7 +57,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
 
       - name: Cache cargo-audit
         id: cache-tools
@@ -107,7 +107,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.90.0'
+          toolchain: '1.94.0'
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
