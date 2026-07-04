@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  RUST_VERSION: '1.90.0'
+  RUST_VERSION: '1.94.0'
   NODE_VERSION: '23.11.0'
 
 jobs:

@@ -103,7 +103,9 @@ async fn insert_batch(
     query.push_str(" ON CONFLICT (osm_node_id) DO NOTHING");
 
     // Bind all parameters
-    let mut q = sqlx::query(&query);
+    // sqlx 0.9 requires dynamic SQL strings to be explicitly asserted safe.
+    // `query` is built entirely from static fragments and bind placeholders above.
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(query));
     for junction in junctions {
         q = q
             .bind(junction.osm_node_id)

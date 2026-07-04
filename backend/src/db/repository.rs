@@ -152,10 +152,7 @@ fn add_elevation_filters(builder: &mut QueryBuilder<sqlx::Postgres>, filters: &F
 }
 
 // ヘルパー関数: categoryフィルタを追加（OR条件: いずれか1本でも一致すればヒット）
-fn add_category_filter<'a>(
-    builder: &mut QueryBuilder<'a, sqlx::Postgres>,
-    categories: &'a [String],
-) {
+fn add_category_filter(builder: &mut QueryBuilder<sqlx::Postgres>, categories: &[String]) {
     if categories.is_empty() {
         return;
     }
