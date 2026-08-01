@@ -9,6 +9,11 @@ frontend/dist/
 frontend/.vite/
 package-lock.json
 
+# SonarQube Cloud 解析時の生成物
+backend/lcov.info
+frontend/coverage/
+.scannerwork/
+
 # Environment
 .env
 .env.local

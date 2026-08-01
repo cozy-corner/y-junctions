@@ -351,6 +351,49 @@ npm run typecheck
 npm run lint
 ```
 
+### コード品質評価（SonarQube Cloud）
+
+リポジトリ全体（backend + frontend）の品質を [SonarQube Cloud](https://sonarcloud.io/dashboard?id=cozy-corner_y-junctions)
+で評価する。**CI では回さず、見たいときに main からローカル実行する。**
+
+SonarQube Cloud 側の **Automatic Analysis は OFF** にしてある。そのため PR に Sonar のチェックは付かない。
+理由と設定の経緯は [doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照。
+
+#### 準備
+
+```bash
+brew install sonar-scanner
+cargo install cargo-llvm-cov --locked
+```
+
+Rust の toolchain は `.mise.toml` で固定してあるので `mise install` だけでよい。
+
+token は SonarQube Cloud の My Account > Security で発行し、`.env`（`.gitignore` 済み）に置く。
+コマンドラインに直接書くとシェル履歴に残るため、対話入力で書き込む。
+
+```bash
+umask 077
+read -rs SONAR_TOKEN && printf 'SONAR_TOKEN=%s\n' "$SONAR_TOKEN" > .env && unset SONAR_TOKEN
+```
+
+#### 実行
+
+DB を起動した状態で（`docker-compose up -d`）、リポジトリルートで実行する。
+
+```bash
+mise run sonar
+```
+
+`SONAR_TOKEN` は `sonar` タスクのスコープで `.env` から読まれる。他のタスクの環境には入らない。
+
+`sonar` タスクが backend / frontend のカバレッジ生成を済ませてから `sonar-scanner` を呼ぶ。
+カバレッジだけ作りたい場合は `mise run sonar:coverage:backend` / `sonar:coverage:frontend` を個別に叩く。
+解析の設定は `sonar-project.properties` から読まれる。
+
+解析結果はローカルには残らず、SonarQube Cloud 上のプロジェクトの状態を**上書き**する。
+またスキャナは git の状態ではなくファイルシステムを見るため、未コミットの変更もそのまま解析される。
+クリーンな作業ツリーで実行すること。
+
 ### データベースの接続
 
 ```bash
