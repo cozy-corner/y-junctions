@@ -70,18 +70,40 @@ README.md                         (セットアップと実行手順を追記)
 sonar.projectKey=cozy-corner_y-junctions
 sonar.organization=cozy-corner
 
-sonar.sources=backend/src,frontend/src
-sonar.exclusions=frontend/src/**/*.test.ts,frontend/src/**/*.test.tsx,frontend/src/test/**
-sonar.tests=backend/tests,frontend/src
-sonar.test.inclusions=frontend/src/**/*.test.ts,frontend/src/**/*.test.tsx
+sonar.sources=.
+sonar.tests=backend/tests
+sonar.exclusions=backend/tests/**,backend/target/**,backend/lcov.info,\
+  frontend/node_modules/**,frontend/dist/**,frontend/coverage/**,frontend/src/test/**,data/**
 
 sonar.rust.cargo.manifestPaths=backend/Cargo.toml
 sonar.rust.lcov.reportPaths=backend/lcov.info
 sonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
 ```
 
-frontend のテストは `src/` 配下に同居しているため、`sonar.exclusions` で source 側から除き
-`sonar.test.inclusions` で test 側に寄せる（同一ファイルを source と test の両方に割り当てるとエラーになる）。
+#### sonar.sources をリポジトリ全体にする理由
+
+当初 `sonar.sources=backend/src,frontend/src` と書いていたが誤り。
+既に走っている Automatic Analysis の結果を API で確認したところ、未解決 107 件の内訳は:
+
+| 件数 | 場所 |
+| --- | --- |
+| 57 | `.github/workflows`（secret の展開、action の SHA 未固定 など） |
+| 20 | `backend/migrations` |
+| 18 | `terraform`（GCS の logging/versioning 未設定、IAM の過剰権限） |
+| 7 | `frontend/src` |
+| 5 | その他 |
+| 0 | `backend/src`（Rust は Automatic Analysis 非対応のため未解析） |
+
+Sonar は解析のたびにプロジェクトの状態を上書きするため、範囲を `backend/src,frontend/src` に絞ると
+`.github/workflows` / `backend/migrations` / `terraform` は「解析されていない = 問題なし」扱いになり、
+95 件が修正されないままダッシュボードから消える。Automatic Analysis を OFF にする前提なので戻らない。
+
+`sonar.sources=.` にすることで、現状の 107 件を維持したまま Rust（`backend/src` 7,169 行）と
+カバレッジが純粋に上積みされる。
+
+`sonar.test.inclusions` は使わない。この設定は `sonar.tests` に指定した全ディレクトリに効くため、
+frontend のテストパターンを書くと `backend/tests/api_tests.rs` まで弾かれる。
+frontend にはテストが 1 件も無いので、現状は `sonar.tests=backend/tests` のみで足りる。
 
 `sonar.rust.clippy.enabled` は既定で有効なので明示しない。スキャナが自前で clippy を実行する。
 
@@ -100,6 +122,13 @@ SONAR_TOKEN=<token> sonar-scanner   # リポジトリルートで実行
 - Rust 解析はスキャナが `cargo` と `clippy` を PATH から呼ぶため、toolchain が入っていることが前提
 - `sonar.host.url` は指定不要。scanner 6.0 以降は SonarQube Cloud を既定の宛先とする
   （brew 版は 8.1.0）
+
+実行時の注意:
+
+- **結果はローカルに残らない。** スキャナは解析後にレポートを SonarQube Cloud へアップロードし、
+  プロジェクトの状態を**上書き**する。前の結果は履歴にしか残らない
+- **git の状態ではなくファイルシステムを見る。** 未コミットの変更もそのまま解析対象になるので、
+  クリーンな作業ツリーで実行する
 
 ### frontend のカバレッジ設定
 
