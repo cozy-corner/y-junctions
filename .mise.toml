@@ -3,7 +3,8 @@
 
 [tools]
 node = "23.11.0"
-rust = "1.90.0"
+# sqlx 0.9.0 が rustc 1.94.0 以上を要求する。CI (backend-ci.yml) とも揃える
+rust = "1.94.0"
 terraform = "1.14.0"
 
 # =====================================
@@ -30,3 +31,22 @@ npm run build
 gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
 """
 dir = "frontend"
+
+# =====================================
+# Code Quality Tasks
+# =====================================
+
+[tasks."sonar:coverage:backend"]
+description = "Generate backend lcov coverage (requires local DB)"
+run = "cargo llvm-cov --all-features --lcov --output-path lcov.info"
+dir = "backend"
+
+[tasks."sonar:coverage:frontend"]
+description = "Generate frontend lcov coverage"
+run = "npm run test:coverage"
+dir = "frontend"
+
+[tasks."sonar"]
+description = "Run SonarQube Cloud analysis (requires SONAR_TOKEN)"
+depends = ["sonar:coverage:backend", "sonar:coverage:frontend"]
+run = "sonar-scanner"
