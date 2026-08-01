@@ -72,7 +72,7 @@ sonar.organization=cozy-corner
 
 sonar.sources=.
 sonar.tests=backend/tests
-sonar.exclusions=backend/tests/**,backend/target/**,backend/lcov.info,\
+sonar.exclusions=backend/tests/**,backend/migrations/**,backend/target/**,backend/lcov.info,\
   frontend/node_modules/**,frontend/dist/**,frontend/coverage/**,frontend/src/test/**,data/**
 
 sonar.rust.cargo.manifestPaths=backend/Cargo.toml
@@ -80,26 +80,33 @@ sonar.rust.lcov.reportPaths=backend/lcov.info
 sonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
 ```
 
-#### sonar.sources をリポジトリ全体にする理由
+#### 解析対象の決め方
 
-当初 `sonar.sources=backend/src,frontend/src` と書いていたが誤り。
-既に走っている Automatic Analysis の結果を API で確認したところ、未解決 107 件の内訳は:
+判断基準は「**壊れると影響が大きく、かつ Sonar のルールが有効に働くか**」。
+アプリコード（Rust / TypeScript）だけでなく、CI 設定と IaC も条件を満たすので含める。
 
-| 件数 | 場所 |
+| 対象 | 含める理由 |
 | --- | --- |
-| 57 | `.github/workflows`（secret の展開、action の SHA 未固定 など） |
-| 20 | `backend/migrations` |
-| 18 | `terraform`（GCS の logging/versioning 未設定、IAM の過剰権限） |
-| 7 | `frontend/src` |
-| 5 | その他 |
-| 0 | `backend/src`（Rust は Automatic Analysis 非対応のため未解析） |
+| `backend/src` / `frontend/src` | アプリ本体 |
+| `.github/workflows` | secret の展開・action の SHA 未固定など、public リポジトリで実際に問題になる指摘が出る |
+| `terraform` | GCS の logging/versioning 未設定、IAM の過剰権限。レビューが薄くなりやすい領域 |
+| `backend/migrations` | **除外**。下記参照 |
 
-Sonar は解析のたびにプロジェクトの状態を上書きするため、範囲を `backend/src,frontend/src` に絞ると
-`.github/workflows` / `backend/migrations` / `terraform` は「解析されていない = 問題なし」扱いになり、
-95 件が修正されないままダッシュボードから消える。Automatic Analysis を OFF にする前提なので戻らない。
+`backend/migrations` を除外するのは、Sonar が `.sql` を Oracle PL/SQL と誤認するため。
+検出された 20 件の内訳は「リテラルの重複を定数化しろ」17 件、「`VARCHAR2` を使え」1 件、
+「サイズ制約が必須」1 件などで、CockroachDB では成立しないか対処のしようがないものばかりだった。
+恒久的なノイズになり、本当に見るべき指摘を埋もれさせる。
 
-`sonar.sources=.` にすることで、現状の 107 件を維持したまま Rust（`backend/src` 7,169 行）と
-カバレッジが純粋に上積みされる。
+##### 経緯: 当初 `sonar.sources=backend/src,frontend/src` としていた誤り
+
+Sonar は解析のたびにプロジェクトの状態を上書きするため、範囲を絞ると対象外のディレクトリは
+「解析されていない = 問題なし」扱いになり、修正していないのに指摘が消える。
+Automatic Analysis を OFF にする前提なので自動では戻らない。
+
+この誤りは Automatic Analysis の結果を API で確認して気づいた。ただし
+「自動解析が見ていた範囲に合わせる」は理由として筋が悪い。たまたま自動解析がそうしていた、
+というだけで設定が決まってしまう。上の表の基準で独立に判断するのが正しく、
+その結果 `.github/workflows` と `terraform` は含め、`backend/migrations` は外すことになった。
 
 `sonar.test.inclusions` は使わない。この設定は `sonar.tests` に指定した全ディレクトリに効くため、
 frontend のテストパターンを書くと `backend/tests/api_tests.rs` まで弾かれる。
