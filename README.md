@@ -353,32 +353,43 @@ npm run lint
 
 ### コード品質評価（SonarQube Cloud）
 
-リポジトリ全体の品質を SonarQube Cloud で評価する。PR ごとではなく **毎週月曜 09:00 JST の定期実行**
-（`.github/workflows/sonar.yml`）で、backend / frontend をまとめて 1 プロジェクトとして解析する。
-手動で回したい場合は GitHub Actions の `SonarQube Cloud` ワークフローを `Run workflow` で実行する。
+リポジトリ全体（backend + frontend）の品質を SonarQube Cloud で評価する。
+**CI では回さず、見たいときにローカルから手動で実行する**（判断の経緯は
+[doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照）。
 
-設計の経緯と判断根拠は [doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照。
-
-#### 初回セットアップ（リポジトリオーナーの手作業）
+#### 初回セットアップ（1 回だけ）
 
 1. https://sonarcloud.io に GitHub アカウントでサインアップする
 2. organization として `cozy-corner` をインポートする
 3. プロジェクトとして `y-junctions` を追加する（project key は `cozy-corner_y-junctions` 想定。
    異なる key が払い出された場合は `sonar-project.properties` の `sonar.projectKey` を合わせる）
 4. プロジェクト設定で **Automatic Analysis を OFF** にする
-   （Automatic Analysis は Rust とカバレッジ取り込みに非対応のため、CI ベース解析に切り替える）
-5. token を生成し、GitHub リポジトリの secret `SONAR_TOKEN` に登録する
-6. ワークフローを手動実行し、ダッシュボードに Rust と TypeScript の両方が出ることを確認する
+   （Automatic Analysis は Rust とカバレッジ取り込みに非対応なため、スキャナ実行に切り替える）
+5. token を生成し、手元に控える
 
-#### ローカルでカバレッジを確認する
+必要なツールをインストールする:
 
 ```bash
-# backend (cargo-llvm-cov が必要: cargo install cargo-llvm-cov --locked)
-(cd backend && cargo llvm-cov --all-features --lcov --output-path lcov.info)
-
-# frontend
-(cd frontend && npm run test:coverage)
+brew install sonar-scanner
+cargo install cargo-llvm-cov --locked
 ```
+
+#### 解析を実行する
+
+Rust 解析はスキャナが `cargo` と `clippy` を PATH から呼ぶ。
+本プロジェクトは Rust 1.94.0 を使うため、既定 toolchain が古いと `cargo llvm-cov` が失敗する。
+
+```bash
+# 1. カバレッジを生成する（DB が必要: docker-compose up -d）
+(cd backend && cargo +1.94.0 llvm-cov --all-features --lcov --output-path lcov.info)
+(cd frontend && npm run test:coverage)
+
+# 2. リポジトリルートで解析を実行する
+#    設定は sonar-project.properties から読まれる
+SONAR_TOKEN=<発行したtoken> sonar-scanner
+```
+
+結果は https://sonarcloud.io のプロジェクト画面で確認する。
 
 ### データベースの接続
 
