@@ -9,9 +9,10 @@ frontend/dist/
 frontend/.vite/
 package-lock.json
 
-# Coverage reports (SonarQube Cloud 解析用に CI で生成する中間成果物)
+# SonarQube Cloud 解析時の生成物
 backend/lcov.info
 frontend/coverage/
+.scannerwork/
 
 # Environment
 .env
