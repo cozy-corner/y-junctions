@@ -109,14 +109,36 @@ frontend にはテストが 1 件も無いので、現状は `sonar.tests=backen
 
 ### 実行手順
 
-必要なツール: `sonar-scanner`（`brew install sonar-scanner`）、`cargo-llvm-cov`、および
-Rust 1.94.0 の toolchain（`clippy` component 込み）。
+必要なツール: `sonar-scanner`（`brew install sonar-scanner`）と `cargo-llvm-cov`。
+Rust の toolchain は `.mise.toml` で固定する。
+
+手順は `.mise.toml` のタスクにまとめる。README に生コマンドを並べると、
+`cargo +1.94.0` のようなバージョン回避策が手順書に固定化されてしまうため。
+
+```toml
+[tasks."sonar:coverage:backend"]   # cargo llvm-cov --all-features --lcov --output-path lcov.info
+[tasks."sonar:coverage:frontend"]  # npm run test:coverage
+[tasks."sonar"]                    # 上記 2 つに depends して sonar-scanner
+```
 
 ```bash
-(cd backend && cargo +1.94.0 llvm-cov --all-features --lcov --output-path lcov.info)
-(cd frontend && npm run test:coverage)
-SONAR_TOKEN=<token> sonar-scanner   # リポジトリルートで実行
+set -a; source .env; set +a   # SONAR_TOKEN
+mise run sonar
 ```
+
+#### `.mise.toml` の Rust バージョンを 1.94.0 に修正した
+
+作業中に判明した既存の不具合。`.mise.toml` は `rust = "1.90.0"` を指していたが、
+この版では**ビルド自体が通らない**。
+
+```
+$ cargo +1.90.0 check
+error: rustc 1.90.0 is not supported by the following packages:
+  sqlx@0.9.0 requires rustc 1.94.0
+```
+
+CI (`backend-ci.yml`) は 1.94.0 を指定しているため CI は通り、ローカルだけが壊れている状態だった。
+当初 README に `cargo +1.94.0` と書いていたのはこの回避策にすぎないので、`.mise.toml` 側を直した。
 
 - スキャナは `sonar-project.properties` を自動で読む
 - Rust 解析はスキャナが `cargo` と `clippy` を PATH から呼ぶため、toolchain が入っていることが前提
@@ -164,31 +186,65 @@ Quality Gate を非ブロッキングにしているため実害はない。テ�
 `cargo-llvm-cov` は解析時にしか使わないため `Cargo.toml` は変更せず、
 `cargo install cargo-llvm-cov --locked` で各自の環境に入れる。
 
-## 手作業が必要なセットアップ
+## SonarQube Cloud 側の設定（実施済み・再現手順ではない）
 
-コードでは完結しない。以下はリポジトリオーナーが SonarQube Cloud 上で行う（1 回だけ）。
+以下は 2026-08-01 に実施済み。日常的に踏む手順ではないので README には載せない。
+プロジェクトを作り直す場合や、設定の理由を追う場合の記録として残す。
 
-1. https://sonarcloud.io に GitHub アカウントでサインアップ
-2. organization として `cozy-corner` をインポート
-3. プロジェクトとして `y-junctions` を追加（project key は `cozy-corner_y-junctions` になる想定。
-   実際に払い出された key が異なる場合は `sonar-project.properties` を合わせる）
-4. プロジェクト設定で **Automatic Analysis を OFF** にする（Rust 非対応のため）
-5. token を生成して手元に控える（`SONAR_TOKEN` として渡す）
+| 項目 | 設定値 |
+| --- | --- |
+| organization key | `cozy-corner`（表示名は「Koji Sasaki」） |
+| project key | `cozy-corner_y-junctions` |
+| プラン | Free（public リポジトリのため） |
+| Automatic Analysis | **OFF** |
+| token 種別 | Personal Access Token（My Account > Security で発行） |
 
-この手順は README.md にも記載する。
+`Automatic Analysis` を OFF にした理由は 2 つ。
+
+- Rust もカバレッジも取り込めないため、そのままでは目的を果たせない
+- ON のままだと手動解析が `You are running manual analysis while Automatic Analysis is enabled`
+  で拒否される。両者は排他
+
+その副作用として、**PR に付いていた `SonarCloud Code Analysis` チェックは出なくなる**。
+PR ごとの評価は行わない方針なので想定内だが、チェックが消えたことに後から驚かないよう記録しておく。
+
+Scoped Organization Token（プロジェクト単位で解析実行権限のみを持つトークン）は Team プラン以上の
+機能なので使えない。Personal Access Token はアカウント権限をそのまま持つ点に注意する。
 
 ## 検証方法
 
 - ローカルでの事前確認（実施済み）:
-  - `cd backend && cargo +1.94.0 llvm-cov --all-features --lcov --output-path lcov.info`
+  - `mise run sonar:coverage:backend`
     → 148 テスト全通過、199KB の `lcov.info` を生成（既定 toolchain が 1.90.0 だと
     `rustc 1.90.0 is not supported` で落ちるため 1.94.0 の明示が必要）
   - `cd frontend && npm run test:coverage` → `frontend/coverage/lcov.info` を生成（テストが無いため空）
   - `npm run typecheck` / `npm run lint` / `npm run format:check` が全て通ること
-- **未実施**: `sonar-scanner` の実行そのもの。SonarQube Cloud のアカウントと token が無いため、
-  解析はまだ 1 度も走っていない。上記セットアップ完了後に初回実行し、以下を確認する:
-  - Rust と TypeScript の両方が Languages に出ていること
-  - backend の Coverage が 0% ではないこと（lcov のパス指定が効いている証拠）
+- **初回解析（実施済み・2026-08-01）**: 設定は意図通りに機能した。
+
+| 指標 | 導入前（Automatic Analysis） | 初回解析後 |
+| --- | --- | --- |
+| 解析行数 | 3,707 | **9,001** |
+| Rust | 0 行（非対応） | **5,497 行** |
+| カバレッジ | 計測なし | **62.4%** |
+| 指摘件数 | 107 | 113 |
+
+既存 107 件は 1 件も落ちず（`.github/workflows` 57 / `backend/migrations` 20 / `terraform` 18 を維持）、
+そこに Rust の 6 件が上積みされた。`sonar.sources=.` の判断が正しかったことが確認できた。
+
+### 初回解析でわかった Rust 解析の実力
+
+Rust 5,497 行に対して指摘は 6 件のみ、しかも**全て同一ルール `rust:S3776`（Cognitive Complexity）**だった。
+理由は 2 つある。
+
+- **ルール数が少ない。** Quality Profile の有効ルール数は Rust 78 / TypeScript 484 / Terraform 51。
+  Sonar の Rust アナライザは 2025-04 に追加された新しいもので、まだ規模が小さい
+- **clippy 由来の指摘がゼロ。** Rust ルールの多くは `sysTags: ["clippy"]` が付いた clippy の lint だが、
+  既存 CI が `cargo clippy --all-targets --all-features -- -D warnings` を強制しているため既に潰れている
+
+つまり Rust について Sonar が既存 CI に上積みする価値は、現状「関数の複雑度の可視化」と
+「カバレッジの計測」の 2 点にほぼ限られる。指摘の大半（113 件中 95 件）は今も
+GitHub Actions / SQL / Terraform 由来で、これは Automatic Analysis でも取れていた範囲。
+導入効果を過大評価しないよう記録しておく。
   - clippy 由来の指摘が Issues に現れること
 
 ## スコープ外

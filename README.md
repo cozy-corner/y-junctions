@@ -353,47 +353,40 @@ npm run lint
 
 ### コード品質評価（SonarQube Cloud）
 
-リポジトリ全体（backend + frontend）の品質を SonarQube Cloud で評価する。
-**CI では回さず、見たいときにローカルから手動で実行する**（判断の経緯は
-[doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照）。
+リポジトリ全体（backend + frontend）の品質を [SonarQube Cloud](https://sonarcloud.io/dashboard?id=cozy-corner_y-junctions)
+で評価する。**CI では回さず、見たいときに main からローカル実行する。**
 
-#### 初回セットアップ（1 回だけ）
+SonarQube Cloud 側の **Automatic Analysis は OFF** にしてある。そのため PR に Sonar のチェックは付かない。
+理由と設定の経緯は [doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照。
 
-1. https://sonarcloud.io に GitHub アカウントでサインアップする
-2. organization として `cozy-corner` をインポートする
-3. プロジェクトとして `y-junctions` を追加する（project key は `cozy-corner_y-junctions` 想定。
-   異なる key が払い出された場合は `sonar-project.properties` の `sonar.projectKey` を合わせる）
-4. プロジェクト設定で **Automatic Analysis を OFF** にする
-   （Automatic Analysis は Rust とカバレッジ取り込みに非対応なため、スキャナ実行に切り替える）
-5. token を生成し、手元に控える
-
-必要なツールをインストールする:
+#### 準備
 
 ```bash
 brew install sonar-scanner
 cargo install cargo-llvm-cov --locked
+
+# token は SonarQube Cloud の My Account > Security で発行し .env に置く（.gitignore 済み）
+echo 'SONAR_TOKEN=xxx' >> .env
 ```
 
-#### 解析を実行する
+Rust の toolchain は `.mise.toml` で固定してあるので `mise install` だけでよい。
 
-Rust 解析はスキャナが `cargo` と `clippy` を PATH から呼ぶ。
-本プロジェクトは Rust 1.94.0 を使うため、既定 toolchain が古いと `cargo llvm-cov` が失敗する。
+#### 実行
+
+DB を起動した状態で（`docker-compose up -d`）、リポジトリルートで実行する。
 
 ```bash
-# 1. カバレッジを生成する（DB が必要: docker-compose up -d）
-(cd backend && cargo +1.94.0 llvm-cov --all-features --lcov --output-path lcov.info)
-(cd frontend && npm run test:coverage)
-
-# 2. リポジトリルートで解析を実行する
-#    設定は sonar-project.properties から読まれる
-SONAR_TOKEN=<発行したtoken> sonar-scanner
+set -a; source .env; set +a
+mise run sonar
 ```
+
+`sonar` タスクが backend / frontend のカバレッジ生成を済ませてから `sonar-scanner` を呼ぶ。
+カバレッジだけ作りたい場合は `mise run sonar:coverage:backend` / `sonar:coverage:frontend` を個別に叩く。
+解析の設定は `sonar-project.properties` から読まれる。
 
 解析結果はローカルには残らず、SonarQube Cloud 上のプロジェクトの状態を**上書き**する。
 またスキャナは git の状態ではなくファイルシステムを見るため、未コミットの変更もそのまま解析される。
 クリーンな作業ツリーで実行すること。
-
-結果は https://sonarcloud.io のプロジェクト画面で確認する。
 
 ### データベースの接続
 
