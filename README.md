@@ -376,9 +376,10 @@ Rust の toolchain は `.mise.toml` で固定してあるので `mise install` �
 DB を起動した状態で（`docker-compose up -d`）、リポジトリルートで実行する。
 
 ```bash
-set -a; source .env; set +a
 mise run sonar
 ```
+
+`SONAR_TOKEN` は `.mise.toml` の `[env] _.file = ".env"` により `.env` から自動で読まれる。
 
 `sonar` タスクが backend / frontend のカバレッジ生成を済ませてから `sonar-scanner` を呼ぶ。
 カバレッジだけ作りたい場合は `mise run sonar:coverage:backend` / `sonar:coverage:frontend` を個別に叩く。

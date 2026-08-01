@@ -1,6 +1,10 @@
 # mise configuration for Y-Junction project
 # Install mise: https://mise.jdx.dev/
 
+[env]
+# SONAR_TOKEN 等を読む。ファイルが無くてもエラーにはならない
+_.file = ".env"
+
 [tools]
 node = "23.11.0"
 # sqlx 0.9.0 が rustc 1.94.0 以上を要求する。CI (backend-ci.yml) とも揃える

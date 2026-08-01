@@ -122,9 +122,13 @@ Rust の toolchain は `.mise.toml` で固定する。
 ```
 
 ```bash
-set -a; source .env; set +a   # SONAR_TOKEN
 mise run sonar
 ```
+
+`SONAR_TOKEN` は `[env] _.file = ".env"` で `.env` から読ませる。
+`.env` が存在しない場合もエラーにならないことを確認済みなので、Sonar を使わない環境や
+他の worktree には影響しない。トークンをリポジトリ内の平文ファイルに置く形になるが、
+root の `.gitignore` に `.env` が入っているためコミットされない。
 
 #### `.mise.toml` の Rust バージョンを 1.94.0 に修正した
 
