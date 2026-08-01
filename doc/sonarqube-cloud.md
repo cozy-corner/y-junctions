@@ -100,13 +100,27 @@ Quality Gate の待機・失敗判定（`sonarqube-quality-gate-action`）は入
 ```ts
 coverage: {
   provider: 'v8',
-  reporter: ['text', 'lcov'],
+  reporter: ['text', 'lcovonly'],
   reportsDirectory: './coverage',
 },
 ```
 
-`package.json` に `"test:coverage": "vitest run --coverage"` を追加する。
+`lcov` ではなく `lcovonly` を使う。`lcov` は HTML レポート（`coverage/lcov-report/`）も生成し、
+その中の JS ファイルが `eslint . --ext .ts,.tsx` に拾われて `--max-warnings=0` を落とすため。
+併せて `eslint.config.js` の `ignores` に `coverage` を追加し、`.gitignore` に
+`frontend/coverage/` と `backend/lcov.info` を追加する。
+
+`package.json` に `"test:coverage": "vitest run --passWithNoTests --coverage"` を追加する。
 既存の `test` スクリプトは変更しない（PR CI の挙動を変えないため）。
+
+#### 判明した前提: frontend にテストが 1 件も存在しない
+
+vitest の設定（`vitest.config.ts` / `src/test/setup.ts`）はあるが、`*.test.ts(x)` は 1 つもない。
+そのため導入直後の frontend カバレッジは **0%**、`coverage/lcov.info` は空ファイルになる。
+
+これは設定不備ではなく現状の事実であり、Sonar はそれをそのまま報告する（それ自体が有用な情報）。
+Quality Gate を非ブロッキングにしているため実害はない。テストを書くかどうかは本件のスコープ外とし、
+別途判断する。
 
 ### backend のカバレッジ設定
 
@@ -134,8 +148,12 @@ coverage: {
   - Rust と TypeScript の両方が Languages に出ていること
   - Coverage が 0% ではないこと（lcov のパス指定が効いている証拠）
   - clippy 由来の指摘が Issues に現れること
-- ローカルでの事前確認: `cd frontend && npm run test:coverage` で `frontend/coverage/lcov.info` が生成されること、
-  `cd backend && cargo llvm-cov --all-features --lcov --output-path lcov.info` が成功すること
+- ローカルでの事前確認（実施済み）:
+  - `cd backend && cargo llvm-cov --all-features --lcov --output-path lcov.info`
+    → 148 テスト全通過、199KB の `lcov.info` を生成（ローカルの既定 toolchain が 1.90.0 だと
+    `rustc 1.90.0 is not supported` で落ちるため 1.94.0 が必要。CI では明示指定済み）
+  - `cd frontend && npm run test:coverage` → `frontend/coverage/lcov.info` を生成（テストが無いため空）
+  - `npm run typecheck` / `npm run lint` / `npm run format:check` が全て通ること
 
 ## スコープ外
 

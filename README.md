@@ -351,6 +351,35 @@ npm run typecheck
 npm run lint
 ```
 
+### コード品質評価（SonarQube Cloud）
+
+リポジトリ全体の品質を SonarQube Cloud で評価する。PR ごとではなく **毎週月曜 09:00 JST の定期実行**
+（`.github/workflows/sonar.yml`）で、backend / frontend をまとめて 1 プロジェクトとして解析する。
+手動で回したい場合は GitHub Actions の `SonarQube Cloud` ワークフローを `Run workflow` で実行する。
+
+設計の経緯と判断根拠は [doc/sonarqube-cloud.md](doc/sonarqube-cloud.md) を参照。
+
+#### 初回セットアップ（リポジトリオーナーの手作業）
+
+1. https://sonarcloud.io に GitHub アカウントでサインアップする
+2. organization として `cozy-corner` をインポートする
+3. プロジェクトとして `y-junctions` を追加する（project key は `cozy-corner_y-junctions` 想定。
+   異なる key が払い出された場合は `sonar-project.properties` の `sonar.projectKey` を合わせる）
+4. プロジェクト設定で **Automatic Analysis を OFF** にする
+   （Automatic Analysis は Rust とカバレッジ取り込みに非対応のため、CI ベース解析に切り替える）
+5. token を生成し、GitHub リポジトリの secret `SONAR_TOKEN` に登録する
+6. ワークフローを手動実行し、ダッシュボードに Rust と TypeScript の両方が出ることを確認する
+
+#### ローカルでカバレッジを確認する
+
+```bash
+# backend (cargo-llvm-cov が必要: cargo install cargo-llvm-cov --locked)
+(cd backend && cargo llvm-cov --all-features --lcov --output-path lcov.info)
+
+# frontend
+(cd frontend && npm run test:coverage)
+```
+
 ### データベースの接続
 
 ```bash
