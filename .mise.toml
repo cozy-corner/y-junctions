@@ -2,7 +2,7 @@
 # Install mise: https://mise.jdx.dev/
 
 [env]
-# SONAR_TOKEN 等を読む。ファイルが無くてもエラーにはならない
+# ファイルが無くてもエラーにはならない
 _.file = ".env"
 
 [tools]
