@@ -1,10 +1,6 @@
 # mise configuration for Y-Junction project
 # Install mise: https://mise.jdx.dev/
 
-[env]
-# ファイルが無くてもエラーにはならない
-_.file = ".env"
-
 [tools]
 node = "23.11.0"
 # sqlx 0.9.0 が rustc 1.94.0 以上を要求する。CI (backend-ci.yml) とも揃える
@@ -51,6 +47,9 @@ run = "npm run test:coverage"
 dir = "frontend"
 
 [tasks."sonar"]
+# SONAR_TOKEN が他タスクの環境に漏れないようタスクスコープで読む。
+# ファイルが無くてもエラーにはならない
+env = { _.file = ".env" }
 description = "Run SonarQube Cloud analysis (requires SONAR_TOKEN)"
 depends = ["sonar:coverage:backend", "sonar:coverage:frontend"]
 run = "sonar-scanner"

@@ -132,10 +132,13 @@ Rust の toolchain は `.mise.toml` で固定する。
 mise run sonar
 ```
 
-`SONAR_TOKEN` は `[env] _.file = ".env"` で `.env` から読ませる。
-`.env` が存在しない場合もエラーにならないことを確認済みなので、Sonar を使わない環境や
-他の worktree には影響しない。トークンをリポジトリ内の平文ファイルに置く形になるが、
-root の `.gitignore` に `.env` が入っているためコミットされない。
+`SONAR_TOKEN` は `sonar` タスクの `env = { _.file = ".env" }` で読ませる。
+トップレベルの `[env]` に置くと全タスクの環境にトークンが入るため、タスクスコープに限定した
+（`sonar` タスクからは見え、無関係なタスクからは空になることを確認済み）。
+
+`.env` が存在しない場合もエラーにならないので、Sonar を使わない環境や他の worktree には影響しない。
+トークンをリポジトリ内の平文ファイルに置く形になるが、root の `.gitignore` に `.env` が
+入っているためコミットされない。書き込みは `read -rs` による対話入力で行い、シェル履歴に残さない。
 
 #### `.mise.toml` の Rust バージョンを 1.94.0 に修正した
 
@@ -253,10 +256,9 @@ Rust 5,497 行に対して指摘は 6 件のみ、しかも**全て同一ルー�
   既存 CI が `cargo clippy --all-targets --all-features -- -D warnings` を強制しているため既に潰れている
 
 つまり Rust について Sonar が既存 CI に上積みする価値は、現状「関数の複雑度の可視化」と
-「カバレッジの計測」の 2 点にほぼ限られる。指摘の大半（113 件中 95 件）は今も
-GitHub Actions / SQL / Terraform 由来で、これは Automatic Analysis でも取れていた範囲。
+「カバレッジの計測」の 2 点にほぼ限られる。指摘の大半（93 件中 75 件）は今も
+GitHub Actions / Terraform 由来で、これは Automatic Analysis でも取れていた範囲。
 導入効果を過大評価しないよう記録しておく。
-  - clippy 由来の指摘が Issues に現れること
 
 ## スコープ外
 

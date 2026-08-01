@@ -364,12 +364,17 @@ SonarQube Cloud 側の **Automatic Analysis は OFF** にしてある。その�
 ```bash
 brew install sonar-scanner
 cargo install cargo-llvm-cov --locked
-
-# token は SonarQube Cloud の My Account > Security で発行し .env に置く（.gitignore 済み）
-echo 'SONAR_TOKEN=xxx' >> .env
 ```
 
 Rust の toolchain は `.mise.toml` で固定してあるので `mise install` だけでよい。
+
+token は SonarQube Cloud の My Account > Security で発行し、`.env`（`.gitignore` 済み）に置く。
+コマンドラインに直接書くとシェル履歴に残るため、対話入力で書き込む。
+
+```bash
+umask 077
+read -rs SONAR_TOKEN && printf 'SONAR_TOKEN=%s\n' "$SONAR_TOKEN" > .env && unset SONAR_TOKEN
+```
 
 #### 実行
 
@@ -379,7 +384,7 @@ DB を起動した状態で（`docker-compose up -d`）、リポジトリルー�
 mise run sonar
 ```
 
-`SONAR_TOKEN` は `.mise.toml` の `[env] _.file = ".env"` により `.env` から自動で読まれる。
+`SONAR_TOKEN` は `sonar` タスクのスコープで `.env` から読まれる。他のタスクの環境には入らない。
 
 `sonar` タスクが backend / frontend のカバレッジ生成を済ませてから `sonar-scanner` を呼ぶ。
 カバレッジだけ作りたい場合は `mise run sonar:coverage:backend` / `sonar:coverage:frontend` を個別に叩く。
