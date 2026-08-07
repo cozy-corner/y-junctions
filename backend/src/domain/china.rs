@@ -20,12 +20,14 @@ pub fn is_in_china_mainland(lng: f64, lat: f64) -> bool {
         return false;
     }
 
-    // Hong Kong
-    if (113.8..=114.5).contains(&lng) && (22.1..=22.6).contains(&lat) {
+    // Hong Kong (OSM R913110: lng 113.817-114.502, lat 22.137-22.568)
+    if (113.8..=114.51).contains(&lng) && (22.1..=22.6).contains(&lat) {
         return false;
     }
-    // Macao
-    if (113.5..=113.6).contains(&lng) && (22.1..=22.2).contains(&lat) {
+    // Macao (OSM R1867188: lng 113.528-113.630, lat 22.077-22.217)。北辺 22.22 は
+    // 珠海拱北を数百m巻き込むが、マカオ半島北部を本土扱いして街景リンクを落とすより
+    // 副作用が小さい。
+    if (113.52..=113.64).contains(&lng) && (22.07..=22.22).contains(&lat) {
         return false;
     }
     // Taiwan (上限 122.1 で基隆北東沿岸・棉花嶼/彭佳嶼 をカバー)
@@ -349,6 +351,28 @@ mod tests {
         assert!(!is_in_china_mainland(114.1694, 22.3193)); // Hong Kong
         assert!(!is_in_china_mainland(113.5439, 22.1987)); // Macao
         assert!(!is_in_china_mainland(121.5654, 25.0330)); // Taipei
+    }
+
+    #[test]
+    fn macao_edges_are_excluded() {
+        // 旧 bbox (113.5-113.6 / 22.1-22.2) から漏れていた縁。
+        assert!(!is_in_china_mainland(113.5490, 22.2130)); // 關閘 (半島北端)
+        assert!(!is_in_china_mainland(113.5680, 22.2100)); // 黑沙環 (北東部)
+        assert!(!is_in_china_mainland(113.6100, 22.1400)); // 路氹東岸 (lng > 113.6)
+        assert!(!is_in_china_mainland(113.5580, 22.0900)); // 路環南部
+    }
+
+    #[test]
+    fn hong_kong_eastern_edge_is_excluded() {
+        assert!(!is_in_china_mainland(114.5020, 22.5400)); // 東平洲付近 (lng > 114.5)
+    }
+
+    #[test]
+    fn zhuhai_stays_china_mainland() {
+        // マカオ bbox を広げた分の regression guard。
+        // 深圳は既存の香港 bbox (lat 上限 22.6) に元から含まれるのでここでは扱わない。
+        assert!(is_in_china_mainland(113.5767, 22.2707)); // 珠海 (拱北の北)
+        assert!(is_in_china_mainland(113.7518, 23.0207)); // 東莞
     }
 
     #[test]
