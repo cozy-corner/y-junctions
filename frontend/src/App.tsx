@@ -2,14 +2,22 @@ import { useState, useCallback, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { FilterPanel } from './components/FilterPanel';
 import { StatsDisplay } from './components/StatsDisplay';
+import { CityJumpSelect } from './components/CityJumpSelect';
 import { useFilters } from './hooks/useFilters';
 import type { JunctionFeatureCollection } from './types';
+import type { City } from './data/cities';
+import type { JumpTarget } from './components/MapView';
 import './App.css';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [jumpTarget, setJumpTarget] = useState<JumpTarget | null>(null);
+
+  const handleCitySelect = useCallback((city: City) => {
+    setJumpTarget(prev => ({ lat: city.lat, lon: city.lon, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
 
   // フィルタ状態管理
   const {
@@ -58,6 +66,9 @@ function App() {
       <main className="app-main">
         {/* 左サイドバー */}
         <aside id="app-sidebar" className={`app-sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+          {/* 都市ジャンプ */}
+          <CityJumpSelect onSelect={handleCitySelect} />
+
           {/* 統計表示 */}
           <StatsDisplay count={totalCount} isLoading={isLoading} />
 
@@ -84,6 +95,7 @@ function App() {
             filters={filterParams}
             onLoadingChange={setIsLoading}
             onDataChange={handleDataChange}
+            jumpTarget={jumpTarget}
           />
         </div>
       </main>
