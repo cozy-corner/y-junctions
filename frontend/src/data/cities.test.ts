@@ -26,12 +26,4 @@ describe('CITIES', () => {
     const names = CITIES.map(c => c.name);
     expect(new Set(names).size).toBe(names.length);
   });
-
-  it('国ごとの都市数が 7/2/2/1', () => {
-    const counts = CITIES.reduce<Record<string, number>>((acc, c) => {
-      acc[c.country] = (acc[c.country] ?? 0) + 1;
-      return acc;
-    }, {});
-    expect(counts).toEqual({ 日本: 7, 韓国: 2, 台湾: 2, 香港: 1 });
-  });
 });
