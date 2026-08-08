@@ -28,4 +28,13 @@ describe('CityJumpSelect', () => {
     const groups = document.querySelectorAll('optgroup');
     expect(groups).toHaveLength(4);
   });
+
+  it('同じ都市を連続選択すると毎回 onSelect が呼ばれる', () => {
+    const onSelect = vi.fn();
+    render(<CityJumpSelect onSelect={onSelect} />);
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: '東京' } });
+    fireEvent.change(select, { target: { value: '東京' } });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
 });
