@@ -34,6 +34,9 @@ describe('CityJumpSelect', () => {
     render(<CityJumpSelect onSelect={onSelect} />);
     const select = screen.getByRole('combobox');
     fireEvent.change(select, { target: { value: '東京' } });
+    // controlled で value="" に戻ることが「同一都市の再選択」を可能にする本質。
+    // これを検証しないと、リセットが壊れても 2 回発火だけは通ってしまう。
+    expect(select).toHaveValue('');
     fireEvent.change(select, { target: { value: '東京' } });
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
