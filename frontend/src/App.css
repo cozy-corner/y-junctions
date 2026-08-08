@@ -351,3 +351,17 @@ body {
     font-size: 16px;
   }
 }
+
+/* City Jump Select */
+.city-jump {
+  padding: 12px 20px;
+}
+
+.city-jump-select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}

@@ -15,6 +15,11 @@ const INITIAL_ZOOM = 14;
 const FOCUS_START_ZOOM = 5;
 const FOCUS_TARGET_ZOOM = 16;
 
+// 都市ジャンプ時の共通ズーム
+const CITY_JUMP_ZOOM = 14;
+
+export type JumpTarget = { lat: number; lon: number; seq: number };
+
 // angle_typeごとのマーカー色（Y字路書籍をイメージした紫、青、黄色のパレット）
 const MARKER_COLORS: Record<AngleType, string> = {
   verysharp: '#8B5CF6', // 紫（violet-500） - 最小角度が最も小さい
@@ -121,6 +126,18 @@ const FocusAnimation = memo(function FocusAnimation({ target }: FocusAnimationPr
   return null;
 });
 
+// サイドバーの都市選択で指定された座標へ flyTo するコンポーネント
+const CityFlyTo = memo(function CityFlyTo({ target }: { target: JumpTarget | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!target) return;
+    map.flyTo([target.lat, target.lon], CITY_JUMP_ZOOM, { animate: true, duration: 2 });
+  }, [map, target]);
+
+  return null;
+});
+
 // isSelected=true のときポップアップを自動で開くマーカー
 interface JunctionMarkerProps {
   position: [number, number];
@@ -155,6 +172,7 @@ interface MapViewProps {
   filters?: Omit<FilterParams, 'bbox'>;
   onLoadingChange?: (isLoading: boolean) => void;
   onDataChange?: (data: JunctionFeatureCollection | null) => void;
+  jumpTarget?: JumpTarget | null;
 }
 
 export const MapView = memo(function MapView({
@@ -162,6 +180,7 @@ export const MapView = memo(function MapView({
   filters,
   onLoadingChange,
   onDataChange,
+  jumpTarget = null,
 }: MapViewProps) {
   // URLから osm_node_id を取得（文字列のまま扱う）
   const urlOsmNodeId = useMemo(() => {
@@ -256,6 +275,9 @@ export const MapView = memo(function MapView({
 
         {/* イベントハンドラ */}
         <MapEventsHandler onBoundsChange={handleBoundsChange} />
+
+        {/* 都市ジャンプ */}
+        <CityFlyTo target={jumpTarget} />
 
         {/* マーカー表示 */}
         {markers}
