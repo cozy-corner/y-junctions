@@ -5,7 +5,7 @@ import { StatsDisplay } from './components/StatsDisplay';
 import { CityJumpSelect } from './components/CityJumpSelect';
 import { useFilters } from './hooks/useFilters';
 import type { JunctionFeatureCollection } from './types';
-import type { City } from './data/cities';
+import type { City } from './constants/cities';
 import type { JumpTarget } from './components/MapView';
 import './App.css';
 

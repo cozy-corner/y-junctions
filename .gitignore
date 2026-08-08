@@ -44,4 +44,3 @@ terraform/*.tfstate.backup
 terraform/*.tfvars
 !terraform/*.tfvars.example
 data/
-!frontend/src/data/

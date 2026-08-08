@@ -1,5 +1,5 @@
 import { memo, useMemo, type ChangeEvent } from 'react';
-import { CITIES, type City } from '../data/cities';
+import { CITIES, type City } from '../constants/cities';
 
 export interface CityJumpSelectProps {
   onSelect: (city: City) => void;
