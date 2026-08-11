@@ -44,3 +44,9 @@ output "cockroachdb_connection_uri" {
   value       = local.cockroachdb_connection_uri
   sensitive   = true
 }
+
+output "streetview_api_key" {
+  description = "Street View Static API key for the local enrich batch (paste into backend/.env as GOOGLE_MAPS_API_KEY)"
+  value       = google_apikeys_key.streetview_metadata.key_string
+  sensitive   = true
+}
