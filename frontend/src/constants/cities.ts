@@ -18,4 +18,5 @@ export const CITIES: City[] = [
   { name: '台北', country: '台湾', lat: 25.033, lon: 121.565 },
   { name: '高雄', country: '台湾', lat: 22.627, lon: 120.301 },
   { name: '香港', country: '香港', lat: 22.32, lon: 114.17 },
+  { name: 'シンガポール', country: 'シンガポール', lat: 1.352, lon: 103.82 },
 ];
