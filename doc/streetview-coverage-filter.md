@@ -137,7 +137,16 @@ output "streetview_api_key" {   # ローカル .env に貼るためだけの sen
 }
 ```
 
-取得〜配置：`terraform apply` → `terraform output -raw streetview_api_key` の値を `backend/.env` の `GOOGLE_MAPS_API_KEY` へ。`google_apikeys_key` は hashicorp/google の **GA リソース**（`google-beta` 不要）。サーバー実行しないので IP 制限より **API 制限（Street View のみ）** を効かせる。
+取得〜配置：`terraform apply` → `terraform output -raw streetview_api_key` の値を `backend/.env` の `GOOGLE_MAPS_API_KEY` へ。`google_apikeys_key` は hashicorp/google の **GA リソース**（`google-beta` 不要）。
+
+### キー漏洩時の課金リスクと緩和
+
+API キーの制限は**サービス単位**（`api_targets.service`）で、Street View Static API には無料の metadata と**課金対象の画像取得**の両エンドポイントが含まれる。よって「Street View に制限」しても、漏洩時は画像取得で課金され得る。緩和策を検証した結果：
+
+- **IP 制限（`server_key_restrictions.allowed_ips`）**：enrich はローカルの動的 IP で走るため固定できず不可。
+- **メソッド制限（`api_targets.methods`）で metadata 限定**：Terraform は `methods` を持つが、Street View の metadata は RPC メソッドではなく URL パスの違いで、絞れるメソッド識別子が公式に存在せず不可（検証済み）。
+- **日次クォータ上限（採用）**：本 enrich は **metadata（無料・非課金）しか叩かない**ため、Cloud Console で Street View Static API の**課金対象（画像）リクエストの日次上限を最小値**に設定する。運用に影響せず、漏洩時の画像課金を上限で頭打ちにできる（Google 公式もコスト対策として日次クォータを案内）。具体の quota metric 名は Console で確認。
+- **ローテーション**：キー値は `google_apikeys_key.key_string` として TFC state と output に保存される（workspace 閲覧権限者が読める）。workspace の state アクセスを絞ったうえで、漏洩・退職時等は `google_apikeys_key` を作り直して `.env` を差し替える運用とする。
 
 ## PR 分割
 
