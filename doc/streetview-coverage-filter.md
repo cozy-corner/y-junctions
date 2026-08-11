@@ -146,7 +146,7 @@ API キーの制限は**サービス単位**（`api_targets.service`）で、Str
 - **IP 制限（`server_key_restrictions.allowed_ips`）**：enrich はローカルの動的 IP で走るため固定できず不可。
 - **メソッド制限（`api_targets.methods`）で metadata 限定**：Terraform は `methods` を持つが、Street View の metadata は RPC メソッドではなく URL パスの違いで、絞れるメソッド識別子が公式に存在せず不可（検証済み）。
 - **課金メトリックの日次上限を 0（採用・Terraform）**：Service Usage API で実メトリックを確認したところ、当プロジェクトの Street View には課金2メトリック（`street-view-image-backend.googleapis.com/billable_default`＝署名付き画像、`.../billable_unsignedbucket`＝未署名画像）と、**別建ての無料メトリック `.../street_view_metadata`** が存在する。enrich は metadata しか叩かないため、`google_service_usage_consumer_quota_override`（google-beta）で**課金2メトリックの日次上限（`/d/project`）を `0` に**する。metadata は無影響のまま、漏洩時の画像課金は構造的に発生し得ない（＝緩和ではなく無害化）。
-- **ローテーション**：キー値は `google_apikeys_key.key_string` として TFC state と output に保存される（workspace 閲覧権限者が読める）。workspace の state アクセスを絞ったうえで、漏洩・退職時等は `google_apikeys_key` を作り直して `.env` を差し替える運用とする。
+- **key_string の state 露出（指摘B・受容）**：キーを Terraform で管理する以上、`key_string` は TFC state に載る（output の有無に関わらず `terraform state show` で読める）。これは IaC でキーを管理する選択の**不可避な帰結として受容**する。実際に運用しないアクセス制限手順や定期ローテーションは書かない。露出が実問題化するのは、この workspace の state を信頼できない第三者が読める場合のみ。それが該当するなら対応は「TFC workspace の閲覧権限を絞る」（コードでなく運用）。
 
 上記はすべて Terraform（`terraform/streetview.tf`）で管理し、Console 手操作はしない。google-beta provider を `versions.tf` に追加する。
 
