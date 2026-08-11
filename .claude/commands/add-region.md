@@ -57,19 +57,35 @@ cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disabl
   --execute "SELECT COUNT(*) FROM y_junctions;"
 ```
 
-## Step 5: Baidu panoid 取得
+## Step 5: Baidu panoid 取得（**中国本土を追加する場合のみ**）
 
-無条件に実行する。バイナリ内部で `is_in_china_mainland()` により対象行をフィルタするので、
-中国本土外の地域では `Found 0 mainland-China Y-junctions` で即終了する（副作用なし）。
+**このステップは追加する地域が中国本土に重なるときだけ実行する。それ以外の地域
+（シンガポール・日本・台湾・香港・マカオ・韓国など）では実行しないこと。**
+
+理由: `import-baidu-panoid` は百度の非公式エンドポイントへ、ブラウザ偽装 User-Agent と
+ボット検知回避のペーシング付きでアクセスするスクレイピング処理。しかも Step 2 で
+ローカルDBは本番の全複製になっているため、このバイナリは**追加地域だけでなく
+ローカルDB全体の「panoid 未取得の中国本土ノード」**を対象に外部リクエストを発火し、
+結果を `baidu_panoramas` に書き込む。中国本土と無関係な地域の追加でこれを走らせると、
+無関係タスクでの無断外部アクセス・ローカル状態変更・百度側レート制限リスクを招くため不可。
+（「中国本土外なら 0 件で即終了・副作用なし」は誤り。本番複製に中国データがある限り発火する。）
+
+判定: 追加する bbox が中国本土の範囲（おおよそ lng 73–135, lat 18–54。ただし香港・マカオ・
+台湾・日本の島嶼・韓国・北朝鮮東岸・ロシア沿海州は除外。厳密な定義は
+`backend/src/domain/china.rs` の `is_in_china_mainland`）と重なるか:
+
+- **重ならない → このステップをスキップして Step 6 へ。**
+- 重なる → 外部リクエストが発生する旨をユーザーに伝え、了承を得てから実行する。
 
 ```bash
 set -euo pipefail
 cd backend && ./target/release/import-baidu-panoid
 ```
 
-中国本土を含む地域の場合は `Found N mainland-China Y-junctions to query Baidu` → `ok=<件数>`
-のログで成功件数を確認する。大量の `none=` が続く場合は `is_in_china_mainland()` の bbox
-除外ロジックが想定外の地域を中国扱いしている可能性あり（日本・韓国の沿岸部など境界付近）。
+`Found N mainland-China Y-junctions to query Baidu` → `ok=<件数>` のログで成功件数を確認する。
+N は**ローカルDBに残る panoid 未取得の中国本土ノード総数**であり、今回追加した地域だけの
+件数ではない点に注意。大量の `none=` が続く場合は `is_in_china_mainland()` の bbox 除外
+ロジックが境界付近（日本・韓国の沿岸部など）を中国扱いしている可能性あり。
 
 ## Step 6: 本番DBに反映
 
