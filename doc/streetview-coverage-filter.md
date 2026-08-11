@@ -28,7 +28,7 @@
 | 検索半径 | **`radius=10`（m）＋ `source=outdoor`** でリクエスト。既定 50m は緩すぎるため 10m に絞り、`OK` = 10m 以内にパノラマあり と直接判定。 |
 | 保存先 | **専用テーブル `google_streetview_coverage`（`osm_node_id` 主キー）**。理由は後述（Baidu 模倣ではなく `/deploy-data` の追記モデル適合＋id churn 耐性）。 |
 | 照会の実行場所 | **ローカル DB に対して実行**（Baidu の `import_baidu_panoid` と同じ）。本番反映は `/deploy-data`。**Cloud Run / cron / Secret Manager は使わない**。 |
-| API キーの保管 | ローカル `backend/.env` の `GOOGLE_MAPS_API_KEY`。GCP（`y-junctions-prod`）で一度発行するだけ。本番デプロイ対象外。 |
+| API キーの保管 | **API 有効化・キー発行は Terraform**（`google_project_service` ＋ `google_apikeys_key`、`y-junctions-prod`）。キー値は `terraform output` からローカル `backend/.env` の `GOOGLE_MAPS_API_KEY` へ貼るだけ。サーバーに載せないので Secret Manager/Cloud Run への配線は不要。 |
 | 未照会ノードの扱い | 除外せず**表示**。カバレッジ有無を確定できたノードのうち「無し」だけを消す。 |
 | tombstone（無し）の再照会 | Google のカバレッジは増えるため固定しない。enrich コマンドの `--refresh` で `has_coverage=false` を再照会。**ただし本番への伝播は差分 `IMPORT INTO` 不可**（既存 `osm_node_id` が UNIQUE 制約で衝突。`deploy-data.md:12-15`）。`false→true` の訂正を本番へ反映するには、Baidu と同じく**手動 TRUNCATE＋全件 IMPORT INTO** による全件同期が必要。`--refresh` はまずローカル DB の更新まで。 |
 | フロントエンド | 変更不要。backend が無しノードを除外するため、届く feature は全て有効。 |
@@ -105,9 +105,33 @@ CREATE TABLE google_streetview_coverage (
 
 **制約（重要）**：この差分 `IMPORT INTO` は**新規 `osm_node_id` の追記専用**。既存本番行の `has_coverage` を更新（`--refresh` の false→true 訂正など）することはできず、重複 bbox は UNIQUE 制約で失敗する（`deploy-data.md:12-15`）。初回 backfill は本番テーブルが空なので問題ないが、既デプロイ地域のカバレッジ訂正を本番へ反映するには手動 TRUNCATE＋全件 IMPORT が要る。この非対称は Baidu の `baidu_panoramas` と同じ。
 
-## API キー発行（一度きり・ローカル用）
+## API キー発行（一度きり・Terraform）
 
-`y-junctions-prod` で Street View Static API を有効化し、API 制限つきキーを発行 → ローカル `backend/.env` に置く。**本番に配布しないため Terraform（Secret Manager / Cloud Run / cron）は不要**。発行は CLI か Terraform（`google_apikeys_key`）どちらでも可。キーはサーバー実行しないので IP 制限より **API 制限（Street View のみ）** を効かせる。
+GCP リソースはプロジェクトの IaC 規律に従い **Terraform で払い出す**（CLI では叩かない。state ドリフトを避ける）。キーを**ローカルで消費する**ことと、リソースを**どう払い出すか**は別軸——消費がローカルでも、API 有効化とキー発行は Terraform に置く。不要なのは Secret Manager / Cloud Run / cron の**配線**だけ。
+
+```hcl
+resource "google_project_service" "streetview" {
+  service            = "street-view-image-backend.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_apikeys_key" "streetview_metadata" {
+  name         = "streetview-metadata-local"
+  display_name = "Street View Metadata (local enrich)"
+  project      = var.project_id
+  restrictions {
+    api_targets { service = "street-view-image-backend.googleapis.com" }  # Street View のみに制限
+  }
+  depends_on = [google_project_service.streetview]
+}
+
+output "streetview_api_key" {   # ローカル .env に貼るためだけの sensitive output
+  value     = google_apikeys_key.streetview_metadata.key_string
+  sensitive = true
+}
+```
+
+取得〜配置：`terraform apply` → `terraform output -raw streetview_api_key` の値を `backend/.env` の `GOOGLE_MAPS_API_KEY` へ。`google_apikeys_key` が `google-beta` provider を要するかは実装時に `terraform/versions.tf` で確認。サーバー実行しないので IP 制限より **API 制限（Street View のみ）** を効かせる。
 
 ## PR 分割
 
@@ -119,7 +143,7 @@ CREATE TABLE google_streetview_coverage (
 | ops | ローカルで enrich 実行 → `/deploy-data` で本番反映 | 手動 |
 | PR-4 | enricher の除外ロジック有効化（本番にデータが揃ってから） | app |
 
-**適用順**：PR-1 → PR-2 → PR-3 → ops → PR-4。除外を最後に有効化し、データが揃う前に海外ノードが消える事故を防ぐ。API キー発行はどこかで一度実施（PR-2 の動作確認前）。
+**適用順**：PR-1 → PR-2 → PR-3 → ops → PR-4。除外を最後に有効化し、データが揃う前に海外ノードが消える事故を防ぐ。API 有効化・キー発行は **Terraform の小 PR（`google_project_service`＋`google_apikeys_key`＋output）＋ `terraform apply`** として、PR-2 の動作確認前に一度実施。
 
 ## エラーハンドリング・非機能
 
@@ -137,4 +161,4 @@ CREATE TABLE google_streetview_coverage (
 
 - フロントエンド（`MapView.tsx`, `JunctionPopup.tsx`, 型定義）。
 - Baidu 関連の既存実装。
-- Terraform（本設計は GCP リソースを増やさない。API キー発行を IaC 化する場合のみ最小追加）。
+- Terraform の Secret Manager / Cloud Run / cron 配線（ローカル照会のため不要）。※ API 有効化・キー発行のみ Terraform に最小追加する（上記「API キー発行」節）。
