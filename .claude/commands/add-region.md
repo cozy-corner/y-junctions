@@ -108,13 +108,40 @@ N は**ローカルDBに残る panoid 未取得の中国本土ノード総数**�
     - 2-way Y字路: Y件
 ```
 
-## Step 8: PRを作成
+## Step 8: 主要都市ジャンプに追加
+
+追加地域の代表都市を、サイドバーの「主要都市へジャンプ」ドロップダウンに加える。
+
+`frontend/src/constants/cities.ts` の `CITIES` に 1 行追加する（座標は都市中心の WGS84。
+追加した bbox 内に収まること）:
+
+```ts
+{ name: '<都市名>', country: '<国・地域名>', lat: <lat>, lon: <lon> },
+```
+
+- `country` は optgroup ラベル。新しい国・地域なら新グループが自動生成される。
+- 新しい国・地域を足した場合、`frontend/src/components/CityJumpSelect.test.tsx` の
+  optgroup 数アサートを +1 する（既存の国・地域に足すだけなら不要）。
+
+検証:
+
+```bash
+set -euo pipefail
+cd frontend
+npm run typecheck && npm run lint
+npx vitest run src/components/CityJumpSelect.test.tsx
+```
+
+## Step 9: PRを作成
 
 ```bash
 set -euo pipefail
 # worktree 運用で既に data/${1} ブランチに居る場合もあるので、無ければ作成・あれば切り替え
 git checkout -b data/${1} 2>/dev/null || git checkout data/${1}
+# データ追加・都市ジャンプは項目ごとに別コミットにする
 git add doc/data-updates.md
 git commit -m "data: Add ${2:-${1}} Y-junction data"
+git add frontend/src/constants/cities.ts frontend/src/components/CityJumpSelect.test.tsx
+git commit -m "feat: 主要都市ジャンプに${2:-${1}}を追加"
 gh pr create --title "data: ${2:-${1}}のY字路データを追加"
 ```
