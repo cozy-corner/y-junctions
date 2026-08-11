@@ -28,8 +28,9 @@ resource "google_apikeys_key" "streetview_metadata" {
   #    走るため不可。
   #  - メソッド制限(api_targets.methods)で metadata 限定: Street View の metadata は
   #    RPC メソッドではなく URL パスの違いで、絞れるメソッド識別子が無いため不可。
-  #  - 採用: enrich は metadata(無料)しか叩かないので、Cloud Console で画像リクエストの
-  #    日次クォータ上限を最小化し漏洩時の課金を頭打ちにする。詳細: doc/streetview-coverage-filter.md
+  #  - 採用: enrich は metadata(無料・別メトリック)しか叩かないので、下記の
+  #    google_service_usage_consumer_quota_override で課金メトリックの日次上限を 0 にし、
+  #    漏洩時の画像課金を構造的に封じる。詳細: doc/streetview-coverage-filter.md
   restrictions {
     api_targets {
       service = "street-view-image-backend.googleapis.com"
@@ -40,4 +41,29 @@ resource "google_apikeys_key" "streetview_metadata" {
     google_project_service.streetview,
     google_project_service.apikeys,
   ]
+}
+
+# enrich は metadata(無料・別メトリック street_view_metadata)しか叩かないため、
+# 課金対象の画像リクエスト2メトリックの日次上限を 0 に絞る。これでキーが漏れても
+# 画像課金は発生し得ず、metadata の enrich には影響しない。指摘A(Qodo/CodeRabbit)対応。
+resource "google_service_usage_consumer_quota_override" "streetview_billable_default_daily" {
+  provider       = google-beta
+  service        = "street-view-image-backend.googleapis.com"
+  metric         = urlencode("street-view-image-backend.googleapis.com/billable_default")
+  limit          = urlencode("/d/project")
+  override_value = "0"
+  force          = true
+
+  depends_on = [google_project_service.streetview]
+}
+
+resource "google_service_usage_consumer_quota_override" "streetview_billable_unsigned_daily" {
+  provider       = google-beta
+  service        = "street-view-image-backend.googleapis.com"
+  metric         = urlencode("street-view-image-backend.googleapis.com/billable_unsignedbucket")
+  limit          = urlencode("/d/project")
+  override_value = "0"
+  force          = true
+
+  depends_on = [google_project_service.streetview]
 }

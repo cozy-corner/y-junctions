@@ -14,6 +14,12 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    # google_service_usage_consumer_quota_override（Street View 課金クォータの
+    # 日次上限を 0 にする）は GA provider に無く beta のみ。
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 6.0"
+    }
     neon = {
       source  = "kislerdm/neon"
       version = "~> 0.6"
@@ -26,6 +32,11 @@ terraform {
 }
 
 provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
