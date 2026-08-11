@@ -20,7 +20,16 @@ resource "google_apikeys_key" "streetview_metadata" {
   display_name = "Street View Metadata (local enrich, issue #306)"
   project      = var.project_id
 
-  # Street View Static API 以外には使えないキーにする（漏洩時の課金事故を防ぐ）。
+  # API 制限で Street View Static API 以外には使えないキーにする（least privilege）。
+  # ただしこれはサービス単位の制限で、Street View Static には無料の metadata と
+  # 課金対象の画像取得の両方が含まれるため、漏洩時の画像課金までは防げない。
+  # 追加の緩和として:
+  #  - IP 制限(server_key_restrictions.allowed_ips): enrich はローカルの動的 IP で
+  #    走るため不可。
+  #  - メソッド制限(api_targets.methods)で metadata 限定: Street View の metadata は
+  #    RPC メソッドではなく URL パスの違いで、絞れるメソッド識別子が無いため不可。
+  #  - 採用: enrich は metadata(無料)しか叩かないので、Cloud Console で画像リクエストの
+  #    日次クォータ上限を最小化し漏洩時の課金を頭打ちにする。詳細: doc/streetview-coverage-filter.md
   restrictions {
     api_targets {
       service = "street-view-image-backend.googleapis.com"
