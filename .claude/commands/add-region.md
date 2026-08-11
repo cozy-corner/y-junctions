@@ -57,19 +57,35 @@ cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disabl
   --execute "SELECT COUNT(*) FROM y_junctions;"
 ```
 
-## Step 5: Baidu panoid 取得
+## Step 5: Baidu panoid 取得（**中国本土を追加する場合のみ**）
 
-無条件に実行する。バイナリ内部で `is_in_china_mainland()` により対象行をフィルタするので、
-中国本土外の地域では `Found 0 mainland-China Y-junctions` で即終了する（副作用なし）。
+**このステップは追加する地域が中国本土に重なるときだけ実行する。それ以外の地域
+（シンガポール・日本・台湾・香港・マカオ・韓国など）では実行しないこと。**
+
+理由: `import-baidu-panoid` は百度の非公式エンドポイントへ、ブラウザ偽装 User-Agent と
+ボット検知回避のペーシング付きでアクセスするスクレイピング処理。しかも Step 2 で
+ローカルDBは本番の全複製になっているため、このバイナリは**追加地域だけでなく
+ローカルDB全体の「panoid 未取得の中国本土ノード」**を対象に外部リクエストを発火し、
+結果を `baidu_panoramas` に書き込む。中国本土と無関係な地域の追加でこれを走らせると、
+無関係タスクでの無断外部アクセス・ローカル状態変更・百度側レート制限リスクを招くため不可。
+（「中国本土外なら 0 件で即終了・副作用なし」は誤り。本番複製に中国データがある限り発火する。）
+
+判定: 追加する bbox が中国本土の範囲（おおよそ lng 73–135, lat 18–54。ただし香港・マカオ・
+台湾・日本の島嶼・韓国・北朝鮮東岸・ロシア沿海州は除外。厳密な定義は
+`backend/src/domain/china.rs` の `is_in_china_mainland`）と重なるか:
+
+- **重ならない → このステップをスキップして Step 6 へ。**
+- 重なる → 外部リクエストが発生する旨をユーザーに伝え、了承を得てから実行する。
 
 ```bash
 set -euo pipefail
 cd backend && ./target/release/import-baidu-panoid
 ```
 
-中国本土を含む地域の場合は `Found N mainland-China Y-junctions to query Baidu` → `ok=<件数>`
-のログで成功件数を確認する。大量の `none=` が続く場合は `is_in_china_mainland()` の bbox
-除外ロジックが想定外の地域を中国扱いしている可能性あり（日本・韓国の沿岸部など境界付近）。
+`Found N mainland-China Y-junctions to query Baidu` → `ok=<件数>` のログで成功件数を確認する。
+N は**ローカルDBに残る panoid 未取得の中国本土ノード総数**であり、今回追加した地域だけの
+件数ではない点に注意。大量の `none=` が続く場合は `is_in_china_mainland()` の bbox 除外
+ロジックが境界付近（日本・韓国の沿岸部など）を中国扱いしている可能性あり。
 
 ## Step 6: 本番DBに反映
 
@@ -92,13 +108,40 @@ cd backend && ./target/release/import-baidu-panoid
     - 2-way Y字路: Y件
 ```
 
-## Step 8: PRを作成
+## Step 8: 主要都市ジャンプに追加
+
+追加地域の代表都市を、サイドバーの「主要都市へジャンプ」ドロップダウンに加える。
+
+`frontend/src/constants/cities.ts` の `CITIES` に 1 行追加する（座標は都市中心の WGS84。
+追加した bbox 内に収まること）:
+
+```ts
+{ name: '<都市名>', country: '<国・地域名>', lat: <lat>, lon: <lon> },
+```
+
+- `country` は optgroup ラベル。新しい国・地域なら新グループが自動生成される。
+- 新しい国・地域を足した場合、`frontend/src/components/CityJumpSelect.test.tsx` の
+  optgroup 数アサートを +1 する（既存の国・地域に足すだけなら不要）。
+
+検証:
+
+```bash
+set -euo pipefail
+cd frontend
+npm run typecheck && npm run lint
+npx vitest run src/components/CityJumpSelect.test.tsx
+```
+
+## Step 9: PRを作成
 
 ```bash
 set -euo pipefail
 # worktree 運用で既に data/${1} ブランチに居る場合もあるので、無ければ作成・あれば切り替え
 git checkout -b data/${1} 2>/dev/null || git checkout data/${1}
+# データ追加・都市ジャンプは項目ごとに別コミットにする
 git add doc/data-updates.md
 git commit -m "data: Add ${2:-${1}} Y-junction data"
+git add frontend/src/constants/cities.ts frontend/src/components/CityJumpSelect.test.tsx
+git commit -m "feat: 主要都市ジャンプに${2:-${1}}を追加"
 gh pr create --title "data: ${2:-${1}}のY字路データを追加"
 ```

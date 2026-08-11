@@ -24,9 +24,9 @@ describe('CityJumpSelect', () => {
 
   it('国ごとの optgroup を持つ', () => {
     render(<CityJumpSelect onSelect={vi.fn()} />);
-    // 日本・韓国・台湾・香港 の 4 グループ
+    // 日本・韓国・台湾・香港・シンガポール の 5 グループ
     const groups = document.querySelectorAll('optgroup');
-    expect(groups).toHaveLength(4);
+    expect(groups).toHaveLength(5);
   });
 
   it('同じ都市を連続選択すると毎回 onSelect が呼ばれる', () => {
