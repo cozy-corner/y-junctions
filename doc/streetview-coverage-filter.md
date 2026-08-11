@@ -115,6 +115,12 @@ resource "google_project_service" "streetview" {
   disable_on_destroy = false
 }
 
+# キーを Terraform で払い出すには API Keys API 自体の有効化が前提
+resource "google_project_service" "apikeys" {
+  service            = "apikeys.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_apikeys_key" "streetview_metadata" {
   name         = "streetview-metadata-local"
   display_name = "Street View Metadata (local enrich)"
@@ -122,7 +128,7 @@ resource "google_apikeys_key" "streetview_metadata" {
   restrictions {
     api_targets { service = "street-view-image-backend.googleapis.com" }  # Street View のみに制限
   }
-  depends_on = [google_project_service.streetview]
+  depends_on = [google_project_service.streetview, google_project_service.apikeys]
 }
 
 output "streetview_api_key" {   # ローカル .env に貼るためだけの sensitive output
@@ -131,7 +137,7 @@ output "streetview_api_key" {   # ローカル .env に貼るためだけの sen
 }
 ```
 
-取得〜配置：`terraform apply` → `terraform output -raw streetview_api_key` の値を `backend/.env` の `GOOGLE_MAPS_API_KEY` へ。`google_apikeys_key` が `google-beta` provider を要するかは実装時に `terraform/versions.tf` で確認。サーバー実行しないので IP 制限より **API 制限（Street View のみ）** を効かせる。
+取得〜配置：`terraform apply` → `terraform output -raw streetview_api_key` の値を `backend/.env` の `GOOGLE_MAPS_API_KEY` へ。`google_apikeys_key` は hashicorp/google の **GA リソース**（`google-beta` 不要）。サーバー実行しないので IP 制限より **API 制限（Street View のみ）** を効かせる。
 
 ## PR 分割
 
