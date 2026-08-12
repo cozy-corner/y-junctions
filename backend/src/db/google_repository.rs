@@ -44,21 +44,15 @@ pub async fn find_uncovered_nodes(
     pool: &PgPool,
     refresh: bool,
 ) -> Result<Vec<CoverageCandidate>, sqlx::Error> {
-    // Two literals rather than an interpolated WHERE clause: sqlx only accepts
-    // 'static SQL strings (SqlSafeStr).
-    let sql = if refresh {
+    let rows: Vec<CoverageCandidate> = sqlx::query_as(
         "SELECT y.osm_node_id, y.lon, y.lat \
          FROM y_junctions y \
          LEFT JOIN google_streetview_coverage g ON g.osm_node_id = y.osm_node_id \
-         WHERE g.osm_node_id IS NULL OR g.has_coverage = false"
-    } else {
-        "SELECT y.osm_node_id, y.lon, y.lat \
-         FROM y_junctions y \
-         LEFT JOIN google_streetview_coverage g ON g.osm_node_id = y.osm_node_id \
-         WHERE g.osm_node_id IS NULL"
-    };
-
-    let rows: Vec<CoverageCandidate> = sqlx::query_as(sql).fetch_all(pool).await?;
+         WHERE g.osm_node_id IS NULL OR ($1 AND g.has_coverage = false)",
+    )
+    .bind(refresh)
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows)
 }
