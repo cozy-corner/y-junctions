@@ -7,9 +7,11 @@ const ENDPOINT: &str = "https://maps.googleapis.com/maps/api/streetview/metadata
 const API_KEY_ENV: &str = "GOOGLE_MAPS_API_KEY";
 
 // The default search radius is 50 m, which reports OK for a panorama on the
-// next street over. 10 m makes `OK` mean "there is a panorama at this
-// junction", which is what the map needs.
+// next street over. Narrowing to 10 m cuts most of those out — but `radius` is
+// not a hard cap (see `request_metadata`), so COVERAGE_LIMIT_METERS enforces
+// the real distance rule on the returned panorama.
 const SEARCH_RADIUS_METERS: u32 = 10;
+const COVERAGE_LIMIT_METERS: f64 = 10.0;
 
 const MAX_ATTEMPTS: usize = 3;
 const TRANSIENT_RETRY_SLEEP: Duration = Duration::from_millis(500);
@@ -49,12 +51,20 @@ impl FetchError {
 #[derive(Debug, Deserialize)]
 struct MetadataResponse {
     status: String,
+    /// Coordinate of the panorama Google actually picked. Present on `OK`.
+    location: Option<LatLng>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LatLng {
+    lat: f64,
+    lng: f64,
 }
 
 /// What a `status` value means for the coverage cache.
 #[derive(Debug, PartialEq, Eq)]
 enum Classification {
-    /// A panorama exists within `SEARCH_RADIUS_METERS`.
+    /// Google found a panorama. The caller still checks how far away it is.
     Covered,
     /// Queried successfully, no panorama nearby. Only this writes `false`.
     Absent,
@@ -165,7 +175,28 @@ async fn request_metadata(
         .map_err(|e| FetchError::Transient(e.without_url().into()))?;
 
     match classify_status(&body.status) {
-        Classification::Covered => Ok(true),
+        Classification::Covered => {
+            // `radius` narrows the search but is not a hard cap: measured
+            // against the live API, a query inside the Imperial Palace grounds
+            // returns OK at radius=10 with a panorama 483 m away. Re-check the
+            // distance ourselves so `true` really means "panorama at this
+            // junction" (same guard as baidu.rs).
+            let Some(loc) = body.location else {
+                return Err(FetchError::Fatal(anyhow::anyhow!(
+                    "Street View metadata returned OK without a location; cannot verify distance"
+                )));
+            };
+            let distance = ground_distance_meters(lat, lng, loc.lat, loc.lng);
+            if distance > COVERAGE_LIMIT_METERS {
+                tracing::debug!(
+                    "nearest panorama is {:.1} m away (> {} m); treating as uncovered",
+                    distance,
+                    COVERAGE_LIMIT_METERS
+                );
+                return Ok(false);
+            }
+            Ok(true)
+        }
         Classification::Absent => Ok(false),
         Classification::Transient => Err(FetchError::RateLimited { retry_after: None }),
         Classification::Fatal => Err(FetchError::Fatal(anyhow::anyhow!(
@@ -194,6 +225,15 @@ fn classify_status(status: &str) -> Classification {
         // guess "no coverage" from a status we do not understand.
         _ => Classification::Fatal,
     }
+}
+
+/// Flat-earth distance in metres between two nearby WGS84 coordinates. Good
+/// to well under a metre at the ~10 m scale this is compared against.
+fn ground_distance_meters(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
+    const METERS_PER_DEGREE: f64 = 111_320.0;
+    let dy = (lat2 - lat1) * METERS_PER_DEGREE;
+    let dx = (lng2 - lng1) * METERS_PER_DEGREE * lat1.to_radians().cos();
+    (dx * dx + dy * dy).sqrt()
 }
 
 /// Parse the `delta-seconds` form of `Retry-After` (e.g. `"30"`). The
@@ -253,6 +293,32 @@ mod tests {
         let body: MetadataResponse =
             serde_json::from_str(r#"{"status":"ZERO_RESULTS"}"#).expect("should deserialize");
         assert_eq!(classify_status(&body.status), Classification::Absent);
+    }
+
+    #[test]
+    fn distance_is_zero_for_identical_coordinates() {
+        assert!(ground_distance_meters(35.6595, 139.7005, 35.6595, 139.7005) < 1e-9);
+    }
+
+    #[test]
+    fn distance_matches_known_offsets() {
+        // 0.0001° of latitude ≈ 11.1 m anywhere.
+        let d = ground_distance_meters(35.6595, 139.7005, 35.6596, 139.7005);
+        assert!((11.0..=11.3).contains(&d), "got {d}");
+        // Same longitude delta shrinks by cos(lat) ≈ 0.813 at Tokyo.
+        let d = ground_distance_meters(35.6595, 139.7005, 35.6595, 139.7006);
+        assert!((8.9..=9.2).contains(&d), "got {d}");
+    }
+
+    #[test]
+    fn far_panorama_exceeds_the_coverage_limit() {
+        // The measured Imperial Palace case: OK at radius=10, panorama 483 m
+        // away. Must land on the uncovered side of the limit.
+        let d = ground_distance_meters(35.6852, 139.7528, 35.68095, 139.75);
+        assert!(
+            d > COVERAGE_LIMIT_METERS,
+            "expected far panorama to exceed limit, got {d}"
+        );
     }
 
     #[test]
