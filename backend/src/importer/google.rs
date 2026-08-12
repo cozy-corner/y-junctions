@@ -180,7 +180,12 @@ async fn request_metadata(
 fn classify_status(status: &str) -> Classification {
     match status {
         "OK" => Classification::Covered,
-        "ZERO_RESULTS" | "NOT_FOUND" => Classification::Absent,
+        // The only status that means "no panorama here": documented as "no
+        // panorama could be found near the provided location". NOT_FOUND is
+        // *not* a synonym — it means the address string in `location` couldn't
+        // be found, which cannot happen when we only ever send coordinates, so
+        // it falls through to Fatal rather than writing a sticky false.
+        "ZERO_RESULTS" => Classification::Absent,
         // Documented as "exceeded your daily quota or per-second quota" and
         // "couldn't be processed due to a server error" — both worth a retry,
         // and neither ever writes has_coverage = false.
@@ -208,9 +213,11 @@ mod tests {
     }
 
     #[test]
-    fn zero_results_and_not_found_mean_absent() {
+    fn only_zero_results_means_absent() {
         assert_eq!(classify_status("ZERO_RESULTS"), Classification::Absent);
-        assert_eq!(classify_status("NOT_FOUND"), Classification::Absent);
+        // NOT_FOUND is about an unresolvable address string, which this batch
+        // never sends; recording it as "no coverage" would be a sticky lie.
+        assert_eq!(classify_status("NOT_FOUND"), Classification::Fatal);
     }
 
     #[test]
