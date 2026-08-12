@@ -11,7 +11,7 @@ const API_KEY_ENV: &str = "GOOGLE_MAPS_API_KEY";
 // not a hard cap (see `request_metadata`), so COVERAGE_LIMIT_METERS enforces
 // the real distance rule on the returned panorama.
 const SEARCH_RADIUS_METERS: u32 = 10;
-const COVERAGE_LIMIT_METERS: f64 = 10.0;
+pub const COVERAGE_LIMIT_METERS: f64 = 10.0;
 
 const MAX_ATTEMPTS: usize = 3;
 const TRANSIENT_RETRY_SLEEP: Duration = Duration::from_millis(500);
@@ -123,17 +123,42 @@ pub async fn pace_next_request() {
     tokio::time::sleep(PACING).await;
 }
 
+/// Coverage verdict for one junction. `Absent` and `TooFar` both mean
+/// `has_coverage = false`; they are kept apart so the batch can report how
+/// often our own distance rule — rather than Google — did the excluding.
+#[derive(Debug, PartialEq)]
+pub enum Coverage {
+    Covered,
+    /// Google reported no panorama near the coordinate.
+    Absent,
+    /// Google returned a panorama, but farther than `COVERAGE_LIMIT_METERS`.
+    TooFar {
+        distance_meters: f64,
+    },
+}
+
+impl Coverage {
+    pub fn has_coverage(&self) -> bool {
+        matches!(self, Self::Covered)
+    }
+}
+
 /// Ask the Street View Static metadata endpoint whether a panorama exists
 /// within 10 m of the coordinate. Metadata requests are free — no imagery is
 /// fetched. Retries transient failures up to `MAX_ATTEMPTS`, backs off on
 /// `OVER_QUERY_LIMIT`/429/5xx, and fails fast on `REQUEST_DENIED` so a broken
 /// key never gets recorded as "no coverage".
-pub async fn fetch_coverage(client: &Client, api_key: &str, lng: f64, lat: f64) -> Result<bool> {
+pub async fn fetch_coverage(
+    client: &Client,
+    api_key: &str,
+    lng: f64,
+    lat: f64,
+) -> Result<Coverage> {
     let mut last_err: Option<FetchError> = None;
 
     for attempt in 0..MAX_ATTEMPTS {
         match request_metadata(client, api_key, lng, lat).await {
-            Ok(covered) => return Ok(covered),
+            Ok(coverage) => return Ok(coverage),
             Err(FetchError::Fatal(e)) => return Err(e),
             Err(err @ (FetchError::RateLimited { .. } | FetchError::ServerError { .. })) => {
                 if attempt + 1 == MAX_ATTEMPTS {
@@ -167,7 +192,7 @@ async fn request_metadata(
     api_key: &str,
     lng: f64,
     lat: f64,
-) -> std::result::Result<bool, FetchError> {
+) -> std::result::Result<Coverage, FetchError> {
     let resp = client
         .get(ENDPOINT)
         .query(&[
@@ -222,16 +247,13 @@ async fn request_metadata(
             };
             let distance = ground_distance_meters(lat, lng, loc.lat, loc.lng);
             if distance > COVERAGE_LIMIT_METERS {
-                tracing::debug!(
-                    "nearest panorama is {:.1} m away (> {} m); treating as uncovered",
-                    distance,
-                    COVERAGE_LIMIT_METERS
-                );
-                return Ok(false);
+                return Ok(Coverage::TooFar {
+                    distance_meters: distance,
+                });
             }
-            Ok(true)
+            Ok(Coverage::Covered)
         }
-        Classification::Absent => Ok(false),
+        Classification::Absent => Ok(Coverage::Absent),
         Classification::Transient if body.status == "OVER_QUERY_LIMIT" => {
             Err(FetchError::RateLimited { retry_after: None })
         }
@@ -369,6 +391,16 @@ mod tests {
         assert_eq!(parse_retry_after(""), None);
         assert_eq!(parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT"), None);
         assert_eq!(parse_retry_after("-5"), None);
+    }
+
+    #[test]
+    fn only_covered_counts_as_coverage() {
+        assert!(Coverage::Covered.has_coverage());
+        assert!(!Coverage::Absent.has_coverage());
+        assert!(!Coverage::TooFar {
+            distance_meters: 483.2
+        }
+        .has_coverage());
     }
 
     #[test]

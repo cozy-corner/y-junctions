@@ -362,6 +362,10 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
     let mut buffer: Vec<(i64, bool)> = Vec::with_capacity(CHUNK_SIZE);
     let mut total_written: usize = 0;
     let mut total_covered: usize = 0;
+    // Excluded by our own distance rule rather than by Google saying
+    // ZERO_RESULTS. Measured at 0/30 on real junctions, so a non-trivial count
+    // here is a signal that the 10 m rule needs another look.
+    let mut total_too_far: usize = 0;
 
     for (idx, target) in targets.iter().enumerate() {
         if idx > 0 {
@@ -369,11 +373,20 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
         }
 
         match google::fetch_coverage(&client, &api_key, target.lon, target.lat).await {
-            Ok(has_coverage) => {
-                if has_coverage {
-                    total_covered += 1;
+            Ok(coverage) => {
+                match &coverage {
+                    google::Coverage::Covered => total_covered += 1,
+                    google::Coverage::TooFar { distance_meters } => {
+                        total_too_far += 1;
+                        tracing::info!(
+                            "osm_node_id={}: nearest panorama is {:.1} m away; recording as uncovered",
+                            target.osm_node_id,
+                            distance_meters
+                        );
+                    }
+                    google::Coverage::Absent => {}
                 }
-                buffer.push((target.osm_node_id, has_coverage));
+                buffer.push((target.osm_node_id, coverage.has_coverage()));
             }
             Err(e) => {
                 // Persist what already succeeded before giving up: otherwise a
@@ -408,10 +421,14 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
     total_written += crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
 
     tracing::info!(
-        "Street View coverage lookup complete: total={}, covered={}, uncovered={}",
+        "Street View coverage lookup complete: total={}, covered={}, uncovered={} \
+         (no panorama={}, panorama beyond {} m={})",
         targets.len(),
         total_covered,
-        targets.len() - total_covered
+        targets.len() - total_covered,
+        targets.len() - total_covered - total_too_far,
+        google::COVERAGE_LIMIT_METERS,
+        total_too_far
     );
 
     Ok(total_written)
