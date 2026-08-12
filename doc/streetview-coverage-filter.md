@@ -25,7 +25,7 @@
 | --- | --- |
 | 照会対象 | 中国以外の全ノード（**日本を含む**）。地域で例外を作らず一律照会し、無ければ除外。 |
 | カバレッジ取得手段 | 公式 **Street View Static API の metadata エンドポイント**。IAM/OAuth 非対応で API キー必須（[公式](https://developers.google.com/maps/documentation/streetview/metadata)で確認済み）。metadata リクエストは無料。 |
-| 検索半径 | **`radius=10`（m）＋ `source=outdoor`** でリクエスト。既定 50m は緩すぎるため 10m に絞り、`OK` = 10m 以内にパノラマあり と直接判定。 |
+| 検索半径 | **`radius=10`（m）＋ `source=outdoor`** でリクエスト（既定 50m は緩すぎる）。ただし `radius` は「探索範囲」であって返却パノラマの距離上限ではないため、**レスポンスの `location` との距離を自分で測り 10m 超は uncovered とする**。詳細は「10m 判定の根拠と実測」節。 |
 | 保存先 | **専用テーブル `google_streetview_coverage`（`osm_node_id` 主キー）**。理由は後述（Baidu 模倣ではなく `/deploy-data` の追記モデル適合＋id churn 耐性）。 |
 | 照会の実行場所 | **ローカル DB に対して実行**（Baidu の `import_baidu_panoid` と同じ）。本番反映は `/deploy-data`。**Cloud Run / cron / Secret Manager は使わない**。 |
 | API キーの保管 | **API 有効化・キー発行は Terraform**（`google_project_service` ＋ `google_apikeys_key`、`y-junctions-prod`）。キー値は `terraform output` からローカル `backend/.env` の `GOOGLE_MAPS_API_KEY` へ貼るだけ。サーバーに載せないので Secret Manager/Cloud Run への配線は不要。 |
@@ -63,9 +63,16 @@ CREATE TABLE google_streetview_coverage (
 ### 1. カバレッジ照会モジュール — `backend/src/importer/google.rs`（新規）
 
 - Street View Static **metadata** エンドポイントを叩く（画像は取らない＝無料）。リクエストは `location`・`key`・**`radius=10`**・**`source=outdoor`**。
-  - `radius=10`：既定 50m では「50m 先にあるだけ」で `OK` になり使えない。10m に絞れば `OK` = 10m 以内、と直接判定。
+  - `radius=10`：既定 50m では「50m 先にあるだけ」で `OK` になり使えない。
   - `source=outdoor`：屋内コレクションを除外。
-- `status` で分岐：`"OK"` → カバレッジあり／`"ZERO_RESULTS"`・`"NOT_FOUND"` → 無し／`"OVER_QUERY_LIMIT"`・5xx → リトライ・バックオフ／**`"REQUEST_DENIED"`・`"INVALID_REQUEST"` → hard stop でバッチ全体を中断**（キー不正・権限不足を「無し」と誤記録しないため。`has_coverage=false` を大量に書く事故を防ぐ）。
+  - **`OK` だけでは 10m 以内と断定できない**ため、レスポンスの `location` と照会座標の距離を計算し、`COVERAGE_LIMIT_METERS`（10m）超なら uncovered として記録する（Baidu の `DISTANCE_LIMIT_METERS` と同じガード）。`OK` なのに `location` が無いレスポンスは距離を検証できないため中断。
+- `status` で分岐（[metadata の status 定義](https://developers.google.com/maps/documentation/streetview/metadata)に準拠）：
+  - `"OK"` → 距離チェックへ
+  - `"ZERO_RESULTS"`（"no panorama could be found near the provided location"）→ **無し。`has_coverage=false` を書くのはこれだけ**
+  - `"OVER_QUERY_LIMIT"`・429 → リトライ・バックオフ／`"UNKNOWN_ERROR"`・5xx → リトライ・バックオフ（"server error" で一時障害。運用者向けにレート制限とは別メッセージにする）
+  - `"NOT_FOUND"`（"the address string provided in the `location` parameter couldn't be found"）→ **中断**。座標しか送らない本バッチでは起き得ないため、無しと誤記録して固定化させない
+  - `"REQUEST_DENIED"`・`"INVALID_REQUEST"`・未知の値 → **hard stop でバッチ全体を中断**（キー不正・権限不足を「無し」と誤記録し `has_coverage=false` を大量に書く事故を防ぐ）
+- 除外の内訳（Google が無しと言ったのか、距離チェックで落としたのか）は完了ログに出す。距離チェックの発火が多い場合は 10m という基準自体を見直すシグナルになる。
 - レート制御・リトライ・ペーシングは `backend/src/importer/baidu.rs` の機構を踏襲。API キーは env `GOOGLE_MAPS_API_KEY` から読む。未設定なら明示エラーで停止（サイレントに全ノード「無し」判定しない）。
 
 ### 2. 照会処理 — `backend/src/importer/mod.rs`（変更）
@@ -74,12 +81,27 @@ CREATE TABLE google_streetview_coverage (
 
 **非中国の判定は Rust 側で行う**（SQL では不可）。地域判定は `china::is_in_china_mainland(lng, lat)`（`backend/src/domain/china.rs:18`、手書き bbox 群の Rust 関数）だけが根拠で、`y_junctions` に地域列は無い。よって Baidu と同じ構造にする（`mod.rs:224-227`）：リポジトリは uncovered 候補を**全件**返し、この関数内で `!china::is_in_china_mainland(j.lon, j.lat)` でフィルタしてから照会する。
 
-照会 → `google_streetview_coverage` に upsert。照会失敗はそのノードを未照会のまま残す（`mod.rs:249` の Baidu と同じ abort-on-error）。
+照会 → `google_streetview_coverage` に upsert。照会失敗はそのノードを未照会のまま残す（`mod.rs:249` の Baidu と同じ abort-on-error）。ただし**中断する前に取得済みバッファを flush する**：さもないと最初の 100 件以内で再発する障害では毎回同じノードを引き直して flush 前に落ち、進捗が永久に残らない（Baidu 側は未対応）。API キーの検証は全件スキャンより前に行う。
+
+## 10m 判定の根拠と実測
+
+`radius` は画像リクエスト側のパラメータ一覧で `sets a radius, specified in meters, in which to search for a panorama, centered on the given latitude and longitude`（既定 50）と定義されている。metadata のページには「imagery と同じ URL パラメータを受け付ける」旨と、無視される optional（`size`・`heading`・`fov`・`pitch`）の列挙があり、`radius`・`source` はその列挙に入っていない。
+
+実 API での計測（`scripts/verify_streetview_radius.py`）:
+
+| 観測 | 結果 |
+| --- | --- |
+| 皇居内の座標 | `radius=1` → `ZERO_RESULTS`、`radius=5/10/50` → いずれも `OK` だが返却パノラマは **483m 先**。**`radius` は返却パノラマの距離上限ではない** |
+| セントラルパーク内 | `radius=50` → `OK`（19.8m）、`radius=10` → `ZERO_RESULTS`（再実行しても同じ）。`radius` は探索範囲として機能している |
+| ローカル DB の非中国ノード30件（無作為） | `radius=10` で `ZERO_RESULTS` かつ `radius=50` で 10m 以内: **0件**（取りこぼし無し）。`radius=10` の `OK` はすべて 10m 以内（0.5〜7.2m）。両者 `OK` のときは常に同一パノラマ＝最近傍が返る挙動と整合。1件は `radius=10` → `ZERO_RESULTS`、`radius=50` → `OK`（31.5m）で、既定 50m のままなら誤って covered になっていた |
+
+したがって `radius=10` は一次フィルタとして維持し、返却座標との距離チェックを二次フィルタとして併用する。標本30件なので「取りこぼし 0件」は上限の保証ではない。
 
 ### 3. リポジトリ — `backend/src/db/google_repository.rs`（新規）
 
 - `find_coverage_by_osm_node_ids(pool, ids) -> HashMap<i64, bool>`：`osm_node_id → has_coverage`。キー無し＝未照会。enricher が使う。
-- `find_uncovered_nodes(pool, refresh) -> Vec<...>`：未照会（`refresh` 時は `has_coverage=false` も含む）の junction を**全件**返す（`find_without_baidu_panoid` に対応）。**非中国フィルタはここでは行わない**——地域判定は Rust の `china::is_in_china_mainland` のみで、SQL に持ち込めないため。呼び出し側（Component 2）が Rust で絞る。
+- `find_uncovered_nodes(pool, refresh) -> Vec<CoverageCandidate>`：未照会（`refresh` 時は `has_coverage=false` も含む）を**全件**返す（`find_without_baidu_panoid` に対応）。**非中国フィルタはここでは行わない**——地域判定は Rust の `china::is_in_china_mainland` のみで、SQL に持ち込めないため。呼び出し側（Component 2）が Rust で絞る。
+  - 戻り値は `Junction` ではなく `CoverageCandidate { osm_node_id, lon, lat }`。呼び出し側が使うのはこの3フィールドだけで、`Junction` を返すには `baidu_repository` の19列 `JunctionRow` を複製する必要があるため。
 - `upsert_coverage(pool, rows)`：`osm_node_id` で upsert（`ON CONFLICT ... DO UPDATE`。再照会で false→true に更新され得るため上書き）。
 
 ### 4. ローカル enrich コマンド — `backend/src/bin/import_google_streetview.rs`（新規）

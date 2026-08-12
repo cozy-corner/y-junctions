@@ -20,6 +20,10 @@ name = "import-baidu-panoid"
 path = "src/bin/import_baidu_panoid.rs"
 
 [[bin]]
+name = "import-google-streetview"
+path = "src/bin/import_google_streetview.rs"
+
+[[bin]]
 name = "pipeline-download-osm"
 path = "src/bin/pipeline_download_osm.rs"
 
