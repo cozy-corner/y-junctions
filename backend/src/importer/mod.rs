@@ -2,6 +2,7 @@ pub mod baidu;
 pub mod calculator;
 pub mod detector;
 pub mod elevation;
+pub mod google;
 pub mod inserter;
 pub mod parser;
 
@@ -322,6 +323,115 @@ async fn flush_baidu_chunk(
     missed_osm_node_ids.clear();
 
     Ok(())
+}
+
+/// Query Google Street View coverage for every non-China Y-junction that has
+/// no answer cached yet, and store the result in `google_streetview_coverage`.
+/// `refresh` also re-queries nodes previously recorded as uncovered (Google
+/// adds imagery over time, so `false` is not permanent).
+///
+/// Mainland-China junctions are skipped in-process — they use Baidu panoramas
+/// and Google has no coverage there. Metadata requests are free, so the cost
+/// of a full backfill is time, not money. Any query failure aborts the batch
+/// (rather than recording "no coverage") so a broken key or network outage
+/// cannot mass-delete junctions from the map; results already flushed stay in
+/// the DB, so a re-run resumes where it stopped.
+pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result<usize> {
+    /// Flush every 100 lookups, matching the progress-log cadence: worst-case
+    /// loss on abort is the in-flight partial chunk.
+    const CHUNK_SIZE: usize = 100;
+
+    // Check the key before the full-table scan: a worktree whose generated
+    // .env has no GOOGLE_MAPS_API_KEY should fail immediately, not after
+    // scanning every junction.
+    let api_key = google::api_key_from_env()?;
+    let client = google::build_client()?;
+
+    let candidates = crate::db::google_repository::find_uncovered_nodes(pool, refresh).await?;
+
+    let targets: Vec<_> = candidates
+        .into_iter()
+        .filter(|c| !china::is_in_china_mainland(c.lon, c.lat))
+        .collect();
+
+    tracing::info!(
+        "Found {} non-China Y-junctions to query for Street View coverage",
+        targets.len()
+    );
+
+    let mut buffer: Vec<(i64, bool)> = Vec::with_capacity(CHUNK_SIZE);
+    let mut total_written: usize = 0;
+    let mut total_covered: usize = 0;
+    // Excluded by our own distance rule rather than by Google saying
+    // ZERO_RESULTS. Measured at 0/30 on real junctions, so a non-trivial count
+    // here is a signal that the 10 m rule needs another look.
+    let mut total_too_far: usize = 0;
+
+    for (idx, target) in targets.iter().enumerate() {
+        if idx > 0 {
+            google::pace_next_request().await;
+        }
+
+        match google::fetch_coverage(&client, &api_key, target.lon, target.lat).await {
+            Ok(coverage) => {
+                match &coverage {
+                    google::Coverage::Covered => total_covered += 1,
+                    google::Coverage::TooFar { distance_meters } => {
+                        total_too_far += 1;
+                        tracing::info!(
+                            "osm_node_id={}: nearest panorama is {:.1} m away; recording as uncovered",
+                            target.osm_node_id,
+                            distance_meters
+                        );
+                    }
+                    google::Coverage::Absent => {}
+                }
+                buffer.push((target.osm_node_id, coverage.has_coverage()));
+            }
+            Err(e) => {
+                // Persist what already succeeded before giving up: otherwise a
+                // failure that recurs within the first CHUNK_SIZE lookups makes
+                // every re-run re-query the same nodes and die again, never
+                // banking any progress.
+                crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
+                return Err(anyhow::anyhow!(
+                    "Street View metadata failed for junction osm_node_id={} ({}, {}): {:#}",
+                    target.osm_node_id,
+                    target.lat,
+                    target.lon,
+                    e
+                ));
+            }
+        }
+
+        if buffer.len() >= CHUNK_SIZE {
+            total_written += crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
+            buffer.clear();
+
+            tracing::info!(
+                "Progress: {}/{} (written={}, covered={})",
+                idx + 1,
+                targets.len(),
+                total_written,
+                total_covered
+            );
+        }
+    }
+
+    total_written += crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
+
+    tracing::info!(
+        "Street View coverage lookup complete: total={}, covered={}, uncovered={} \
+         (no panorama={}, panorama beyond {} m={})",
+        targets.len(),
+        total_covered,
+        targets.len() - total_covered,
+        targets.len() - total_covered - total_too_far,
+        google::COVERAGE_LIMIT_METERS,
+        total_too_far
+    );
+
+    Ok(total_written)
 }
 
 #[cfg(test)]

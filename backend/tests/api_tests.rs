@@ -80,6 +80,12 @@ async fn setup_test_db() -> PgPool {
         .await
         .expect("Failed to truncate baidu_panoramas");
 
+    // google_streetview_coverage も同じ理由で CASCADE の対象外
+    sqlx::query("TRUNCATE TABLE google_streetview_coverage")
+        .execute(&pool)
+        .await
+        .expect("Failed to truncate google_streetview_coverage");
+
     pool
 }
 
@@ -1480,4 +1486,166 @@ async fn test_non_china_junction_still_uses_google_url() {
         url.contains("google.com/maps"),
         "expected google URL, got: {url}"
     );
+}
+
+// ========== google_repository: coverage cache ==========
+
+use y_junction_backend::db::google_repository;
+
+#[tokio::test]
+#[serial]
+async fn test_google_find_coverage_empty_input() {
+    let pool = setup_test_db().await;
+    let result = google_repository::find_coverage_by_osm_node_ids(&pool, &[])
+        .await
+        .expect("query failed");
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_find_coverage_distinguishes_three_states() {
+    let pool = setup_test_db().await;
+    let (_, osm_covered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::sharp_type()).await;
+    let (_, osm_uncovered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::normal_type()).await;
+    let (_, osm_unqueried) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::verysharp_type()).await;
+
+    google_repository::upsert_coverage(&pool, &[(osm_covered, true), (osm_uncovered, false)])
+        .await
+        .expect("upsert failed");
+
+    let result = google_repository::find_coverage_by_osm_node_ids(
+        &pool,
+        &[osm_covered, osm_uncovered, osm_unqueried],
+    )
+    .await
+    .expect("query failed");
+
+    assert_eq!(result.get(&osm_covered), Some(&true));
+    assert_eq!(result.get(&osm_uncovered), Some(&false));
+    assert_eq!(
+        result.get(&osm_unqueried),
+        None,
+        "never-queried node must be absent from the map, not false"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_upsert_empty_is_noop() {
+    let pool = setup_test_db().await;
+    let written = google_repository::upsert_coverage(&pool, &[])
+        .await
+        .expect("upsert failed");
+    assert_eq!(written, 0);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_upsert_overwrites_false_with_true() {
+    let pool = setup_test_db().await;
+    let (_, osm_node_id) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::sharp_type()).await;
+
+    google_repository::upsert_coverage(&pool, &[(osm_node_id, false)])
+        .await
+        .expect("first upsert failed");
+    google_repository::upsert_coverage(&pool, &[(osm_node_id, true)])
+        .await
+        .expect("second upsert failed");
+
+    let result = google_repository::find_coverage_by_osm_node_ids(&pool, &[osm_node_id])
+        .await
+        .expect("query failed");
+    assert_eq!(
+        result.get(&osm_node_id),
+        Some(&true),
+        "--refresh must be able to flip false to true"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_find_uncovered_nodes_skips_queried_nodes() {
+    let pool = setup_test_db().await;
+    let (_, osm_covered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::sharp_type()).await;
+    let (_, osm_uncovered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::normal_type()).await;
+    let (_, osm_unqueried) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::verysharp_type()).await;
+
+    google_repository::upsert_coverage(&pool, &[(osm_covered, true), (osm_uncovered, false)])
+        .await
+        .expect("upsert failed");
+
+    let pending = google_repository::find_uncovered_nodes(&pool, false)
+        .await
+        .expect("query failed");
+    let ids: Vec<i64> = pending.iter().map(|c| c.osm_node_id).collect();
+
+    assert!(ids.contains(&osm_unqueried));
+    assert!(!ids.contains(&osm_covered));
+    assert!(
+        !ids.contains(&osm_uncovered),
+        "without --refresh, confirmed-uncovered nodes must not be re-queried"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_find_uncovered_nodes_refresh_includes_false_rows() {
+    let pool = setup_test_db().await;
+    let (_, osm_covered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::sharp_type()).await;
+    let (_, osm_uncovered) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::normal_type()).await;
+    let (_, osm_unqueried) =
+        insert_test_junction_with_ids(&pool, TestJunctionData::verysharp_type()).await;
+
+    google_repository::upsert_coverage(&pool, &[(osm_covered, true), (osm_uncovered, false)])
+        .await
+        .expect("upsert failed");
+
+    let pending = google_repository::find_uncovered_nodes(&pool, true)
+        .await
+        .expect("query failed");
+    let ids: Vec<i64> = pending.iter().map(|c| c.osm_node_id).collect();
+
+    assert!(
+        ids.contains(&osm_uncovered),
+        "--refresh must re-query false rows"
+    );
+    assert!(ids.contains(&osm_unqueried));
+    assert!(
+        !ids.contains(&osm_covered),
+        "--refresh must not re-query nodes already known to be covered"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_google_find_uncovered_nodes_returns_coordinates() {
+    // The China filter runs on these coordinates in-process, so they must
+    // survive the round trip.
+    let pool = setup_test_db().await;
+    let (_, osm_node_id) = insert_test_junction_with_ids(
+        &pool,
+        TestJunctionData::sharp_type().with_location(SHANGHAI_LAT, SHANGHAI_LON),
+    )
+    .await;
+
+    let pending = google_repository::find_uncovered_nodes(&pool, false)
+        .await
+        .expect("query failed");
+    let found = pending
+        .iter()
+        .find(|c| c.osm_node_id == osm_node_id)
+        .expect("inserted junction missing from candidates");
+
+    assert!((found.lat - SHANGHAI_LAT).abs() < 1e-9);
+    assert!((found.lon - SHANGHAI_LON).abs() < 1e-9);
 }
