@@ -181,7 +181,10 @@ fn classify_status(status: &str) -> Classification {
     match status {
         "OK" => Classification::Covered,
         "ZERO_RESULTS" | "NOT_FOUND" => Classification::Absent,
-        "OVER_QUERY_LIMIT" => Classification::Transient,
+        // Documented as "exceeded your daily quota or per-second quota" and
+        // "couldn't be processed due to a server error" — both worth a retry,
+        // and neither ever writes has_coverage = false.
+        "OVER_QUERY_LIMIT" | "UNKNOWN_ERROR" => Classification::Transient,
         // REQUEST_DENIED / INVALID_REQUEST and anything undocumented: never
         // guess "no coverage" from a status we do not understand.
         _ => Classification::Fatal,
@@ -211,18 +214,18 @@ mod tests {
     }
 
     #[test]
-    fn over_query_limit_is_transient() {
+    fn quota_and_server_errors_are_transient() {
         assert_eq!(
             classify_status("OVER_QUERY_LIMIT"),
             Classification::Transient
         );
+        assert_eq!(classify_status("UNKNOWN_ERROR"), Classification::Transient);
     }
 
     #[test]
-    fn denied_and_unknown_statuses_are_fatal() {
+    fn denied_and_undocumented_statuses_are_fatal() {
         assert_eq!(classify_status("REQUEST_DENIED"), Classification::Fatal);
         assert_eq!(classify_status("INVALID_REQUEST"), Classification::Fatal);
-        assert_eq!(classify_status("UNKNOWN_ERROR"), Classification::Fatal);
         assert_eq!(classify_status(""), Classification::Fatal);
         // Lower-case is not a documented spelling; must not read as absent.
         assert_eq!(classify_status("zero_results"), Classification::Fatal);
