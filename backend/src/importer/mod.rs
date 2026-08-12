@@ -341,6 +341,12 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
     /// loss on abort is the in-flight partial chunk.
     const CHUNK_SIZE: usize = 100;
 
+    // Check the key before the full-table scan: a worktree whose generated
+    // .env has no GOOGLE_MAPS_API_KEY should fail immediately, not after
+    // scanning every junction.
+    let api_key = google::api_key_from_env()?;
+    let client = google::build_client()?;
+
     let candidates = crate::db::google_repository::find_uncovered_nodes(pool, refresh).await?;
 
     let targets: Vec<_> = candidates
@@ -352,9 +358,6 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
         "Found {} non-China Y-junctions to query for Street View coverage",
         targets.len()
     );
-
-    let api_key = google::api_key_from_env()?;
-    let client = google::build_client()?;
 
     let mut buffer: Vec<(i64, bool)> = Vec::with_capacity(CHUNK_SIZE);
     let mut total_written: usize = 0;
@@ -373,8 +376,13 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
                 buffer.push((target.osm_node_id, has_coverage));
             }
             Err(e) => {
+                // Persist what already succeeded before giving up: otherwise a
+                // failure that recurs within the first CHUNK_SIZE lookups makes
+                // every re-run re-query the same nodes and die again, never
+                // banking any progress.
+                crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
                 return Err(anyhow::anyhow!(
-                    "Street View metadata failed for junction osm_node_id={} ({}, {}): {}",
+                    "Street View metadata failed for junction osm_node_id={} ({}, {}): {:#}",
                     target.osm_node_id,
                     target.lat,
                     target.lon,
