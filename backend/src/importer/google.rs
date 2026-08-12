@@ -98,12 +98,20 @@ enum Classification {
 /// keyless requests, which come back `REQUEST_DENIED`) keeps a forgotten
 /// `.env` from looking like a genuine coverage answer.
 pub fn api_key_from_env() -> Result<String> {
-    let key = std::env::var(API_KEY_ENV)
+    let raw = std::env::var(API_KEY_ENV)
         .map_err(|_| anyhow::anyhow!("{API_KEY_ENV} must be set in environment or .env file"))?;
-    if key.trim().is_empty() {
+    validate_api_key(&raw)
+}
+
+/// Returns the key with surrounding whitespace removed. A stray newline from
+/// pasting `terraform output` would otherwise be sent percent-encoded and come
+/// back as `REQUEST_DENIED`, which reads like a permissions problem.
+fn validate_api_key(raw: &str) -> Result<String> {
+    let key = raw.trim();
+    if key.is_empty() {
         anyhow::bail!("{API_KEY_ENV} is set but empty");
     }
-    Ok(key)
+    Ok(key.to_string())
 }
 
 pub fn build_client() -> Result<Client> {
@@ -364,22 +372,16 @@ mod tests {
     }
 
     #[test]
-    fn api_key_from_env_rejects_missing_and_empty() {
-        // Serialized within this test only: no other test touches this var.
-        let saved = std::env::var(API_KEY_ENV).ok();
+    fn api_key_rejects_blank_values() {
+        assert!(validate_api_key("").is_err());
+        assert!(validate_api_key("   ").is_err());
+        assert!(validate_api_key("\n").is_err());
+    }
 
-        std::env::remove_var(API_KEY_ENV);
-        assert!(api_key_from_env().is_err(), "missing key must error");
-
-        std::env::set_var(API_KEY_ENV, "   ");
-        assert!(api_key_from_env().is_err(), "blank key must error");
-
-        std::env::set_var(API_KEY_ENV, "test-key");
-        assert_eq!(api_key_from_env().unwrap(), "test-key");
-
-        match saved {
-            Some(v) => std::env::set_var(API_KEY_ENV, v),
-            None => std::env::remove_var(API_KEY_ENV),
-        }
+    #[test]
+    fn api_key_is_trimmed() {
+        // Pasting `terraform output` easily brings a trailing newline along.
+        assert_eq!(validate_api_key("AIza-test\n").unwrap(), "AIza-test");
+        assert_eq!(validate_api_key("  AIza-test  ").unwrap(), "AIza-test");
     }
 }
