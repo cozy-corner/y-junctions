@@ -27,6 +27,11 @@ enum FetchError {
     RateLimited {
         retry_after: Option<Duration>,
     },
+    /// HTTP 5xx or `UNKNOWN_ERROR`: retryable like a rate limit, but named
+    /// separately so the operator isn't sent to check quotas over an outage.
+    ServerError {
+        status: Option<StatusCode>,
+    },
     /// Bad key, missing permission, malformed request — retrying cannot help
     /// and treating it as "no coverage" would write false for every node, so
     /// abort the batch immediately.
@@ -35,6 +40,17 @@ enum FetchError {
 }
 
 impl FetchError {
+    /// How long to wait before the next attempt. Honours `Retry-After` when
+    /// Google sent one, capped so a hostile value can't stall the batch.
+    fn backoff_sleep(&self) -> Duration {
+        match self {
+            Self::RateLimited { retry_after } => retry_after
+                .unwrap_or(DEFAULT_RATE_LIMIT_SLEEP)
+                .min(MAX_RATE_LIMIT_SLEEP),
+            _ => DEFAULT_RATE_LIMIT_SLEEP,
+        }
+    }
+
     fn into_anyhow(self) -> anyhow::Error {
         match self {
             Self::RateLimited { retry_after } => anyhow::anyhow!(
@@ -42,6 +58,12 @@ impl FetchError {
                 retry_after
                     .map(|d| format!("{}s", d.as_secs()))
                     .unwrap_or_else(|| "unspecified".to_string())
+            ),
+            Self::ServerError { status } => anyhow::anyhow!(
+                "Street View metadata server error ({}); retry once Google recovers",
+                status
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "status=UNKNOWN_ERROR".to_string())
             ),
             Self::Fatal(e) | Self::Transient(e) => e,
         }
@@ -105,21 +127,20 @@ pub async fn fetch_coverage(client: &Client, api_key: &str, lng: f64, lat: f64) 
         match request_metadata(client, api_key, lng, lat).await {
             Ok(covered) => return Ok(covered),
             Err(FetchError::Fatal(e)) => return Err(e),
-            Err(FetchError::RateLimited { retry_after }) => {
+            Err(err @ (FetchError::RateLimited { .. } | FetchError::ServerError { .. })) => {
                 if attempt + 1 == MAX_ATTEMPTS {
-                    return Err(FetchError::RateLimited { retry_after }.into_anyhow());
+                    return Err(err.into_anyhow());
                 }
-                let sleep_dur = retry_after
-                    .unwrap_or(DEFAULT_RATE_LIMIT_SLEEP)
-                    .min(MAX_RATE_LIMIT_SLEEP);
+                let sleep_dur = err.backoff_sleep();
                 tracing::warn!(
-                    "Street View metadata rate-limited; sleeping {:?} before retry {}/{}",
+                    "{:?}; sleeping {:?} before retry {}/{}",
+                    err,
                     sleep_dur,
                     attempt + 2,
                     MAX_ATTEMPTS
                 );
                 tokio::time::sleep(sleep_dur).await;
-                last_err = Some(FetchError::RateLimited { retry_after });
+                last_err = Some(err);
             }
             Err(FetchError::Transient(e)) => {
                 last_err = Some(FetchError::Transient(e));
@@ -155,13 +176,18 @@ async fn request_metadata(
         .map_err(|e| FetchError::Transient(e.without_url().into()))?;
 
     let status = resp.status();
-    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+    if status == StatusCode::TOO_MANY_REQUESTS {
         let retry_after = resp
             .headers()
             .get(header::RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
             .and_then(parse_retry_after);
         return Err(FetchError::RateLimited { retry_after });
+    }
+    if status.is_server_error() {
+        return Err(FetchError::ServerError {
+            status: Some(status),
+        });
     }
     if let Err(e) = resp.error_for_status_ref() {
         return Err(FetchError::Fatal(
@@ -198,7 +224,10 @@ async fn request_metadata(
             Ok(true)
         }
         Classification::Absent => Ok(false),
-        Classification::Transient => Err(FetchError::RateLimited { retry_after: None }),
+        Classification::Transient if body.status == "OVER_QUERY_LIMIT" => {
+            Err(FetchError::RateLimited { retry_after: None })
+        }
+        Classification::Transient => Err(FetchError::ServerError { status: None }),
         Classification::Fatal => Err(FetchError::Fatal(anyhow::anyhow!(
             "Street View metadata returned status={} — check {API_KEY_ENV} and API enablement",
             body.status
