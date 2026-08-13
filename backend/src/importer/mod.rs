@@ -7,6 +7,7 @@ pub mod inserter;
 pub mod parser;
 
 use anyhow::Result;
+use futures::StreamExt;
 use rayon::prelude::*;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -367,12 +368,28 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
     // here is a signal that the 10 m rule needs another look.
     let mut total_too_far: usize = 0;
 
-    for (idx, target) in targets.iter().enumerate() {
-        if idx > 0 {
-            google::pace_next_request().await;
-        }
+    // Lookups are independent and network-bound, so they run concurrently;
+    // google::REQUEST_CONCURRENCY carries the rate-limit reasoning. Unordered
+    // because nothing downstream cares about ordering — rows are keyed by
+    // osm_node_id — and one slow request should not hold up the rest.
+    let mut lookups = futures::stream::iter(targets.iter())
+        .map(|target| {
+            let client = &client;
+            let api_key = &api_key;
+            async move {
+                google::pace_request().await;
+                let result = google::fetch_coverage(client, api_key, target.lon, target.lat).await;
+                (target, result)
+            }
+        })
+        .buffer_unordered(google::REQUEST_CONCURRENCY);
 
-        match google::fetch_coverage(&client, &api_key, target.lon, target.lat).await {
+    let mut completed: usize = 0;
+
+    while let Some((target, result)) = lookups.next().await {
+        completed += 1;
+
+        match result {
             Ok(coverage) => {
                 match &coverage {
                     google::Coverage::Covered => total_covered += 1,
@@ -392,7 +409,9 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
                 // Persist what already succeeded before giving up: otherwise a
                 // failure that recurs within the first CHUNK_SIZE lookups makes
                 // every re-run re-query the same nodes and die again, never
-                // banking any progress.
+                // banking any progress. Lookups still in flight are dropped
+                // with the stream; those nodes stay unqueried and come back on
+                // the next run.
                 crate::db::google_repository::upsert_coverage(pool, &buffer).await?;
                 return Err(anyhow::anyhow!(
                     "Street View metadata failed for junction osm_node_id={} ({}, {}): {:#}",
@@ -410,7 +429,7 @@ pub async fn import_google_coverage_data(pool: &PgPool, refresh: bool) -> Result
 
             tracing::info!(
                 "Progress: {}/{} (written={}, covered={})",
-                idx + 1,
+                completed,
                 targets.len(),
                 total_written,
                 total_covered
