@@ -15,8 +15,10 @@ IMPORT INTO が失敗する。新規地域は非重複 bbox を選ぶこと。
 手動で TRUNCATE + 全件 IMPORT INTO を実施する。
 
 Step 4 以降で失敗した場合は userfile が残るので、手動で
-`cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"` と
-`cockroach userfile delete baidu_panoramas.csv --url "$PROD_CRDB_URI"` で掃除する。
+`cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"`、
+`cockroach userfile delete baidu_panoramas.csv --url "$PROD_CRDB_URI"`、
+`cockroach userfile delete google_streetview_coverage.csv --url "$PROD_CRDB_URI"`
+で掃除する。
 
 ## Step 1: bbox の検証と本番DB接続情報の取得
 
@@ -83,6 +85,19 @@ docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
 
 BAIDU_COUNT=$(wc -l < ~/y-junctions-data/baidu_panoramas.csv)
 echo "exported $BAIDU_COUNT baidu_panoramas rows"
+
+# bbox 内の junction に紐付く google_streetview_coverage 行も書き出す
+docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
+  psql "postgresql://root@host.docker.internal:26257/y_junction?sslmode=disable" -c "\copy (
+    SELECT g.osm_node_id, g.has_coverage, g.queried_at
+    FROM google_streetview_coverage g
+    JOIN y_junctions y ON y.osm_node_id = g.osm_node_id
+    WHERE y.lon BETWEEN $MIN_LON AND $MAX_LON
+      AND y.lat BETWEEN $MIN_LAT AND $MAX_LAT
+  ) TO '/data/google_streetview_coverage.csv' WITH CSV"
+
+GOOGLE_COUNT=$(wc -l < ~/y-junctions-data/google_streetview_coverage.csv)
+echo "exported $GOOGLE_COUNT google_streetview_coverage rows"
 ```
 
 ## Step 3: userfile に CSV をアップロード
@@ -100,6 +115,9 @@ cockroach userfile upload ~/y-junctions-data/junctions.csv \
 
 cockroach userfile upload ~/y-junctions-data/baidu_panoramas.csv \
   baidu_panoramas.csv --url "$PROD_CRDB_URI"
+
+cockroach userfile upload ~/y-junctions-data/google_streetview_coverage.csv \
+  google_streetview_coverage.csv --url "$PROD_CRDB_URI"
 ```
 
 ## Step 4: 本番DBに差分追加（IMPORT INTO、TRUNCATE なし）
@@ -124,6 +142,12 @@ cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO y_junctions (
 cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO baidu_panoramas (
   osm_node_id, panoid, pano_mc_x, pano_mc_y, queried_at
 ) CSV DATA ('userfile:///baidu_panoramas.csv');"
+
+# 新規 osm_node_id の追記専用。既にある行の has_coverage 訂正（--refresh の
+# false→true など）はこの経路では反映できない（PK 衝突する）。
+cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO google_streetview_coverage (
+  osm_node_id, has_coverage, queried_at
+) CSV DATA ('userfile:///google_streetview_coverage.csv');"
 ```
 
 出力に `status: succeeded` と投入件数が出ていることを確認する。
@@ -150,4 +174,5 @@ cockroach sql --url "$PROD_CRDB_URI" -e "
 cockroach sql --url "$PROD_CRDB_URI" -e "SELECT COUNT(*) FROM y_junctions;"
 cockroach userfile delete junctions.csv --url "$PROD_CRDB_URI"
 cockroach userfile delete baidu_panoramas.csv --url "$PROD_CRDB_URI"
+cockroach userfile delete google_streetview_coverage.csv --url "$PROD_CRDB_URI"
 ```
