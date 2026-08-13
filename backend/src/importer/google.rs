@@ -18,9 +18,16 @@ const TRANSIENT_RETRY_SLEEP: Duration = Duration::from_millis(500);
 const DEFAULT_RATE_LIMIT_SLEEP: Duration = Duration::from_secs(5);
 const MAX_RATE_LIMIT_SLEEP: Duration = Duration::from_secs(60);
 
-// Sequential requests already cap out at a few per second, well under the
-// metadata QPS limit; this is just a courtesy floor between calls.
+// Rate budget. The documented ceiling is 30,000 queries per minute (= 500 QPS)
+// for the Street View Static API. Metadata requests are free and consume no
+// image quota, but the per-second limit still applies — hence OVER_QUERY_LIMIT.
+//
+// Each in-flight worker sleeps PACING before its own request, so one worker
+// issues at most 1/PACING = 20 req/s. REQUEST_CONCURRENCY workers therefore
+// cannot exceed 20 * 24 = 480 QPS however fast Google answers: a structural
+// ceiling below the limit, with the OVER_QUERY_LIMIT backoff as the fallback.
 const PACING: Duration = Duration::from_millis(50);
+pub const REQUEST_CONCURRENCY: usize = 24;
 
 #[derive(Debug)]
 enum FetchError {
@@ -118,8 +125,10 @@ pub fn build_client() -> Result<Client> {
     Ok(Client::builder().timeout(Duration::from_secs(10)).build()?)
 }
 
-/// Sleep between successive `fetch_coverage` calls (not before the first).
-pub async fn pace_next_request() {
+/// Throttle one worker ahead of its own `fetch_coverage` call. Called per
+/// request rather than between requests, so the rate ceiling holds no matter
+/// how the concurrent lookups interleave.
+pub async fn pace_request() {
     tokio::time::sleep(PACING).await;
 }
 
