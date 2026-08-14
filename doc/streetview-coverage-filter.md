@@ -73,7 +73,7 @@ CREATE TABLE google_streetview_coverage (
   - `"NOT_FOUND"`（"the address string provided in the `location` parameter couldn't be found"）→ **中断**。座標しか送らない本バッチでは起き得ないため、無しと誤記録して固定化させない
   - `"REQUEST_DENIED"`・`"INVALID_REQUEST"`・未知の値 → **hard stop でバッチ全体を中断**（キー不正・権限不足を「無し」と誤記録し `has_coverage=false` を大量に書く事故を防ぐ）
 - 除外の内訳（Google が無しと言ったのか、距離チェックで落としたのか）は完了ログに出す。距離チェックの発火が多い場合は 10m という基準自体を見直すシグナルになる。
-- レート制御・リトライ・ペーシングは `backend/src/importer/baidu.rs` の機構を踏襲。API キーは env `GOOGLE_MAPS_API_KEY` から読む。未設定なら明示エラーで停止（サイレントに全ノード「無し」判定しない）。
+- リトライ・バックオフは `backend/src/importer/baidu.rs` の機構を踏襲。**ペーシングは踏襲しない**（後述「並列度の根拠」）。API キーは env `GOOGLE_MAPS_API_KEY` から読む。未設定なら明示エラーで停止（サイレントに全ノード「無し」判定しない）。
 
 ### 2. 照会処理 — `backend/src/importer/mod.rs`（変更）
 
@@ -82,6 +82,22 @@ CREATE TABLE google_streetview_coverage (
 **非中国の判定は Rust 側で行う**（SQL では不可）。地域判定は `china::is_in_china_mainland(lng, lat)`（`backend/src/domain/china.rs:18`、手書き bbox 群の Rust 関数）だけが根拠で、`y_junctions` に地域列は無い。よって Baidu と同じ構造にする（`mod.rs:224-227`）：リポジトリは uncovered 候補を**全件**返し、この関数内で `!china::is_in_china_mainland(j.lon, j.lat)` でフィルタしてから照会する。
 
 照会 → `google_streetview_coverage` に upsert。照会失敗はそのノードを未照会のまま残す（`mod.rs:249` の Baidu と同じ abort-on-error）。ただし**中断する前に取得済みバッファを flush する**：さもないと最初の 100 件以内で再発する障害では毎回同じノードを引き直して flush 前に落ち、進捗が永久に残らない（Baidu 側は未対応）。API キーの検証は全件スキャンより前に行う。
+
+### 並列度の根拠
+
+照会は `futures::stream::buffer_unordered` で **`REQUEST_CONCURRENCY = 24` 本の並列**で走らせる。当初は Baidu を踏襲して逐次＋50ms ペーシングだったが、これは Baidu 固有の事情に由来するもので Google には当てはまらない。
+
+| | Baidu (`baidu.rs`) | Google (`google.rs`) |
+| --- | --- | --- |
+| エンドポイント | `mapsv0.bdimg.com/`（**非公式**・ブラウザ UA 偽装） | 公式 Street View Static metadata（API キー認証） |
+| 上限 | 不明。控えめに叩くしかない | **30,000 QPM = 500 QPS**（[usage and billing](https://developers.google.com/maps/documentation/streetview/usage-and-billing)） |
+| ペーシング | 80〜150ms ジッタ付き＝人間らしく見せる意図 | ジッタ不要。上限内で並列に叩くのが正常な使い方 |
+
+metadata は「no charge」かつ「No quota is consumed」だが、`OVER_QUERY_LIMIT` が status に定義されている以上、秒間制限は metadata にも適用されると読む（[metadata](https://developers.google.com/maps/documentation/streetview/metadata)）。
+
+**上限を構造的に超えない設計**：各ワーカーは自分のリクエスト前に `PACING`（50ms）だけ sleep する。1 ワーカーの上限は 1/50ms = 20 req/s なので、Google がどれだけ速く応答しても全体は `20 × 24 = 480 QPS` を超えられない。500 QPS の内側に構造的に収まり、`OVER_QUERY_LIMIT` バックオフはその保険として残る。
+
+逐次実装のままだと初回 backfill（非中国 約 89.6 万件）に 20〜40 時間かかり、公式上限の 25〜50 分の 1 しか使わない計算だった。
 
 ## 10m 判定の根拠と実測
 
@@ -186,7 +202,7 @@ API キーの制限は**サービス単位**（`api_targets.service`）で、Str
 
 ## エラーハンドリング・非機能
 
-- **クォータ／レート**：metadata は無料だが QPS 制限あり。`baidu.rs` のペーシング／リトライを踏襲。`OVER_QUERY_LIMIT` はバックオフ。
+- **クォータ／レート**：metadata は無料（quota 非消費）だが QPS 制限（30,000 QPM）あり。並列度とペーシングで 480 QPS の構造的上限を敷き、`OVER_QUERY_LIMIT` はバックオフ（「並列度の根拠」節）。
 - **API キー欠如**：env 未設定なら enrich を明示エラーで停止。
 - **API 障害時**：照会失敗は「無し」にせず未照会のまま（次回再試行で回復）。`has_coverage=false` を書くのは「照会に成功し無しと確定」した場合のみ。
 
