@@ -11,6 +11,14 @@ use sqlx::PgPool;
 /// junctions without a Baidu panorama, and elsewhere the ones Google's
 /// metadata reported as uncovered. Never-queried junctions stay on the map:
 /// absence of an answer is not an answer.
+///
+/// Note this runs *after* the `LIMIT` in `repository::find_by_bbox`, so a
+/// dense viewport returns fewer markers than the requested page size (~27% of
+/// the page is dropped at current coverage rates). Pushing the exclusion into
+/// the bbox query would fill the page, but measured 23ms → 95ms on that query
+/// because the anti-join has to run before the LIMIT. Accepted deliberately:
+/// the latency is paid on every map pan, the missing markers only matter when
+/// a viewport is already dense enough to hit the cap.
 pub async fn enrich_collection(
     pool: &PgPool,
     junctions: Vec<Junction>,
