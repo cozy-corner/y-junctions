@@ -189,12 +189,7 @@ fi
 grep -rn 'rust:1\|RUST_VERSION:\|^rust = ' .mise.toml .github/workflows/*.yml backend/Dockerfile pipeline/Dockerfile
 ```
 
-ずれていたら Dockerfile 2 つを揃える（`FROM rust:X.Y` は `.github/dependabot.yml` に docker ecosystem が無いため自動更新されない）。直したら実ビルドまで確認してからマージする:
-
-```bash
-docker build -t verify-backend ./backend
-docker build -f pipeline/Dockerfile -t verify-pipeline .   # context はリポジトリルート
-```
+ずれていたら `backend/Dockerfile` と `pipeline/Dockerfile` を揃えてからマージする。`FROM rust:X.Y` は `.github/dependabot.yml` に docker ecosystem が無いため自動更新されない。
 
 ```bash
 PR=<PR番号>
