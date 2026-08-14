@@ -16,6 +16,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch
 - バックグラウンド実行禁止（`&`, `nohup`）。
 - **pre-commit hook (`.husky/pre-commit`)** が存在し、commit時に lint-staged が走る。skill の「コミット前最終チェック」を通過していれば pre-commit も通る想定。
 - **前提**: ローカルで `cargo test` を通すには PostgreSQL (with PostGIS) が必要。CI 相当の DB セットアップは CLAUDE.md / README.md 参照。DB 未起動時は test のみスキップし、fmt / clippy だけで判断する（CI で最終判定される）。
+- **CI が全部緑でも、それだけではマージして良い根拠にならない**（MSRV が上がる更新は CI を素通りしてマージ後に落ちる）。Step 2-6 のマージ前チェックを必ず通す。
 
 ## Step 1: 対象PRを列挙
 
@@ -181,6 +182,14 @@ fi
 - `SKIP` → **Step 2-7** へ
 
 ### 2-6. マージ（3段フォールバック）
+
+**マージ前チェック: Rust バージョンの整合**。依存更新が要求 rustc を上げても CI は緑のまま通る。`backend-ci.yml` は `toolchain: '1.94.0'` を明示して新しい側でビルドし、かつ CI には `docker build` が無いため。古いままなのは Dockerfile の `FROM rust:X.Y` だけで、それはマージ後の `Deploy to Production` で初めて落ちる。Rust バージョンは複数ファイルに分散しているので、ずれていないか確認する:
+
+```bash
+grep -rn 'rust:1\|RUST_VERSION:\|^rust = ' .mise.toml .github/workflows/*.yml backend/Dockerfile pipeline/Dockerfile
+```
+
+ずれていたら `backend/Dockerfile` と `pipeline/Dockerfile` を揃えてからマージする。`FROM rust:X.Y` は `.github/dependabot.yml` に docker ecosystem が無いため自動更新されない。
 
 ```bash
 PR=<PR番号>
