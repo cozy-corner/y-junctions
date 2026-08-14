@@ -2,7 +2,12 @@
 # Keep in sync with .mise.toml and the CI workflows: sqlx 0.9.0 requires
 # rustc 1.94.0. Dependabot does not watch this pin (no docker ecosystem in
 # .github/dependabot.yml), so it has to move by hand.
-FROM rust:1.94 AS chef
+#
+# The Debian suite must be pinned explicitly, not left to the default `rust:X.Y`
+# tag: that default has moved past bookworm, and a binary linked against its
+# newer glibc dies on the bookworm-slim runtime below with
+# `GLIBC_2.38 not found`. Builder and runtime have to name the same suite.
+FROM rust:1.94-bookworm AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
