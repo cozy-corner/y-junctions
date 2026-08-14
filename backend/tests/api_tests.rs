@@ -1649,3 +1649,175 @@ async fn test_google_find_uncovered_nodes_returns_coordinates() {
     assert!((found.lat - SHANGHAI_LAT).abs() < 1e-9);
     assert!((found.lon - SHANGHAI_LON).abs() < 1e-9);
 }
+
+// ========== streetview_enricher: Google coverage exclusion ==========
+
+use y_junction_backend::api::streetview_enricher;
+use y_junction_backend::domain::Junction;
+
+const TOKYO_LAT: f64 = 35.6812;
+const TOKYO_LON: f64 = 139.7671;
+
+fn mk_enricher_junction(osm_node_id: i64, lat: f64, lon: f64) -> Junction {
+    Junction {
+        id: osm_node_id,
+        osm_node_id,
+        lat,
+        lon,
+        angle_1: 35,
+        angle_2: 145,
+        angle_3: 180,
+        bearings: vec![10.0, 45.0, 190.0],
+        created_at: chrono::Utc::now(),
+        elevation: None,
+        min_elevation_diff: None,
+        max_elevation_diff: None,
+        min_angle_elevation_diff: None,
+        way_1_highway_type: None,
+        way_2_highway_type: None,
+        way_3_highway_type: None,
+        way_1_category: None,
+        way_2_category: None,
+        way_3_category: None,
+    }
+}
+
+fn feature_ids(collection: &Value) -> Vec<i64> {
+    collection["features"]
+        .as_array()
+        .expect("features array")
+        .iter()
+        .map(|f| {
+            f["properties"]["osm_node_id"]
+                .as_i64()
+                .expect("osm_node_id")
+        })
+        .collect()
+}
+
+#[tokio::test]
+#[serial]
+async fn test_enrich_collection_drops_only_uncovered_non_china() {
+    let pool = setup_test_db().await;
+
+    let uncovered = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let covered = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let unqueried = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+
+    google_repository::upsert_coverage(&pool, &[(uncovered, false), (covered, true)])
+        .await
+        .expect("upsert failed");
+
+    let junctions = vec![
+        mk_enricher_junction(uncovered, TOKYO_LAT, TOKYO_LON),
+        mk_enricher_junction(covered, TOKYO_LAT, TOKYO_LON),
+        mk_enricher_junction(unqueried, TOKYO_LAT, TOKYO_LON),
+    ];
+
+    let result = streetview_enricher::enrich_collection(&pool, junctions)
+        .await
+        .expect("enrich failed");
+
+    let ids = feature_ids(&result);
+    assert!(
+        !ids.contains(&uncovered),
+        "uncovered junction should be dropped, got {ids:?}"
+    );
+    // A junction we never asked Google about is not the same as one Google
+    // said no to; keeping it is the whole point of the 3-state cache.
+    assert!(
+        ids.contains(&covered) && ids.contains(&unqueried),
+        "{ids:?}"
+    );
+    assert_eq!(result["total_count"].as_i64(), Some(2));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_enrich_collection_keeps_china_junction_regardless_of_coverage() {
+    let pool = setup_test_db().await;
+
+    let osm_node_id = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    // A stray coverage row for a mainland junction must not exclude it — the
+    // Baidu panorama owns that decision.
+    google_repository::upsert_coverage(&pool, &[(osm_node_id, false)])
+        .await
+        .expect("upsert failed");
+    baidu_repository::bulk_update_baidu(
+        &pool,
+        &[(
+            osm_node_id,
+            y_junction_backend::domain::china::BaiduPanorama {
+                panoid: "PANO_TEST".to_string(),
+                pano_mc_x: 13_523_770.0,
+                pano_mc_y: 3_640_859.0,
+            },
+        )],
+    )
+    .await
+    .expect("baidu upsert failed");
+
+    let junctions = vec![mk_enricher_junction(
+        osm_node_id,
+        SHANGHAI_LAT,
+        SHANGHAI_LON,
+    )];
+
+    let result = streetview_enricher::enrich_collection(&pool, junctions)
+        .await
+        .expect("enrich failed");
+
+    assert_eq!(feature_ids(&result), vec![osm_node_id]);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_enrich_feature_returns_uncovered_junction_with_empty_url() {
+    let pool = setup_test_db().await;
+
+    let osm_node_id = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    google_repository::upsert_coverage(&pool, &[(osm_node_id, false)])
+        .await
+        .expect("upsert failed");
+
+    let feature = streetview_enricher::enrich_feature(
+        &pool,
+        mk_enricher_junction(osm_node_id, TOKYO_LAT, TOKYO_LON),
+    )
+    .await
+    .expect("enrich failed");
+
+    // Direct links must not 404 a junction that exists; the empty URL is what
+    // suppresses the popup button.
+    assert_eq!(
+        feature["properties"]["osm_node_id"].as_i64(),
+        Some(osm_node_id)
+    );
+    assert_eq!(feature["properties"]["streetview_url"].as_str(), Some(""));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_enrich_feature_covered_and_unqueried_keep_google_url() {
+    let pool = setup_test_db().await;
+
+    let covered = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let unqueried = TEST_OSM_NODE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    google_repository::upsert_coverage(&pool, &[(covered, true)])
+        .await
+        .expect("upsert failed");
+
+    for osm_node_id in [covered, unqueried] {
+        let feature = streetview_enricher::enrich_feature(
+            &pool,
+            mk_enricher_junction(osm_node_id, TOKYO_LAT, TOKYO_LON),
+        )
+        .await
+        .expect("enrich failed");
+
+        let url = feature["properties"]["streetview_url"]
+            .as_str()
+            .expect("streetview_url");
+        assert!(url.contains("google.com/maps"), "{osm_node_id}: {url}");
+    }
+}
