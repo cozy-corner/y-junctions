@@ -1,5 +1,8 @@
 # Chef stage - prepare recipe
-FROM rust:1.90 AS chef
+# Keep in sync with .mise.toml and the CI workflows: sqlx 0.9.0 requires
+# rustc 1.94.0. Dependabot does not watch this pin (no docker ecosystem in
+# .github/dependabot.yml), so it has to move by hand.
+FROM rust:1.94 AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
