@@ -3,7 +3,10 @@
 #
 # Build context is the repository root so that `backend/` is in scope.
 
-FROM rust:1.90-slim-bookworm AS builder
+# Keep in sync with .mise.toml and the CI workflows: sqlx 0.9.0 requires
+# rustc 1.94.0. Dependabot does not watch this pin (no docker ecosystem in
+# .github/dependabot.yml), so it has to move by hand.
+FROM rust:1.94-slim-bookworm AS builder
 
 WORKDIR /app
 RUN apt-get update \
