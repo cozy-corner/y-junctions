@@ -5,6 +5,13 @@ on:
     branches:
       - main
 
+# デプロイを直列化する。並走すると status.latestCreatedRevisionName が
+# 他の run のリビジョンを返し、検証もロールバックも別のデプロイを対象にしてしまう。
+# 進行中のデプロイは cancel せず待たせる
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 env:
   RUST_VERSION: '1.94.0'
   NODE_VERSION: '23.11.0'
