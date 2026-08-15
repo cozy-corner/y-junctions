@@ -35,13 +35,17 @@ version-resolver:
   default: patch
 autolabeler:
   # データ追加・更新の自動ラベリング
+  #
+  # title 条件は置かない。autolabeler は branch / files / title を OR で
+  # 評価するため、「追加」「道」のような汎用語を入れると無関係な PR にも
+  # data が付く。data は version-resolver の minor に入っているので、
+  # 誤ラベルはリリースノート誤載と不要な minor bump に直結する。
+  # データ更新は data/* ブランチか doc/data-updates.md の変更で判定する。
   - label: 'data'
     branch:
       - '/^data\/.*/'
     files:
       - 'doc/data-updates.md'
-    title:
-      - '/地域|データ|インポート|追加|道|県|府/'
   
   # 新機能の自動ラベリング
   - label: 'feature'
