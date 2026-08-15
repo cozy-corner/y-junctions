@@ -5,6 +5,13 @@ on:
     branches:
       - main
 
+# デプロイを直列化する。並走すると status.latestCreatedRevisionName が
+# 他の run のリビジョンを返し、検証もロールバックも別のデプロイを対象にしてしまう。
+# 進行中のデプロイは cancel せず待たせる
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 env:
   RUST_VERSION: '1.94.0'
   NODE_VERSION: '23.11.0'
@@ -247,6 +254,7 @@ jobs:
             .
 
       - name: Deploy to Cloud Run
+        id: deploy
         run: |
           gcloud run deploy y-junctions-api \
             --image ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/backend:${{ github.sha }} \
@@ -260,8 +268,37 @@ jobs:
             --min-instances 0 \
             --max-instances 10
 
+          # Rollback on failure がトラフィックを特定リビジョンに固定 (--to-revisions) するため、
+          # 解除しない限り以降のデプロイは新リビジョンを作るだけで配信は古いまま。
+          # 成功デプロイのたびに固定を外して最新へ戻す (#315)
+          gcloud run services update-traffic y-junctions-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --to-latest
+
+          DEPLOYED_REVISION=$(gcloud run services describe y-junctions-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --format 'value(status.latestCreatedRevisionName)')
+          echo "Deployed revision: $DEPLOYED_REVISION"
+          echo "revision=$DEPLOYED_REVISION" >> "$GITHUB_OUTPUT"
+
       - name: Verify deployment
         run: |
+          DEPLOYED_REVISION='${{ steps.deploy.outputs.revision }}'
+
+          # サービス URL への health check は配信中のリビジョンにしか届かないので、
+          # 今回のリビジョンが起動失敗して古いものが配信され続けていても通ってしまう。
+          # まず配信中リビジョンが今回のものか確認する (#315)
+          SERVING_REVISION=$(gcloud run services describe y-junctions-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --format=json \
+            | jq -r '[.status.traffic[] | select(.percent == 100)] | .[0].revisionName // empty')
+
+          if [ "$SERVING_REVISION" != "$DEPLOYED_REVISION" ]; then
+            echo "::error::Deployed revision $DEPLOYED_REVISION is not serving traffic (serving: ${SERVING_REVISION:-none})"
+            exit 1
+          fi
+          echo "Serving revision matches deployment: $DEPLOYED_REVISION"
+
           SERVICE_URL=$(gcloud run services describe y-junctions-api \
             --region ${{ secrets.GCP_REGION }} \
             --format 'value(status.url)')
