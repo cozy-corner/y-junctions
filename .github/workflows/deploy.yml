@@ -253,6 +253,18 @@ jobs:
             -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/y-junctions/backend:latest \
             .
 
+      # ロールバック先は「直前に実際に配信できていたリビジョン」を使う。
+      # 作成時刻順で選ぶと、起動失敗したリビジョンに戻してしまう (#315)
+      - name: Record currently serving revision
+        id: pre_deploy
+        run: |
+          SERVING_REVISION=$(gcloud run services describe y-junctions-api \
+            --region ${{ secrets.GCP_REGION }} \
+            --format=json \
+            | jq -r '[.status.traffic[] | select(.percent == 100)] | .[0].revisionName // empty')
+          echo "Currently serving: ${SERVING_REVISION:-none}"
+          echo "revision=$SERVING_REVISION" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Cloud Run
         id: deploy
         run: |
@@ -320,19 +332,29 @@ jobs:
         if: failure()
         run: |
           echo "Deployment failed, checking for rollback..."
-          PREVIOUS_REVISION=$(gcloud run revisions list \
-            --service=y-junctions-api \
-            --region=${{ secrets.GCP_REGION }} \
-            --format="value(name)" \
-            --sort-by=~createdTime \
-            | sed -n '2p')
+          PREVIOUS_REVISION='${{ steps.pre_deploy.outputs.revision }}'
 
-          if [ -n "$PREVIOUS_REVISION" ]; then
-            echo "Rolling back to $PREVIOUS_REVISION"
-            gcloud run services update-traffic y-junctions-api \
-              --region=${{ secrets.GCP_REGION }} \
-              --to-revisions=$PREVIOUS_REVISION=100
+          if [ -z "$PREVIOUS_REVISION" ]; then
+            echo "No previously serving revision recorded, skipping rollback"
+            exit 0
           fi
+
+          CURRENT_REVISION=$(gcloud run services describe y-junctions-api \
+            --region=${{ secrets.GCP_REGION }} \
+            --format=json \
+            | jq -r '[.status.traffic[] | select(.percent == 100)] | .[0].revisionName // empty')
+
+          # ビルド等デプロイ前の失敗では配信は変わっていない。
+          # ここで update-traffic すると無意味な固定を残すだけなので何もしない
+          if [ "$CURRENT_REVISION" = "$PREVIOUS_REVISION" ]; then
+            echo "Traffic is still on $PREVIOUS_REVISION, nothing to roll back"
+            exit 0
+          fi
+
+          echo "Rolling back to $PREVIOUS_REVISION"
+          gcloud run services update-traffic y-junctions-api \
+            --region=${{ secrets.GCP_REGION }} \
+            --to-revisions=$PREVIOUS_REVISION=100
 
       - name: Cleanup old revisions
         if: success()
