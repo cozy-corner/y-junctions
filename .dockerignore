@@ -1,0 +1,34 @@
+# ルートをビルドコンテキストに取るのは pipeline/Dockerfile のみ
+# (backend/Dockerfile は backend/ がコンテキストで backend/.dockerignore を使う)。
+# pipeline/Dockerfile が COPY するのは backend/ だけなので、それ以外は
+# buildkit に送る必要がない。特に .git は persist-credentials で書き込まれた
+# トークンを含み得るため、コンテキストに入れない。
+
+# VCS
+.git/
+.gitignore
+
+# コンテキストに不要なディレクトリ
+.github/
+.claude/
+.husky/
+doc/
+docs/
+frontend/
+scripts/
+terraform/
+
+# ビルド成果物・依存
+**/node_modules/
+backend/target/
+backend/tests/
+
+# 認証情報・ローカル設定
+**/.env
+**/.env.local
+
+# OS
+.DS_Store
+*.swp
+*.swo
+*~

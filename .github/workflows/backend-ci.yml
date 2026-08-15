@@ -4,7 +4,16 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      # pipeline/Dockerfile はビルドコンテキストにリポジトリルートを取り
+      # backend/ をそのまま焼き込むため、backend 変更でも pipeline 変更でも
+      # イメージビルドを検証する必要がある
+      - 'pipeline/**'
       - '.github/workflows/backend-ci.yml'
+
+# どのジョブも読み取りしか必要としない。リポジトリ設定の既定も現状 read だが、
+# 設定変更に引きずられないようワークフロー側で固定する。
+permissions:
+  contents: read
 
 jobs:
   checks:
@@ -140,3 +149,96 @@ jobs:
 
       - name: Run tests
         run: cargo test --all-features
+
+  # Docker イメージのビルド + 起動確認。
+  #
+  # ここが無かったために、MSRV 上げ (#313) と glibc 不一致 (#316) が
+  # 全チェック緑のままマージされ、失敗はマージ後の deploy.yml でしか
+  # 現れなかった。3 つの条件を deploy.yml と揃えておくことが要点:
+  #   - --platform linux/amd64 (本番と同じアーキテクチャ)
+  #   - 本番と同じ Dockerfile / ビルドコンテキスト
+  #   - ビルドだけでなく実際に起動させる (glibc 不一致は実行時にしか出ない)
+  docker-backend:
+    name: Backend - Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      # persist-credentials の既定 true は checkout トークンを .git/config に
+      # 書き込む。docker ジョブは git 操作をしないうえ、.git がビルド
+      # コンテキストに入り得る（pipeline 側はルートコンテキスト）ので落とす。
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build backend image
+        working-directory: backend
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --cache-from type=gha,scope=backend \
+            --cache-to type=gha,scope=backend,mode=max \
+            -t y-junctions-backend:ci \
+            .
+
+      # 接続プールは lazy 生成なので、到達できない DATABASE_URL でも
+      # listen までは進む。DB を用意せずに起動確認できる。
+      - name: Smoke test backend image
+        run: |
+          docker run --rm -d --name backend-smoke \
+            -p 18080:8080 \
+            -e DATABASE_URL='postgresql://root@127.0.0.1:26257/y_junction?sslmode=disable' \
+            -e RUST_LOG=info \
+            y-junctions-backend:ci
+
+          ok=0
+          for _ in $(seq 1 20); do
+            if curl -fsS --max-time 5 http://localhost:18080/health; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+
+          echo "--- container logs ---"
+          docker logs backend-smoke || true
+          docker rm -f backend-smoke > /dev/null
+
+          if [ "$ok" -ne 1 ]; then
+            echo "backend image failed to serve /health"
+            exit 1
+          fi
+
+  docker-pipeline:
+    name: Pipeline - Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # ビルドコンテキストはリポジトリルート (deploy.yml と同じ)
+      - name: Build pipeline image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --file pipeline/Dockerfile \
+            --cache-from type=gha,scope=pipeline \
+            --cache-to type=gha,scope=pipeline,mode=max \
+            -t y-junctions-pipeline:ci \
+            .
+
+      # Cloud Run Jobs 用イメージなので listen はしない。バイナリを 1 つ
+      # 実行して、動的リンクが解決すること (= glibc が合っていること) を見る。
+      - name: Smoke test pipeline image
+        run: docker run --rm y-junctions-pipeline:ci pipeline-download-osm --help
