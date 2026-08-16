@@ -25,18 +25,24 @@ VALID_HIGHWAY_TYPES = {
 
 
 def unescape(s):
-    """OPL は空白等を %XX でエスケープする。highway 値の判定に必要な分だけ戻す。"""
+    """OPL のエスケープを戻す。
+
+    形式は %XX% — 桁数は固定ではなく、終端の % までが 16 進のコードポイント。
+    例: name:en=Aoyama%20%dori → "Aoyama dori"、name=%9752%%5c71% → "青山"
+    """
     if "%" not in s:
         return s
     out, i = [], 0
     while i < len(s):
-        if s[i] == "%" and i + 2 < len(s):
-            try:
-                out.append(chr(int(s[i + 1:i + 3], 16)))
-                i += 3
-                continue
-            except ValueError:
-                pass
+        if s[i] == "%":
+            end = s.find("%", i + 1)
+            if end > i + 1:
+                try:
+                    out.append(chr(int(s[i + 1:end], 16)))
+                    i = end + 1
+                    continue
+                except ValueError:
+                    pass
         out.append(s[i])
         i += 1
     return "".join(out)
