@@ -9,6 +9,17 @@ use super::calculator::calculate_junction_angles;
 use super::detector::{JunctionForInsert, NodeConnectionCounter, YJunctionWithCoords};
 use crate::domain::junction::AngleType;
 
+/// 最大角度の上限。これを超えるノードは 3 本の分岐が一方向に偏っていて、Y字路の
+/// 「1 本の幹が 2 本に分かれる」構造を持たない。幹は又の反対側へ伸びるので、
+/// 実際の Y字路の最大角度は 180° 付近に集まる (本番データで 180-189° に 48%)。
+/// 210° は分布の山が裾に変わる位置で、超えるのは表示中の 1.1% (#320)。
+const MAX_ANGLE_DEGREES: i16 = 210;
+
+/// 3 本の分岐が一方向に偏っていて幹を持たないか。3-way / 2-way 両経路で使う。
+fn is_lopsided(angles: &[i16; 3]) -> bool {
+    *angles.iter().max().unwrap() > MAX_ANGLE_DEGREES
+}
+
 /// Way data collected during parallel parsing
 #[derive(Debug)]
 struct WayData {
@@ -259,6 +270,11 @@ pub fn parse_pbf_three_way(
                 return None;
             }
 
+            // 3 本が一方向に偏っていて幹を持たない形状を除外
+            if is_lopsided(&angles) {
+                return None;
+            }
+
             // Exclude paired bus pull-outs (Pattern A): one branch is a service way
             // leading to a bus_stop that loops back to another branch via a second
             // service way. Catches both J1 and J2 of the pair symmetrically.
@@ -414,6 +430,17 @@ pub fn parse_pbf_two_way(
                 return None;
             }
 
+            // 3 本が一方向に偏っていて幹を持たない形状を除外。2-way 経路では貫通 way が
+            // ノードで 40° 以上折れた場合に発生する (関東の抽出結果で 0.98%)。
+            if is_lopsided(&angles) {
+                tracing::debug!(
+                    "2-way REJECTED (max_angle={}°): node {} at ({:.7}, {:.7}), angles=[{}°, {}°, {}°]",
+                    angles.iter().max().unwrap(), candidate.node_id, junction_lat, junction_lon,
+                    angles[0], angles[1], angles[2]
+                );
+                return None;
+            }
+
             // Exclude paired bus pull-outs (Pattern A): see parse_pbf_three_way for details.
             if counter.junction_has_bus_stop_loop(candidate.node_id) {
                 return None;
@@ -500,5 +527,31 @@ pub fn parse_pbf_two_way(
 
 #[cfg(test)]
 mod tests {
-    // Tests removed - elevation logic moved to separate module
+    use super::*;
+
+    #[test]
+    fn lopsided_rejects_above_threshold() {
+        // #320 の実例 node 2077808173: 3 本が 115° の扇形に収まり幹が無い
+        assert!(is_lopsided(&[41, 74, 245]));
+    }
+
+    #[test]
+    fn lopsided_boundary_is_inclusive() {
+        // 210° ちょうどは通す、211° から弾く
+        assert!(!is_lopsided(&[51, 99, 210]));
+        assert!(is_lopsided(&[22, 127, 211]));
+    }
+
+    #[test]
+    fn lopsided_accepts_typical_y_junction() {
+        // 直線道路から 1 本枝分かれする典型形 (最大角 180°)
+        assert!(!is_lopsided(&[40, 140, 180]));
+    }
+
+    #[test]
+    fn lopsided_ignores_angle_order() {
+        // angles は時計回り順で保存され、昇順とは限らない
+        assert!(is_lopsided(&[245, 41, 74]));
+        assert!(is_lopsided(&[41, 245, 74]));
+    }
 }
