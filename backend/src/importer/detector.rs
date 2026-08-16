@@ -225,30 +225,6 @@ impl NodeConnectionCounter {
         }
     }
 
-    /// Get the neighboring node IDs for a Y-junction node
-    /// Returns up to 3 neighboring nodes (one per connected way)
-    pub fn get_neighboring_nodes(&self, junction_node_id: i64) -> Vec<i64> {
-        let mut neighbors = Vec::new();
-
-        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids.value() {
-                if let Some(nodes) = self.way_nodes.get(&way_id) {
-                    // Find the junction node in the way's node list
-                    if let Some(pos) = nodes.value().iter().position(|&id| id == junction_node_id) {
-                        // Get the neighboring node (prefer next, fallback to previous)
-                        if pos + 1 < nodes.value().len() {
-                            neighbors.push(nodes.value()[pos + 1]);
-                        } else if pos > 0 {
-                            neighbors.push(nodes.value()[pos - 1]);
-                        }
-                    }
-                }
-            }
-        }
-
-        neighbors
-    }
-
     /// List the neighbor node of every branch a single way contributes at this node.
     ///
     /// A way is not one branch: a node in the middle of a way has road leading away
@@ -327,13 +303,15 @@ impl NodeConnectionCounter {
             .filter_map(|entry| {
                 let node_id = *entry.key();
                 let way_ids = entry.value();
+                // branch_count scans every way's node vector, so let the two
+                // hash-lookup predicates reject first.
                 (way_ids.len() == 3
-                    && self.branch_count(node_id) == 3
-                    && self.has_at_least_one_core_highway(node_id))
-                .then(|| YJunctionCandidate {
-                    node_id,
-                    connected_ways: way_ids.iter().copied().collect(),
-                })
+                    && self.has_at_least_one_core_highway(node_id)
+                    && self.branch_count(node_id) == 3)
+                    .then(|| YJunctionCandidate {
+                        node_id,
+                        connected_ways: way_ids.iter().copied().collect(),
+                    })
             })
             .collect()
     }
