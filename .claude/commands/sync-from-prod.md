@@ -18,7 +18,7 @@ PROD_CRDB_URI=$(cd terraform && terraform output -raw cockroachdb_connection_uri
 # ローカルCockroachDB（port 26257）の既存データを削除
 # DELETE はトランザクションのロック予算（デフォルト 1MB）で 100万行規模から詰まるので TRUNCATE を使う
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
-  --execute "TRUNCATE y_junctions; TRUNCATE baidu_panoramas;"
+  --execute "TRUNCATE y_junctions; TRUNCATE baidu_panoramas; TRUNCATE google_streetview_coverage;"
 
 # 本番DBからCSVエクスポート（~/y-junctions-data/prod_export.csv に出力）
 docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
@@ -45,9 +45,19 @@ docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
     FROM baidu_panoramas
   ) TO '/data/prod_export_baidu_panoramas.csv' WITH CSV HEADER"
 
+# google_streetview_coverage も同期する。has_coverage = false のノードは API 応答から
+# 除外される（backend/src/api/streetview_enricher.rs の enrich_collection）ので、
+# これが無いとローカルでは「地図に表示される Y字路」を再現できない
+docker run --rm -v ~/y-junctions-data:/data postgres:15-alpine \
+  psql "$PROD_CRDB_URI" -c "\copy (
+    SELECT osm_node_id, has_coverage, queried_at
+    FROM google_streetview_coverage
+  ) TO '/data/prod_export_google_coverage.csv' WITH CSV HEADER"
+
 # CSVをy-junctions-cockroachdbコンテナのexternディレクトリに配置
 docker cp ~/y-junctions-data/prod_export.csv y-junctions-cockroachdb:/cockroach/cockroach-data/extern/prod_export.csv
 docker cp ~/y-junctions-data/prod_export_baidu_panoramas.csv y-junctions-cockroachdb:/cockroach/cockroach-data/extern/prod_export_baidu_panoramas.csv
+docker cp ~/y-junctions-data/prod_export_google_coverage.csv y-junctions-cockroachdb:/cockroach/cockroach-data/extern/prod_export_google_coverage.csv
 
 # IMPORT INTO でローカルCockroachDBにインポート（nodelocal://1/ はコンテナのexternディレクトリを参照）
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
@@ -55,12 +65,25 @@ cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disabl
 
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
   --execute "IMPORT INTO baidu_panoramas (osm_node_id, panoid, pano_mc_x, pano_mc_y, queried_at) CSV DATA ('nodelocal://1/prod_export_baidu_panoramas.csv') WITH skip = '1';"
+
+cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
+  --execute "IMPORT INTO google_streetview_coverage (osm_node_id, has_coverage, queried_at) CSV DATA ('nodelocal://1/prod_export_google_coverage.csv') WITH skip = '1';"
 ```
 
-件数を確認する:
+件数を確認する。3 テーブルすべてを本番と比較し、取りこぼしが無いことを確かめる:
 
 ```bash
 set -euo pipefail
+
+COUNT_SQL="SELECT 'y_junctions' AS table_name, COUNT(*) FROM y_junctions
+UNION ALL SELECT 'baidu_panoramas', COUNT(*) FROM baidu_panoramas
+UNION ALL SELECT 'google_streetview_coverage', COUNT(*) FROM google_streetview_coverage;"
+
+echo "--- local ---"
 cockroach sql --url "postgresql://root@localhost:26257/y_junction?sslmode=disable" \
-  --execute "SELECT COUNT(*) FROM y_junctions;"
+  --execute "$COUNT_SQL"
+
+echo "--- prod ---"
+PROD_CRDB_URI=$(cd terraform && terraform output -raw cockroachdb_connection_uri)
+docker run --rm postgres:15-alpine psql "$PROD_CRDB_URI" -c "$COUNT_SQL"
 ```
