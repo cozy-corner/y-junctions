@@ -255,22 +255,16 @@ impl NodeConnectionCounter {
     /// on both sides, so it contributes two. Only an endpoint contributes one. A
     /// closed way that starts and ends here appears twice in the node list and so
     /// contributes one per end.
-    fn branch_neighbors_in_way(nodes: &[i64], node_id: i64) -> Vec<i64> {
-        let mut neighbors = Vec::new();
-
-        for (pos, &id) in nodes.iter().enumerate() {
-            if id != node_id {
-                continue;
-            }
-            if pos > 0 {
-                neighbors.push(nodes[pos - 1]);
-            }
-            if pos + 1 < nodes.len() {
-                neighbors.push(nodes[pos + 1]);
-            }
-        }
-
-        neighbors
+    fn branch_neighbors_in_way(nodes: &[i64], node_id: i64) -> impl Iterator<Item = i64> + '_ {
+        nodes
+            .iter()
+            .enumerate()
+            .filter(move |&(_, &id)| id == node_id)
+            .flat_map(move |(pos, _)| {
+                let before = pos.checked_sub(1).and_then(|p| nodes.get(p)).copied();
+                let after = nodes.get(pos + 1).copied();
+                before.into_iter().chain(after)
+            })
     }
 
     /// Number of roads actually leading away from this node.
@@ -279,20 +273,17 @@ impl NodeConnectionCounter {
     /// Y-junction. It is not the same as the number of connected ways — a single
     /// way passing straight through contributes two branches.
     pub fn branch_count(&self, node_id: i64) -> usize {
-        let Some(way_ids) = self.node_to_ways.get(&node_id) else {
-            return 0;
-        };
-
-        way_ids
-            .value()
-            .iter()
-            .map(|way_id| {
-                self.way_nodes
-                    .get(way_id)
-                    .map(|nodes| Self::branch_neighbors_in_way(nodes.value(), node_id).len())
-                    .unwrap_or(0)
-            })
-            .sum()
+        self.node_to_ways.get(&node_id).map_or(0, |way_ids| {
+            way_ids
+                .value()
+                .iter()
+                .map(|way_id| {
+                    self.way_nodes.get(way_id).map_or(0, |nodes| {
+                        Self::branch_neighbors_in_way(nodes.value(), node_id).count()
+                    })
+                })
+                .sum()
+        })
     }
 
     /// Get neighboring nodes with their way tags in consistent order
@@ -300,31 +291,24 @@ impl NodeConnectionCounter {
     /// passing through the node yields two entries carrying that way's tags.
     /// This ensures that the neighbor node and its corresponding way tag are paired correctly
     pub fn get_neighbors_with_tags(&self, junction_node_id: i64) -> Vec<(i64, WayTagInfo)> {
-        let mut result = Vec::new();
+        let Some(way_ids) = self.node_to_ways.get(&junction_node_id) else {
+            return Vec::new();
+        };
 
-        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids.value() {
-                if let Some(nodes) = self.way_nodes.get(&way_id) {
-                    let neighbors = Self::branch_neighbors_in_way(nodes.value(), junction_node_id);
-                    if neighbors.is_empty() {
-                        continue;
-                    }
-
-                    // Get way tags
-                    let tags = self
-                        .way_tags
-                        .get(&way_id)
-                        .map(|t| t.clone())
-                        .unwrap_or_default();
-
-                    for neighbor_id in neighbors {
-                        result.push((neighbor_id, tags.clone()));
-                    }
-                }
-            }
-        }
-
-        result
+        way_ids
+            .value()
+            .iter()
+            .flat_map(|&way_id| {
+                let tags = self.get_way_tag(way_id).unwrap_or_default();
+                // The DashMap guard cannot outlive this closure, so the branches of
+                // one way are materialised here rather than streamed to the caller.
+                self.way_nodes.get(&way_id).map_or_else(Vec::new, |nodes| {
+                    Self::branch_neighbors_in_way(nodes.value(), junction_node_id)
+                        .map(|neighbor_id| (neighbor_id, tags.clone()))
+                        .collect()
+                })
+            })
+            .collect()
     }
 
     /// Find all nodes where exactly 3 ways meet and exactly 3 roads lead away
@@ -343,17 +327,13 @@ impl NodeConnectionCounter {
             .filter_map(|entry| {
                 let node_id = *entry.key();
                 let way_ids = entry.value();
-                if way_ids.len() == 3
+                (way_ids.len() == 3
                     && self.branch_count(node_id) == 3
-                    && self.has_at_least_one_core_highway(node_id)
-                {
-                    Some(YJunctionCandidate {
-                        node_id,
-                        connected_ways: way_ids.iter().copied().collect(),
-                    })
-                } else {
-                    None
-                }
+                    && self.has_at_least_one_core_highway(node_id))
+                .then(|| YJunctionCandidate {
+                    node_id,
+                    connected_ways: way_ids.iter().copied().collect(),
+                })
             })
             .collect()
     }
