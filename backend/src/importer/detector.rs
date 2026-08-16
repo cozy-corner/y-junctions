@@ -225,67 +225,77 @@ impl NodeConnectionCounter {
         }
     }
 
-    /// Get the neighboring node IDs for a Y-junction node
-    /// Returns up to 3 neighboring nodes (one per connected way)
-    pub fn get_neighboring_nodes(&self, junction_node_id: i64) -> Vec<i64> {
-        let mut neighbors = Vec::new();
+    /// List the neighbor node of every branch a single way contributes at this node.
+    ///
+    /// A way is not one branch: a node in the middle of a way has road leading away
+    /// on both sides, so it contributes two. Only an endpoint contributes one. A
+    /// closed way that starts and ends here appears twice in the node list and so
+    /// contributes one per end.
+    fn branch_neighbors_in_way(nodes: &[i64], node_id: i64) -> impl Iterator<Item = i64> + '_ {
+        nodes
+            .iter()
+            .enumerate()
+            .filter(move |&(_, &id)| id == node_id)
+            .flat_map(move |(pos, _)| {
+                let before = pos.checked_sub(1).and_then(|p| nodes.get(p)).copied();
+                let after = nodes.get(pos + 1).copied();
+                before.into_iter().chain(after)
+            })
+    }
 
-        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids.value() {
-                if let Some(nodes) = self.way_nodes.get(&way_id) {
-                    // Find the junction node in the way's node list
-                    if let Some(pos) = nodes.value().iter().position(|&id| id == junction_node_id) {
-                        // Get the neighboring node (prefer next, fallback to previous)
-                        if pos + 1 < nodes.value().len() {
-                            neighbors.push(nodes.value()[pos + 1]);
-                        } else if pos > 0 {
-                            neighbors.push(nodes.value()[pos - 1]);
-                        }
-                    }
-                }
-            }
-        }
-
-        neighbors
+    /// Number of roads actually leading away from this node.
+    ///
+    /// This is the node's degree, which is what decides whether a junction is a
+    /// Y-junction. It is not the same as the number of connected ways — a single
+    /// way passing straight through contributes two branches.
+    pub fn branch_count(&self, node_id: i64) -> usize {
+        self.node_to_ways.get(&node_id).map_or(0, |way_ids| {
+            way_ids
+                .value()
+                .iter()
+                .map(|way_id| {
+                    self.way_nodes.get(way_id).map_or(0, |nodes| {
+                        Self::branch_neighbors_in_way(nodes.value(), node_id).count()
+                    })
+                })
+                .sum()
+        })
     }
 
     /// Get neighboring nodes with their way tags in consistent order
-    /// Returns a vector of (neighbor_node_id, way_tag_info) tuples
+    /// Returns one (neighbor_node_id, way_tag_info) tuple per branch, so a way
+    /// passing through the node yields two entries carrying that way's tags.
     /// This ensures that the neighbor node and its corresponding way tag are paired correctly
     pub fn get_neighbors_with_tags(&self, junction_node_id: i64) -> Vec<(i64, WayTagInfo)> {
-        let mut result = Vec::new();
+        let Some(way_ids) = self.node_to_ways.get(&junction_node_id) else {
+            return Vec::new();
+        };
 
-        if let Some(way_ids) = self.node_to_ways.get(&junction_node_id) {
-            for &way_id in way_ids.value() {
-                if let Some(nodes) = self.way_nodes.get(&way_id) {
-                    // Find the junction node in the way's node list
-                    if let Some(pos) = nodes.value().iter().position(|&id| id == junction_node_id) {
-                        // Get the neighboring node (prefer next, fallback to previous)
-                        let neighbor_id = if pos + 1 < nodes.value().len() {
-                            nodes.value()[pos + 1]
-                        } else if pos > 0 {
-                            nodes.value()[pos - 1]
-                        } else {
-                            continue;
-                        };
-
-                        // Get way tags
-                        let tags = self
-                            .way_tags
-                            .get(&way_id)
-                            .map(|t| t.clone())
-                            .unwrap_or_default();
-
-                        result.push((neighbor_id, tags));
-                    }
-                }
-            }
-        }
-
-        result
+        way_ids
+            .value()
+            .iter()
+            .flat_map(|&way_id| {
+                let tags = self.get_way_tag(way_id).unwrap_or_default();
+                // The DashMap guard cannot outlive this closure, so the branches of
+                // one way are materialised here rather than streamed to the caller.
+                self.way_nodes.get(&way_id).map_or_else(Vec::new, |nodes| {
+                    Self::branch_neighbors_in_way(nodes.value(), junction_node_id)
+                        .map(|neighbor_id| (neighbor_id, tags.clone()))
+                        .collect()
+                })
+            })
+            .collect()
     }
 
-    /// Find all nodes that have exactly 3 way connections (Y-junction candidates)
+    /// Find all nodes where exactly 3 ways meet and exactly 3 roads lead away
+    /// (Y-junction candidates)
+    ///
+    /// Both conditions are needed. The branch count is what makes it a Y-junction:
+    /// 3 ways can meet at a node that has 4 branches, when one of them passes
+    /// straight through. The way count keeps this pass separate from
+    /// [`Self::find_two_way_junction_candidates`], which owns the 3-branch case
+    /// built from 2 ways — without it both passes would emit the same node.
+    ///
     /// Filters to require at least one core highway type to avoid pure hiking trails
     pub fn find_y_junction_candidates(&self) -> Vec<YJunctionCandidate> {
         self.node_to_ways
@@ -293,14 +303,15 @@ impl NodeConnectionCounter {
             .filter_map(|entry| {
                 let node_id = *entry.key();
                 let way_ids = entry.value();
-                if way_ids.len() == 3 && self.has_at_least_one_core_highway(node_id) {
-                    Some(YJunctionCandidate {
+                // branch_count scans every way's node vector, so let the two
+                // hash-lookup predicates reject first.
+                (way_ids.len() == 3
+                    && self.has_at_least_one_core_highway(node_id)
+                    && self.branch_count(node_id) == 3)
+                    .then(|| YJunctionCandidate {
                         node_id,
                         connected_ways: way_ids.iter().copied().collect(),
                     })
-                } else {
-                    None
-                }
             })
             .collect()
     }
@@ -626,15 +637,123 @@ mod tests {
         counter.add_way(3, &[2, 5], "primary", false, false);
 
         assert_eq!(counter.get_connection_count(1), 1); // Node 1: 1 way
-        assert_eq!(counter.get_connection_count(2), 3); // Node 2: 3 ways (Y-junction)
+        assert_eq!(counter.get_connection_count(2), 3); // Node 2: 3 ways
         assert_eq!(counter.get_connection_count(3), 1); // Node 3: 1 way
         assert_eq!(counter.get_connection_count(4), 1); // Node 4: 1 way
         assert_eq!(counter.get_connection_count(5), 1); // Node 5: 1 way
 
+        // Way 1 passes through node 2, so the node has 4 branches and is a
+        // crossroads rather than a Y-junction.
+        // See test_three_terminating_ways_still_detected for the accepted shape.
+        assert_eq!(counter.branch_count(2), 4);
+        assert_eq!(counter.find_y_junction_candidates().len(), 0);
+    }
+
+    #[test]
+    fn test_passing_way_makes_four_branches_and_is_rejected() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Way 1 passes through node 2 → contributes 2 branches
+        counter.add_way(1, &[1, 2, 3], "tertiary", false, false);
+        // Ways 2 and 3 terminate at node 2 → 1 branch each
+        counter.add_way(2, &[2, 4], "residential", false, false);
+        counter.add_way(3, &[2, 5], "residential", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 3, "3 ways meet at node 2");
+        assert_eq!(counter.branch_count(2), 4, "but the node has 4 branches");
+
+        let candidates = counter.find_y_junction_candidates();
+        assert_eq!(
+            candidates.len(),
+            0,
+            "A 4-branch crossroads must not be detected as a Y-junction"
+        );
+    }
+
+    #[test]
+    fn test_neighbors_include_both_sides_of_passing_way() {
+        let mut counter = NodeConnectionCounter::new();
+
+        counter.add_way(1, &[1, 2, 3], "tertiary", false, false);
+        counter.add_way(2, &[2, 4], "residential", false, false);
+        counter.add_way(3, &[2, 5], "residential", false, false);
+
+        let neighbors: Vec<i64> = counter
+            .get_neighbors_with_tags(2)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+
+        assert_eq!(neighbors.len(), 4, "one entry per branch, not per way");
+        for expected in [1, 3, 4, 5] {
+            assert!(
+                neighbors.contains(&expected),
+                "both sides of the passing way must be present, missing {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_closed_way_contributes_two_branches() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // Loop road starting and ending at node 2 → 2 branches from a single way
+        counter.add_way(1, &[2, 6, 7, 2], "residential", false, false);
+        counter.add_way(2, &[2, 4], "residential", false, false);
+
+        assert_eq!(counter.get_connection_count(2), 2);
+        assert_eq!(counter.branch_count(2), 3);
+
+        let neighbors: Vec<i64> = counter
+            .get_neighbors_with_tags(2)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(neighbors.len(), 3);
+        for expected in [6, 7, 4] {
+            assert!(neighbors.contains(&expected), "missing {expected}");
+        }
+    }
+
+    #[test]
+    fn test_three_terminating_ways_still_detected() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // All three ways terminate at node 2 → a genuine Y-junction
+        counter.add_way(1, &[1, 2], "tertiary", false, false);
+        counter.add_way(2, &[2, 4], "residential", false, false);
+        counter.add_way(3, &[5, 2], "residential", false, false);
+
+        assert_eq!(counter.branch_count(2), 3);
+
         let candidates = counter.find_y_junction_candidates();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].node_id, 2);
-        assert_eq!(candidates[0].connected_ways.len(), 3);
+
+        let neighbors: Vec<i64> = counter
+            .get_neighbors_with_tags(2)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(neighbors.len(), 3);
+        for expected in [1, 4, 5] {
+            assert!(neighbors.contains(&expected), "missing {expected}");
+        }
+    }
+
+    #[test]
+    fn test_two_way_passing_junction_left_to_two_way_path() {
+        let mut counter = NodeConnectionCounter::new();
+
+        // 2 ways, 3 branches — handled by find_two_way_junction_candidates.
+        // find_y_junction_candidates must not also claim it, or the two
+        // extraction passes would emit the same node twice.
+        counter.add_way(1, &[10, 20, 30], "residential", false, false);
+        counter.add_way(2, &[20, 40], "service", false, false);
+
+        assert_eq!(counter.branch_count(20), 3);
+        assert_eq!(counter.find_y_junction_candidates().len(), 0);
+        assert_eq!(counter.find_two_way_junction_candidates().len(), 1);
     }
 
     #[test]
