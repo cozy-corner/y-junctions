@@ -83,4 +83,4 @@ tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1"
-serial_test = "3"
+serial_test = "4"
