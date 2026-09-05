@@ -1,5 +1,5 @@
 ---
-syntax: deploy-data [bbox]
+name: deploy-data
 description: ローカルDBの指定bbox範囲のY字路データを本番DBに差分追加する
 allowed-tools: Bash
 ---
@@ -7,7 +7,13 @@ allowed-tools: Bash
 ローカルCockroachDBから指定 bbox 範囲の Y字路データを本番CockroachDBに追加する。
 `add-region` と組み合わせて、新規地域を本番に反映するための差分追加用。
 
-引数: bbox（`min_lon,min_lat,max_lon,max_lat`）。例: `121.30,31.10,121.65,31.40`
+## 引数
+
+このスキルの起動時に渡された引数から bbox（`min_lon,min_lat,max_lon,max_lat`）を読み取る。
+例: `121.30,31.10,121.65,31.40`。指定が無ければユーザーに確認すること。
+
+各 bash ブロックの `BBOX=<bbox>` は**シェル変数ではなくプレースホルダ**で、
+実行時に実際の値を埋める。
 
 **注意:** bbox が既存の本番データと重なっていると `osm_node_id` の UNIQUE 制約で
 IMPORT INTO が失敗する。新規地域は非重複 bbox を選ぶこと。
@@ -22,13 +28,13 @@ Step 4 以降で失敗した場合は userfile が残るので、手動で
 
 ## Step 1: bbox の検証と本番DB接続情報の取得
 
-各 bash ブロックは独立サブシェル。後続ブロックでも bbox (`${1}`) と prod URI を
+各 bash ブロックは独立サブシェル。後続ブロックでも bbox と prod URI を
 取得し直す必要がある。
 
 ```bash
 set -euo pipefail
 
-BBOX="${1:?bbox argument required}"
+BBOX=<bbox>   # 引数の値を埋める
 echo "$BBOX" | grep -Eq '^-?[0-9]+\.?[0-9]*,-?[0-9]+\.?[0-9]*,-?[0-9]+\.?[0-9]*,-?[0-9]+\.?[0-9]*$' \
   || { echo "invalid bbox format: $BBOX"; exit 1; }
 
@@ -44,7 +50,7 @@ echo "prod uri obtained"
 ```bash
 set -euo pipefail
 
-BBOX="${1}"
+BBOX=<bbox>   # 引数の値を埋める
 MIN_LON=$(echo "$BBOX" | cut -d, -f1)
 MIN_LAT=$(echo "$BBOX" | cut -d, -f2)
 MAX_LON=$(echo "$BBOX" | cut -d, -f3)
@@ -157,7 +163,7 @@ cockroach sql --url "$PROD_CRDB_URI" -e "IMPORT INTO google_streetview_coverage 
 ```bash
 set -euo pipefail
 
-BBOX="${1}"
+BBOX=<bbox>   # 引数の値を埋める
 MIN_LON=$(echo "$BBOX" | cut -d, -f1)
 MIN_LAT=$(echo "$BBOX" | cut -d, -f2)
 MAX_LON=$(echo "$BBOX" | cut -d, -f3)

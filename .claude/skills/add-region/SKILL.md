@@ -1,16 +1,25 @@
 ---
-syntax: add-region [region] [display-name]
+name: add-region
 description: 新規地域のY字路データをローカルDBに追加する
 allowed-tools: Bash
 ---
 
 新規地域のY字路データを追加する。以下の手順を順番に実行すること。
 
-- region: ${1} （例: taiwan）
-- display-name: ${2:-${1}} （例: 台湾全土）
+## 引数
+
+このスキルの起動時に渡された引数から以下を読み取る。
+
+- **REGION**: Geofabrik のリージョン名（例: `taiwan`）。第1引数。
+- **DISPLAY_NAME**: 日本語の表示名（例: `台湾全土`）。第2引数。省略時は REGION をそのまま使う。
+
+以降の bash ブロックに出てくる `${REGION}` / `${DISPLAY_NAME}` は
+**シェル変数ではなく、実行時にこの値へ置き換えるプレースホルダ**。
+各 bash ブロックは独立サブシェルなので変数は引き継がれない。
+ブロック先頭の代入行に実際の値を埋めてから実行すること。
 
 作業開始前に、対象地域のbboxをユーザーに確認すること（例: `119.9,21.9,122.1,25.4`）。
-regionが指定されていない場合も確認すること。
+REGION が指定されていない場合も確認すること。
 
 ## Step 1: インポートバイナリのビルド
 
@@ -25,12 +34,13 @@ cd backend && cargo build --release --bin import --bin import_two_way --bin impo
 
 ## Step 3: OSMデータのダウンロード
 
-Geofabrik (https://download.geofabrik.de/) から `${1}-latest.osm.pbf` をダウンロードして `~/y-junctions-data/osm/` に配置する。
+Geofabrik (https://download.geofabrik.de/) から `${REGION}-latest.osm.pbf` をダウンロードして `~/y-junctions-data/osm/` に配置する。
 
 ```bash
 set -euo pipefail
-curl -fLo ~/y-junctions-data/osm/${1}-latest.osm.pbf \
-  https://download.geofabrik.de/.../${1}-latest.osm.pbf
+REGION=<region>   # 引数の値を埋める
+curl -fLo ~/y-junctions-data/osm/${REGION}-latest.osm.pbf \
+  https://download.geofabrik.de/.../${REGION}-latest.osm.pbf
 ```
 
 URLはGeofabrikのサイトで確認して正しいパスを使うこと。
@@ -39,13 +49,14 @@ URLはGeofabrikのサイトで確認して正しいパスを使うこと。
 
 ```bash
 set -euo pipefail
+REGION=<region>   # 引数の値を埋める
 cd backend
 ./target/release/import \
-  --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
+  --input ~/y-junctions-data/osm/${REGION}-latest.osm.pbf \
   --bbox <bbox>
 
 ./target/release/import_two_way \
-  --input ~/y-junctions-data/osm/${1}-latest.osm.pbf \
+  --input ~/y-junctions-data/osm/${REGION}-latest.osm.pbf \
   --bbox <bbox>
 ```
 
@@ -100,9 +111,9 @@ N は**ローカルDBに残る panoid 未取得の中国本土ノード総数**�
 以下の形式で履歴の先頭に追記する。3-wayと2-wayの件数はStep 4のインポートログから確認する。
 
 ```
-- YYYY-MM-DD: **${2:-${1}}データ追加**
+- YYYY-MM-DD: **${DISPLAY_NAME}データ追加**
   - 総件数: X件（前回Y件から+Z件）
-  - 追加地域: ${2:-${1}}（bbox: <bbox>）
+  - 追加地域: ${DISPLAY_NAME}（bbox: <bbox>）
   - 内訳:
     - 3-way Y字路: X件
     - 2-way Y字路: Y件
@@ -136,12 +147,14 @@ npx vitest run src/components/CityJumpSelect.test.tsx
 
 ```bash
 set -euo pipefail
-# worktree 運用で既に data/${1} ブランチに居る場合もあるので、無ければ作成・あれば切り替え
-git checkout -b data/${1} 2>/dev/null || git checkout data/${1}
+REGION=<region>              # 引数の値を埋める
+DISPLAY_NAME=<display-name>  # 引数の値を埋める（省略時は region）
+# worktree 運用で既に data/${REGION} ブランチに居る場合もあるので、無ければ作成・あれば切り替え
+git checkout -b data/${REGION} 2>/dev/null || git checkout data/${REGION}
 # データ追加・都市ジャンプは項目ごとに別コミットにする
 git add doc/data-updates.md
-git commit -m "data: Add ${2:-${1}} Y-junction data"
+git commit -m "data: Add ${DISPLAY_NAME} Y-junction data"
 git add frontend/src/constants/cities.ts frontend/src/components/CityJumpSelect.test.tsx
-git commit -m "feat: 主要都市ジャンプに${2:-${1}}を追加"
-gh pr create --title "data: ${2:-${1}}のY字路データを追加"
+git commit -m "feat: 主要都市ジャンプに${DISPLAY_NAME}を追加"
+gh pr create --title "data: ${DISPLAY_NAME}のY字路データを追加"
 ```

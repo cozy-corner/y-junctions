@@ -1,4 +1,5 @@
 ---
+name: dependabot
 description: すべての Dependabot PR を確認し、CIが通れば自動マージ。失敗時は自動修正する。
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch
 ---
@@ -37,8 +38,8 @@ gh pr list --author "app/dependabot" --state open \
 
 ## Step 2: frontend / backend PR の処理
 
-- **frontend PR**: `.claude/commands/dependabot-frontend.md` を Read し、その Step 2 の手順をそのまま適用
-- **backend PR**: `.claude/commands/dependabot-backend.md` を Read し、その Step 2 の手順をそのまま適用
+- **frontend PR**: `.claude/skills/dependabot-frontend/SKILL.md` を Read し、その Step 2 の手順をそのまま適用
+- **backend PR**: `.claude/skills/dependabot-backend/SKILL.md` を Read し、その Step 2 の手順をそのまま適用
 
 手順の複製はしない。skill ファイルが更新されたら自動的に追従する。
 
