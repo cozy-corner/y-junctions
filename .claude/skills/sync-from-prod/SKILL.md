@@ -1,5 +1,5 @@
 ---
-syntax: sync-from-prod
+name: sync-from-prod
 description: 本番DBの全データをローカルCockroachDBに取り込む
 allowed-tools: Bash
 ---

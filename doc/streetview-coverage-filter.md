@@ -136,7 +136,7 @@ metadata は「no charge」かつ「No quota is consumed」だが、`OVER_QUERY_
 
 ### 6. 本番反映 — `/deploy-data` skill（変更）
 
-`baidu_panoramas` と同じ扱いを `google_streetview_coverage` に追加する（`.claude/commands/deploy-data.md`）。
+`baidu_panoramas` と同じ扱いを `google_streetview_coverage` に追加する（`.claude/skills/deploy-data/SKILL.md`）。
 - export：bbox 内 junction に紐付く行を `google_streetview_coverage g JOIN y_junctions y ON y.osm_node_id = g.osm_node_id` で CSV 出力（`baidu_panoramas` の export ブロック `deploy-data.md:74-85` に倣う）。
 - upload → `IMPORT INTO google_streetview_coverage (...) CSV DATA (...)`（`deploy-data.md:124` に倣う）。
 - cleanup：userfile 削除。
