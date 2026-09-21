@@ -1,3 +1,20 @@
+# 実行環境
+
+pi-coding-agent と Claude Code では、エージェントが動く環境が根本的に違う。CLAUDE.md は両方から読まれる。
+どちらで動いているかは `mount | grep sandboxfs` で判定できる (pi は sandboxfs が出る / Claude Code は出ない)。
+
+## pi-coding-agent: サンドボックス VM 内で動く
+
+- bash 等のツールは VM 内で実行される。HOST (Mac) のリポジトリは `/workspace` に read-write で投影され、cwd もここ。HOST の絶対パス (`~/code/y-junctions` 等) は VM 内に存在しない。HOME は VM 側 (`/root`) で HOST とは別。
+- 外向き通信は HTTP(S) プロキシ経由のみ。任意の TCP は通らない (HOST 上の local DB 26257 等には到達できない)。VM に docker は無い。
+- 環境変数は HOST (Mac) 由来の値が混じるため、値が VM に無いパスを指すことがある。
+
+## Claude Code: Mac (HOST) 上で直接動く
+
+VM を介さない。HOST のパス・docker・local DB がそのまま使える。
+
+---
+
 # 【最優先】プロジェクトの基盤情報
 
 ## 技術スタック
