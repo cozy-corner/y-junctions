@@ -1,0 +1,9 @@
+{
+  "tcp": {
+    "host.internal:26257": "127.0.0.1:26257"
+  },
+  "env": {
+    "DATABASE_URL": "postgresql://root@host.internal:26257/y_junction?sslmode=disable",
+    "TEST_DATABASE_URL": "postgresql://root@host.internal:26257/y_junction_test?sslmode=disable"
+  }
+}
