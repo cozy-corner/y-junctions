@@ -32,9 +32,9 @@ gh pr list --author "app/dependabot" --state open \
 | prefix | 種別 | 処理方法 |
 | --- | --- | --- |
 | `dependabot/bun/frontend/` | frontend | `/dependabot-frontend` の Step 2 を適用 |
+| `dependabot/bun/`（frontend 以外） | devtools | 下記 Step 4 |
 | `dependabot/cargo/backend/` | backend | `/dependabot-backend` の Step 2 を適用 |
 | `dependabot/github_actions/` | actions | 下記 Step 3 |
-| `dependabot/npm_and_yarn/`（frontend 以外） | devtools | 下記 Step 4 |
 
 ## Step 2: frontend / backend PR の処理
 
@@ -147,7 +147,7 @@ git worktree remove "$WT" --force 2>/dev/null || true
 
 ルート `package.json`（husky など）の更新PR。該当するCIは無いが、install が通ることを検証する。
 
-bun.lock に統一したため、validation は `bun install --frozen-lockfile` で実施する (Dependabot の ecosystem 設定が `npm` でも、ローカル/CI では bun.lock を使う)。lockfile と Dependabot ecosystem の不整合は個別に対応。
+root は bun ecosystem で Dependabot が bun.lock を直接更新するため、`bun install --frozen-lockfile` で lockfile と package.json の整合を検証する。
 
 ```bash
 set -e

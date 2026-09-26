@@ -36,7 +36,7 @@ updates:
           - "*"
 
   # Root (開発ツール)
-  - package-ecosystem: "npm"
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
