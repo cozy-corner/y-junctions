@@ -143,9 +143,11 @@ git worktree remove "$WT" --force 2>/dev/null || true
 [ -n "$BRANCH" ] && git branch -D "$BRANCH" 2>/dev/null || true
 ```
 
-## Step 4: devtools PR (root の npm) の処理
+## Step 4: devtools PR (root) の処理
 
-ルート `package.json`（husky など）の更新PR。該当するCIは無いが、`npm ci` が通ることを検証する。
+ルート `package.json`（husky など）の更新PR。該当するCIは無いが、install が通ることを検証する。
+
+bun.lock に統一したため、validation は `bun install --frozen-lockfile` で実施する (Dependabot の ecosystem 設定が `npm` でも、ローカル/CI では bun.lock を使う)。lockfile と Dependabot ecosystem の不整合は個別に対応。
 
 ```bash
 set -e
@@ -172,10 +174,10 @@ else
 fi
 
 cd "$WT"
-npm ci
+bun install --frozen-lockfile
 ```
 
-- `npm ci` 成功 → Step 3-4 と同じマージ処理
+- install 成功 → Step 3-4 と同じマージ処理
 - 失敗 → PRコメント残してスキップ
 
 worktree クリーンアップは Step 3-5 と同様（パスの `actions-` を `devtools-` に置き換え）。
