@@ -1,11 +1,11 @@
 {
   "frontend/**/*.{ts,tsx}": [
-    "cd frontend && npm run typecheck",
-    "cd frontend && npm run lint:fix",
-    "cd frontend && npm run format"
+    "cd frontend && bun run typecheck",
+    "cd frontend && bun run lint:fix",
+    "cd frontend && bun run format"
   ],
   "frontend/**/*.css": [
-    "cd frontend && npm run format"
+    "cd frontend && bun run format"
   ],
   "backend/**/*.rs": [
     "cargo fmt --manifest-path backend/Cargo.toml --",
