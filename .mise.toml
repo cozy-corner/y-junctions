@@ -28,7 +28,7 @@ dir = "backend"
 [tasks."frontend:deploy"]
 description = "Build and deploy frontend"
 run = """
-npm run build
+bun run build
 gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
 """
 dir = "frontend"
@@ -44,7 +44,7 @@ dir = "backend"
 
 [tasks."sonar:coverage:frontend"]
 description = "Generate frontend lcov coverage"
-run = "npm run test:coverage"
+run = "bun run test:coverage"
 dir = "frontend"
 
 [tasks."sonar"]
