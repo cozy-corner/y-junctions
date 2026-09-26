@@ -1,6 +1,6 @@
 export default {
   '**/*.{ts,tsx}': (filenames) => [
-    'npm run typecheck',
+    'bun run typecheck',
     `eslint --fix ${filenames.join(' ')}`,
     `prettier --write ${filenames.join(' ')}`,
   ],

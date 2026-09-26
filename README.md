@@ -57,7 +57,7 @@ OpenStreetMapデータからY字路を検出・可視化するWebアプリケー
 
 - Docker & Docker Compose
 - Rust (最新版)
-- Node.js 18+
+- Bun 1.4.2 (mise で自動インストール)
 - CockroachDB CLI（`cockroach sql` コマンド）または psql
 
 ### セットアップ手順
@@ -282,8 +282,8 @@ curl "http://localhost:8080/api/stats"
 ```bash
 # 別のターミナルで実行
 cd frontend
-npm install  # 初回のみ
-npm run dev
+bun install  # 初回のみ
+bun run dev
 ```
 
 フロントエンドは `http://localhost:3000` で起動します（ポートは `frontend/vite.config.ts` で指定）。
@@ -294,8 +294,8 @@ npm run dev
 
 ```bash
 # worktree作成時の自動セットアップを有効化
-git gtr config add gtr.hook.postCreate "npm install"
-git gtr config add gtr.hook.postCreate "cd frontend && npm install"
+git gtr config add gtr.hook.postCreate "bun install"
+git gtr config add gtr.hook.postCreate "cd frontend && bun install"
 git gtr config add gtr.hook.postCreate "mise trust"
 git gtr config add gtr.hook.postCreate "./scripts/setup-worktree.sh"
 
@@ -347,8 +347,8 @@ EOF
 
 ```bash
 cd frontend
-npm run typecheck
-npm run lint
+bun run typecheck
+bun run lint
 ```
 
 ### コード品質評価（SonarQube Cloud）

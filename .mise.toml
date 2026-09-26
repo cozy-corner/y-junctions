@@ -2,6 +2,7 @@
 # Install mise: https://mise.jdx.dev/
 
 [tools]
+bun = "1.4.2"
 node = "23.11.0"
 # sqlx 0.9.0 が rustc 1.94.0 以上を要求する。CI (backend-ci.yml) とも揃える
 rust = "1.94.0"
@@ -27,7 +28,7 @@ dir = "backend"
 [tasks."frontend:deploy"]
 description = "Build and deploy frontend"
 run = """
-npm run build
+bun run build
 gsutil -m rsync -r -d dist/ gs://y-junctions-prod-frontend
 """
 dir = "frontend"
@@ -43,7 +44,7 @@ dir = "backend"
 
 [tasks."sonar:coverage:frontend"]
 description = "Generate frontend lcov coverage"
-run = "npm run test:coverage"
+run = "bun run test:coverage"
 dir = "frontend"
 
 [tasks."sonar"]

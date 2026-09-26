@@ -69,7 +69,7 @@ PR マージ時に release-drafter がブランチ名からラベルを自動付
 git gtr new <branch>
 ```
 
-`postCreate` hook で `npm install` / `cd frontend && npm install` / `mise trust` / `./scripts/setup-worktree.sh` が自動実行される。
+`postCreate` hook で `bun install` / `cd frontend && bun install` / `mise trust` / `./scripts/setup-worktree.sh` が自動実行される。
 `git worktree add` を直接叩かないこと（hook が走らず .env 等が未整備になる）。
 
 ## 本番データ操作は skill 経由
