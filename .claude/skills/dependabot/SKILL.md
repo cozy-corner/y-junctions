@@ -31,7 +31,7 @@ gh pr list --author "app/dependabot" --state open \
 
 | prefix | 種別 | 処理方法 |
 | --- | --- | --- |
-| `dependabot/npm_and_yarn/frontend/` | frontend | `/dependabot-frontend` の Step 2 を適用 |
+| `dependabot/bun/frontend/` | frontend | `/dependabot-frontend` の Step 2 を適用 |
 | `dependabot/cargo/backend/` | backend | `/dependabot-backend` の Step 2 を適用 |
 | `dependabot/github_actions/` | actions | 下記 Step 3 |
 | `dependabot/npm_and_yarn/`（frontend 以外） | devtools | 下記 Step 4 |
