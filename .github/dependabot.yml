@@ -18,8 +18,8 @@ updates:
         patterns:
           - "*"
 
-  # Frontend (npm)
-  - package-ecosystem: "npm"
+  # Frontend (bun)
+  - package-ecosystem: "bun"
     directory: "/frontend"
     schedule:
       interval: "weekly"
