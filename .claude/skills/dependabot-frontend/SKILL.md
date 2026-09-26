@@ -12,7 +12,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch
 
 - このプロジェクトは git worktree 前提。各PRを専用worktreeで処理し、既存作業を壊さない。
 - **Bash tool の各呼び出しは独立シェル**。変数は次の呼び出しに引き継がれないため、各 Bash ブロックで変数を必ず再定義する。
-- **`gh pr checks --watch`・`npm ci`・`npm test` を含む Bash ブロックは `timeout: 600000` (10分) を指定**。デフォルトの120秒では足りない可能性がある。
+- **`gh pr checks --watch`・`bun install --frozen-lockfile`・`bun run test` を含む Bash ブロックは `timeout: 600000` (10分) を指定**。デフォルトの120秒では足りない可能性がある。
 - リトライ回数は `/tmp/dependabot-retry-<PR>` に永続化する。
 - バックグラウンド実行禁止（`&`, `nohup`）。
 - **pre-commit hook (`.husky/pre-commit`)** が存在し、commit時に lint-staged が走る。skill の「コミット前最終チェック」を通過していれば pre-commit も通る想定。
@@ -23,7 +23,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch
 REPO=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 cd "$REPO"
 gh pr list --author "app/dependabot" --state open --json number,title,headRefName,url \
-  --jq '.[] | select(.headRefName | startswith("dependabot/npm_and_yarn/frontend/"))'
+  --jq '.[] | select(.headRefName | startswith("dependabot/bun/frontend/"))'
 ```
 
 該当PRがなければ「対象なし」と表示して終了。複数ある場合は各PRについて Step 2 を順次実行する。
@@ -100,17 +100,17 @@ REPO=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 WT="$REPO/.claude/worktrees/dependabot/frontend-$PR"
 cd "$WT/frontend"
 
-npm ci
+bun install --frozen-lockfile
 
 # 自動修正フェーズ
-npm run format
-npm run lint:fix || true
+bun run format
+bun run lint:fix || true
 ```
 
 **修正戦略**（エラー種別ごとに対応）:
 
-1. **format:check 失敗** → `npm run format` を実行
-2. **lint 失敗** → `npm run lint:fix`。残ったエラーは該当箇所を Read → Edit で修正
+1. **format:check 失敗** → `bun run format` を実行
+2. **lint 失敗** → `bun run lint:fix`。残ったエラーは該当箇所を Read → Edit で修正
 3. **typecheck 失敗** → エラーから該当ファイル/行を特定:
    - 廃止API → 新APIに置換。必要に応じて CHANGELOG を `WebFetch`（例: `https://github.com/<org>/<repo>/releases`）
    - 型の厳格化 → 型注釈・`as`・`satisfies` で対応
@@ -126,7 +126,7 @@ REPO=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 WT="$REPO/.claude/worktrees/dependabot/frontend-$PR"
 cd "$WT/frontend"
 
-npm run format:check && npm run lint && npm run typecheck && npm test
+bun run format:check && bun run lint && bun run typecheck && bun run test
 ```
 
 一つでも失敗したら修正戦略に戻って再修正。全て通ったら **Step 2-4** へ。

@@ -31,10 +31,10 @@ gh pr list --author "app/dependabot" --state open \
 
 | prefix | 種別 | 処理方法 |
 | --- | --- | --- |
-| `dependabot/npm_and_yarn/frontend/` | frontend | `/dependabot-frontend` の Step 2 を適用 |
+| `dependabot/bun/frontend/` | frontend | `/dependabot-frontend` の Step 2 を適用 |
+| `dependabot/bun/`（frontend 以外） | devtools | 下記 Step 4 |
 | `dependabot/cargo/backend/` | backend | `/dependabot-backend` の Step 2 を適用 |
 | `dependabot/github_actions/` | actions | 下記 Step 3 |
-| `dependabot/npm_and_yarn/`（frontend 以外） | devtools | 下記 Step 4 |
 
 ## Step 2: frontend / backend PR の処理
 
@@ -143,9 +143,11 @@ git worktree remove "$WT" --force 2>/dev/null || true
 [ -n "$BRANCH" ] && git branch -D "$BRANCH" 2>/dev/null || true
 ```
 
-## Step 4: devtools PR (root の npm) の処理
+## Step 4: devtools PR (root) の処理
 
-ルート `package.json`（husky など）の更新PR。該当するCIは無いが、`npm ci` が通ることを検証する。
+ルート `package.json`（husky など）の更新PR。該当するCIは無いが、install が通ることを検証する。
+
+root は bun ecosystem で Dependabot が bun.lock を直接更新するため、`bun install --frozen-lockfile` で lockfile と package.json の整合を検証する。
 
 ```bash
 set -e
@@ -172,10 +174,10 @@ else
 fi
 
 cd "$WT"
-npm ci
+bun install --frozen-lockfile
 ```
 
-- `npm ci` 成功 → Step 3-4 と同じマージ処理
+- install 成功 → Step 3-4 と同じマージ処理
 - 失敗 → PRコメント残してスキップ
 
 worktree クリーンアップは Step 3-5 と同様（パスの `actions-` を `devtools-` に置き換え）。

@@ -8,7 +8,7 @@ BACKEND_CHANGED=$(git diff --cached --name-only | grep "^backend/" || true)
 # Run lint-staged in subdirectories
 if [ -n "$FRONTEND_CHANGED" ]; then
   echo "Running lint-staged in frontend..."
-  (cd frontend && npx lint-staged) || exit $?
+  (cd frontend && bunx lint-staged) || exit $?
 fi
 
 if [ -n "$BACKEND_CHANGED" ]; then
