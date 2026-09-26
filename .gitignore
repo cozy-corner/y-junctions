@@ -32,6 +32,9 @@ frontend/coverage/
 # MCP
 .serena/
 
+# Claude Code (local developer config)
+.claude/settings.local.json
+
 # Data
 data/*.pbf
 data/*.osm
