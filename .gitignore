@@ -44,3 +44,6 @@ terraform/*.tfstate.backup
 terraform/*.tfvars
 !terraform/*.tfvars.example
 data/
+
+# Git worktrees (git gtr)
+/.worktrees/
